@@ -80,11 +80,11 @@ el leader debe confirmarlo antes de aprobar (T0).
 
 ## Tasks
 
-- **T0** — (leader) Confirmar en los logs de Vercel que los usuarios de los 3 errores son `superadmin`.
+- [ ] **T0** — (leader) Confirmar en los logs de Vercel que los usuarios de los 3 errores son `superadmin`.
   Si alguno es de empresa, la causa no es esta: se para y se vuelve al diagnóstico.
   **ABIERTA (2026-11-23):** spec aprobado por Carlos sin confirmar T0. No bloquea la implementación;
   si los logs muestran un usuario de empresa, se reabre el diagnóstico.
-- **T1** — Test rojo. Archivo nuevo `tests/components/OrdenesPageSuperadmin.test.tsx`:
+- [x] **T1** — Test rojo. Archivo nuevo `tests/components/OrdenesPageSuperadmin.test.tsx`:
   - dobla `resolveActorFromSession` a `{ rol: "superadmin" }`;
   - dobla `zonaDelBorde` para que lance `EmpresaNoResuelta("Pais","zonaHoraria")`, como en producción;
   - dobla `notFound` para que lance un error marcado.
@@ -92,12 +92,12 @@ el leader debe confirmarlo antes de aprobar (T0).
   `zonaDelBorde` no se llamó (R1820, R1821). Un segundo caso, con `maestro`, `admin` y `adminTienda`,
   afirma que `zonaDelBorde` sí se llama y que no hay `notFound` (R1822). Se corre sin el arreglo:
   debe dar ROJO.
-- **T2** — Arreglo: en `app/(app)/ordenes/page.tsx:89`, añadir `|| (rol !== undefined && esPlataforma(rol))`
+- [x] **T2** — Arreglo: en `app/(app)/ordenes/page.tsx:89`, añadir `|| (rol !== undefined && esPlataforma(rol))`
   a la puerta existente, importando `esPlataforma` de `@/lib/auth/plataforma`. Comentario de una línea
   con SLT-250 y el porqué.
-- **T3** — Mutación: revertir T2, correr el test de T1 y anotar que da ROJO. Restaurar y anotar que
+- [x] **T3** — Mutación: revertir T2, correr el test de T1 y anotar que da ROJO. Restaurar y anotar que
   da VERDE.
-- **T4** — `./init.sh` con la base desechable `servi_slt250` y `NODE_OPTIONS=--max-old-space-size=8192`,
+- [x] **T4** — `./init.sh` con la base desechable `servi_slt250` y `NODE_OPTIONS=--max-old-space-size=8192`,
   con `INIT_EXIT=$?` dentro del log. Bitácora en `progress/features/SLT-250.md`.
 
 ## Archivos esperados
