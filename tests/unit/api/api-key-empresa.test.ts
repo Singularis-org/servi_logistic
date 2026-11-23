@@ -196,6 +196,7 @@ describe("SL-17 · R13 — la ruta ejecuta su cuerpo con la empresa de la key", 
             visto = contextoActual();
             return { status: "forbidden" as const };
           }),
+          cotizarV2: vi.fn(),
         },
       },
     );

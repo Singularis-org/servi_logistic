@@ -32,6 +32,7 @@ import type {
   BulkOrdenResult,
   CargaViaApiOrden,
   CargaViaApiResult,
+  CargaViaApiResultV2,
   CargaViaApiFila,
   CargaViaApiRow,
   CargaViaApiSummary,
@@ -48,21 +49,58 @@ import { MSG_CARGA_SIN_TARIFA, MSG_FILA_SIN_TARIFA } from "@/lib/services/mensaj
 import { ConflictError } from "@/lib/errors/app-error";
 import {
   distinct,
+  geoInputDesdeColumnasDeNivel,
   geoInputDesdeColumnasSeparadas,
   indexBy,
   normalize,
   resolveGeo,
   type GeoInput,
-  type GeoInputExtractor,
-  type GeoResult,
+  type ResolvedGeo,
 } from "@/lib/services/geo-resolucion";
 import { parseCantonDistrito } from "@/lib/utils/canton-distrito";
+import { columnasGeoDePlantilla } from "@/lib/utils/plantilla-geo";
 import {
   desgloseCargaApi,
   ivaFulfillmentDeTarifa,
   fleteEntregadoSinTarifa,
 } from "@/lib/utils/ingreso-empresa";
 import { nombreDeEstado } from "@/lib/types/order-status";
+import type {
+  CatalogoYAsignaciones,
+  ICatalogoGeograficoRepository,
+} from "@/lib/interfaces/repositories/ICatalogoGeograficoRepository";
+import {
+  CLAVE_UBICACION,
+  MSG_MOTOR_SIN_CATALOGO,
+  MSG_PAIS_NO_HABILITADO,
+  esPaisDeTresNiveles,
+  resolverUbicacion,
+  rutaPublica,
+  type EntradaUbicacion,
+} from "@/lib/services/geo-ubicacion";
+import {
+  extraerUbicacionV2,
+  geoDeUbicacion,
+  type CargaViaApiSummaryV2,
+  type FilaV2Interna,
+} from "@/lib/types/api-v2";
+
+/**
+ * SLT-45 (design §2.3) — lo que devuelve el extractor de una via que resuelve con el motor de N
+ * niveles (v2 y la carga de sesion de un pais que no es de forma CR): la ubicacion por ruta o por
+ * codigo y la direccion literal. Las vias de `resolveGeo` siguen devolviendo la terna de hoy.
+ */
+export type EntradaDelMotor = { ok: true; entrada: EntradaUbicacion; direccion: string };
+
+/** El extractor de geografia de una via: la terna de `resolveGeo`, una entrada del motor o un error. */
+export type ExtractorDeFila = (raw: RawRow) => GeoInput | EntradaDelMotor;
+
+export { MSG_MOTOR_SIN_CATALOGO };
+
+/** La geografia de una fila ya resuelta, venga de `resolveGeo` o del motor. */
+type GeografiaDeFila =
+  | { ok: true; geo: ResolvedGeo; nodoGeograficoId: string; direccion: string }
+  | { ok: false; fieldErrors: Record<string, string[]> };
 
 /** SL-17 (D15): la tienda de la carga no existe para la empresa en curso. */
 export const MSG_TIENDA_NO_ENCONTRADA = "tienda no encontrada";
@@ -128,6 +166,9 @@ interface PreloadedContext {
   // Feature 27/R18/R19 + 155/R4/R16: `value` del estatus inicial resuelto UNA sola vez por
   // LOTE (nunca por fila), reportado por fila creada y en el dedup.
   estatusInicialValue: string;
+  // SLT-45 (design §2.3): el catalogo y las asignaciones de la empresa, leidos una vez por lote.
+  // Solo los usa la rama del motor de `resolveFila`; ausente si el servicio no tiene catalogo.
+  geografia?: CatalogoYAsignaciones;
 }
 
 /**
@@ -152,15 +193,22 @@ export class BulkOrdenService implements IBulkOrdenService {
     private readonly tarifaRepo: ITarifaVigenteRepository,
     /**
      * Feature 146 (R22/R25): notificador de "carga masiva terminada". El DEFAULT es NO-OP: el
-     * composition root (`app/api/ordenes/api-key/carga/route.ts`) inyecta el real. Solo lo usa
+     * composition root (`lib/api/api-carga.ts`, carga por API key) inyecta el real. Solo lo usa
      * `cargarViaApi`, que SI tiene fin de lote real (una peticion = un lote); la carga por UI
      * la trocea el cliente y se cierra con la Server Action `notificarCargaMasivaTerminada`
      * (F1.4-4). BEST-EFFORT: una notificacion perdida no puede invalidar una carga de cientos
      * de ordenes ya persistidas.
      */
     private readonly notificarCarga: CargaMasivaNotificador = notificadorNoOp,
-    // SLT-86 (R8): sin el 4.º parámetro, la lectura previa del cupo de órdenes del plan (SL-24 §6.1).
+    // SLT-86 (R8): sin el parámetro de la lectura previa del cupo de órdenes del plan (SL-24 §6.1).
     // Ningún plan topa ya las órdenes, y la base ya no tiene el trigger que las rechazaba.
+    /**
+     * SLT-45 (design §2.3): el catalogo geografico de la empresa, para la forma del pais (R5) y el
+     * motor de N niveles. OPCIONAL para que los dobles de los tests existentes compilen sin
+     * cambios (R32): sin el, la via v1 corre como antes y sin la comprobacion de R5. Los composition
+     * roots lo pasan siempre (`tests/unit/api/v2-composicion.test.ts`).
+     */
+    private readonly catalogoRepo?: ICatalogoGeograficoRepository,
   ) {}
 
   async cargarMasiva(
@@ -191,7 +239,17 @@ export class BulkOrdenService implements IBulkOrdenService {
     }
     const destino = resolverDestinoCreacion(!seRecogeEnTienda);
 
-    const ctx = await this.precargar(rows, destino.estatus, tiendaId);
+    // SLT-45 (design §2.3, §8; R29–R32) — EL EXTRACTOR SEGUN LA FORMA DEL PAIS. Las columnas salen
+    // de `columnasGeoDePlantilla`, la misma funcion que arma la plantilla que se descarga. Forma CR
+    // (`null`) o sin catalogo inyectado (dobles de tests anteriores): `provincia` + `canton_distrito`
+    // y `resolveGeo`, como siempre (R32). Otro pais: una columna por profundidad y el motor de N
+    // niveles (R31, que aplica R13, R15 y R16).
+    const geografia = await this.catalogoRepo?.deLaEmpresa();
+    const columnasGeo = geografia === undefined ? null : columnasGeoDePlantilla(geografia.catalogo);
+    const extractor: ExtractorDeFila =
+      columnasGeo === null ? geoInputDesdeCantonDistrito : geoInputDesdeColumnasDeNivel(columnasGeo);
+
+    const ctx = await this.precargar(rows, destino.estatus, tiendaId, geografia);
 
     if (ctx.estatusId === null) {
       // R7/R20: sin el value del catalogo NO se crea ninguna orden y el error NOMBRA el
@@ -220,8 +278,8 @@ export class BulkOrdenService implements IBulkOrdenService {
       const fila = idx + 1;
       // Feature 276: la via sesion deriva la geografia de `provincia` +
       // `canton_distrito` (plantilla v3, corte duro: no hay camino desde la columna
-      // unica de la v2 ni desde las columnas de la v1).
-      const result = this.resolveFila(raw, ctx, seen, geoInputDesdeCantonDistrito);
+      // unica de la v2 ni desde las columnas de la v1). SLT-45: solo en un pais de forma CR.
+      const result = this.resolveFila(raw, ctx, seen, extractor);
       if (result.status === "error") {
         filas.push({ fila, numRemision: result.numRemision, resultado: "error", errores: result.errores });
         return;
@@ -371,6 +429,90 @@ export class BulkOrdenService implements IBulkOrdenService {
     // duplicarse porque sus ordenes por API nacen con SU `tienda_id`, con su wallet y sus tarifas.
     const tiendaId = actor.usuarioId;
 
+    // SLT-45 R5 (design §2.1) — LA FORMA DEL PAIS, antes de resolver ninguna fila. v1 habla de
+    // provincia, canton y distrito: si el pais de la empresa no es de 3 niveles, cada fila sale con
+    // el error de pais no habilitado bajo `ubicacion` y no se crea nada (ni orden ni lote). Para un
+    // pais de 3 niveles la comprobacion pasa y la respuesta es la de siempre (R2). Sin catalogo
+    // inyectado (dobles de tests anteriores) no se comprueba.
+    const geografia = await this.catalogoRepo?.deLaEmpresa();
+    if (geografia !== undefined && !esPaisDeTresNiveles(geografia.catalogo)) {
+      const filas: CargaViaApiRow[] = rows.map((raw, idx) => ({
+        fila: idx + 1,
+        numRemision: (raw.num_remision ?? "").trim(),
+        resultado: "error",
+        errores: { [CLAVE_UBICACION]: [MSG_PAIS_NO_HABILITADO] },
+      }));
+      return {
+        status: "ok",
+        summary: this.buildViaApiSummary(rows.length, filas, [], null),
+        manifiestoOrdenIds: [],
+      };
+    }
+
+    // R7: mismas reglas que la carga masiva, pero con la geografia en columnas separadas (feature
+    // 142/R38: el contrato publico de la 88 no cambia).
+    const { resultado } = await this.cargarFilasPorApi(
+      rows,
+      tiendaId,
+      options,
+      geografia,
+      () => geoInputDesdeColumnasSeparadas,
+    );
+    return resultado;
+  }
+
+  /**
+   * SLT-45 (design §4.2, §4.3) — la carga por lote de v2: el MISMO pipeline que `cargarViaApi`
+   * (tienda dueña, duplicados, tarifa, lote, manifiesto, aviso), con la ubicacion resuelta por el motor de
+   * N niveles y `ordenes[].ubicacion` en la salida. No comprueba la forma del pais por adelantado:
+   * la regla de guardado del motor (R15) lo dice fila a fila.
+   */
+  async cargarViaApiV2(
+    filasV2: FilaV2Interna[],
+    actor: Actor,
+    options: { name?: string } = {},
+  ): Promise<CargaViaApiResultV2> {
+    if (actor.rol !== "apiKey") return { status: "forbidden" };
+    if (this.catalogoRepo === undefined) throw new Error(MSG_MOTOR_SIN_CATALOGO);
+    const geografia = await this.catalogoRepo.deLaEmpresa();
+
+    const { resultado, nodoPorRemision } = await this.cargarFilasPorApi(
+      filasV2.map((f) => f.campos),
+      actor.usuarioId,
+      options,
+      geografia,
+      (idx) => () => extraerUbicacionV2(filasV2[idx]),
+    );
+    const summary: CargaViaApiSummaryV2 = {
+      ...resultado.summary,
+      ordenes: resultado.summary.ordenes.map((o) => ({
+        ...o,
+        // Toda orden creada paso por `resolveFila`, que anoto su nodo: el `?? ""` (ruta vacia) es
+        // solo para el tipo. Se prefiere a lanzar: aqui las ordenes ya estan confirmadas.
+        ubicacion: rutaPublica(geografia.catalogo, nodoPorRemision.get(o.numRemision) ?? ""),
+      })),
+    };
+    return { status: "ok", summary, manifiestoOrdenIds: resultado.manifiestoOrdenIds };
+  }
+
+  /**
+   * El pipeline de la carga por API, comun a v1 y v2. La via elige el extractor de cada fila
+   * (`extractorDe(indice)`); devuelve ademas el nodo de cada remision creada, que v2 publica como
+   * ruta. La autorizacion y la forma del pais se comprueban antes, en cada via; la tienda dueña y
+   * su destino de creacion (SLT-94), aqui, para que v1 y v2 lo compartan.
+   */
+  private async cargarFilasPorApi(
+    rows: RawRow[],
+    tiendaId: string,
+    options: { name?: string },
+    geografia: CatalogoYAsignaciones | undefined,
+    extractorDe: (idx: number) => ExtractorDeFila,
+  ): Promise<{
+    resultado: Extract<CargaViaApiResult, { status: "ok" }>;
+    nodoPorRemision: Map<string, string>;
+  }> {
+    const nodoPorRemision = new Map<string, string>();
+
     // SLT-94 (R5/R6, D4, D13) — EL PREDICADO DE ESTA VIA ES LA MARCA DE LA TIENDA DUEÑA, COMO EN
     // LA VIA SESION. Del 2026-08-25 a SLT-94 lo decidia aqui el MONTO de fulfillment de la tarifa de
     // cada orden (`tieneFulfillment`), con dos destinos por lote; SLT-94 separa las dos cosas: el
@@ -390,14 +532,17 @@ export class BulkOrdenService implements IBulkOrdenService {
         errores: { tienda: [MSG_TIENDA_NO_ENCONTRADA] },
       }));
       return {
-        status: "ok",
-        summary: this.buildViaApiSummary(rows.length, filas, [], null),
-        manifiestoOrdenIds: [],
+        resultado: {
+          status: "ok",
+          summary: this.buildViaApiSummary(rows.length, filas, [], null),
+          manifiestoOrdenIds: [],
+        },
+        nodoPorRemision,
       };
     }
     const destino = resolverDestinoCreacion(!seRecogeEnTienda);
 
-    const ctx = await this.precargar(rows, destino.estatus, tiendaId);
+    const ctx = await this.precargar(rows, destino.estatus, tiendaId, geografia);
 
     if (ctx.estatusId === null) {
       // R7: sin el value del catalogo, ninguna fila puede crearse y el error NOMBRA el value
@@ -412,9 +557,12 @@ export class BulkOrdenService implements IBulkOrdenService {
       }));
       // Feature 141/R33: sin ordenes creadas no hay lote.
       return {
-        status: "ok",
-        summary: this.buildViaApiSummary(rows.length, filas, [], null),
-        manifiestoOrdenIds: [],
+        resultado: {
+          status: "ok",
+          summary: this.buildViaApiSummary(rows.length, filas, [], null),
+          manifiestoOrdenIds: [],
+        },
+        nodoPorRemision,
       };
     }
     const estatusId = ctx.estatusId;
@@ -441,9 +589,8 @@ export class BulkOrdenService implements IBulkOrdenService {
 
     rows.forEach((raw, idx) => {
       const fila = idx + 1;
-      // R7: mismas reglas que la carga masiva, pero con la geografia en columnas
-      // separadas (feature 142/R38: el contrato publico de la 88 no cambia).
-      const result = this.resolveFila(raw, ctx, seen, geoInputDesdeColumnasSeparadas);
+      // R7: mismas reglas que la carga masiva; la geografia, del extractor de la via.
+      const result = this.resolveFila(raw, ctx, seen, extractorDe(idx));
       if (result.status === "error") {
         filas.push({ fila, numRemision: result.numRemision, resultado: "error", errores: result.errores });
         return;
@@ -453,6 +600,7 @@ export class BulkOrdenService implements IBulkOrdenService {
         return;
       }
       toCreate.push({ ...result.createData, estatusId, tiendaId });
+      nodoPorRemision.set(result.createData.numRemision, result.createData.nodoGeograficoId);
       esCentralPorRemision.set(result.createData.numRemision, result.esCentral); // R2
       esZonaEspecialPorRemision.set(result.createData.numRemision, result.esZonaEspecial);
       zonaPorRemision.set(result.createData.numRemision, result.createData.zonaId); // 274/R25
@@ -682,7 +830,7 @@ export class BulkOrdenService implements IBulkOrdenService {
     // summary JSON. El borde (route handler) la necesita para saber que ordenes de este lote
     // van al manifiesto, y esa es una decision interna: el contrato publico solo gana el bloque
     // `manifiesto` cuando lo hay.
-    return { status: "ok", summary, manifiestoOrdenIds };
+    return { resultado: { status: "ok", summary, manifiestoOrdenIds }, nodoPorRemision };
   }
 
   /**
@@ -752,8 +900,9 @@ export class BulkOrdenService implements IBulkOrdenService {
     raw: RawRow,
     ctx: PreloadedContext,
     seen: Map<string, string>,
-    // Feature 142 (design.md §4): la via decide de donde sale la geografia.
-    geoInputOf: GeoInputExtractor,
+    // Feature 142 (design.md §4): la via decide de donde sale la geografia. SLT-45 (§2.3): la via
+    // tambien decide CON QUE se resuelve — la terna va a `resolveGeo`, una entrada al motor.
+    geoInputOf: ExtractorDeFila,
   ):
     | { status: "error"; numRemision: string; errores: Record<string, string[]> }
     | { status: "duplicada"; numRemision: string; estatus: string }
@@ -842,21 +991,13 @@ export class BulkOrdenService implements IBulkOrdenService {
     // invalido de `canton_distrito`), la fila va a error con SU clave, sin llegar a
     // resolveGeo. Si tiene exito, resolveGeo recibe exactamente los mismos 3
     // nombres de siempre (R33-R36, mensajes intactos).
-    const geoInput = geoInputOf(raw);
-    const geoResult: GeoResult = geoInput.ok
-      ? resolveGeo(geoInput, ctx.provinciaIndex, ctx.cantonIndex, ctx.distritoIndex)
-      : { ok: false, fieldErrors: geoInput.fieldErrors };
-
-    const fieldErrors: Record<string, string[]> = {};
-    if (!geoResult.ok) Object.assign(fieldErrors, geoResult.fieldErrors);
-    if (Object.keys(fieldErrors).length > 0) {
-      return { status: "error", numRemision: data.num_remision, errores: fieldErrors };
+    // SLT-45 (design §2.3): con una entrada del motor, resuelve el motor de N niveles; con la terna,
+    // `resolveGeo` como siempre (mismos mensajes, R3).
+    const geografia = this.resolverGeografia(geoInputOf(raw), ctx);
+    if (!geografia.ok) {
+      return { status: "error", numRemision: data.num_remision, errores: { ...geografia.fieldErrors } };
     }
-    // Invariante: fieldErrors vacio implica que geoResult resolvio "ok" (su rama
-    // !ok es la unica que agrega claves a fieldErrors). Y un geoResult ok implica
-    // un geoInput ok (es su unica fuente).
-    const geo = (geoResult as Extract<GeoResult, { ok: true }>).geo;
-    const direccionLiteral = (geoInput as Extract<GeoInput, { ok: true }>).direccion;
+    const { geo, nodoGeograficoId, direccion: direccionLiteral } = geografia;
 
     // R26: dedup intra-archivo, primera ocurrencia gana; reporta el mismo
     // estatus que se reporto/reportara para la ganadora.
@@ -892,6 +1033,9 @@ export class BulkOrdenService implements IBulkOrdenService {
         provinciaId: geo.provinciaId,
         cantonId: geo.cantonId,
         distritoId: geo.distritoId,
+        // SLT-45 (design §3.1, R25): `distritoId ?? cantonId` por `resolveGeo`; el nodo resuelto
+        // por el motor (con sus 3 FK de `fksDeNodo`).
+        nodoGeograficoId,
         producto: reparados.producto ?? data.producto,
         peso: null, // R4: la carga masiva no trae peso
         // Ficha 383/R16: `notas` NO se evalua y se guarda TAL CUAL, emoji incluido: no se
@@ -912,6 +1056,7 @@ export class BulkOrdenService implements IBulkOrdenService {
     rows: RawRow[],
     estatusInicialValue: string,
     tiendaId: string,
+    geografia?: CatalogoYAsignaciones, // SLT-45: para la rama del motor de `resolveFila`
   ): Promise<PreloadedContext> {
     const numRemisiones = distinct(rows.map((r) => (r.num_remision ?? "").trim()).filter(Boolean));
 
@@ -939,6 +1084,33 @@ export class BulkOrdenService implements IBulkOrdenService {
       distritoIndex,
       estatusId,
       estatusInicialValue,
+      ...(geografia !== undefined ? { geografia } : {}),
+    };
+  }
+
+  /**
+   * SLT-45 (design §2.3) — la geografia de una fila por la via que toque. Con la terna de hoy,
+   * `resolveGeo` y el nodo `distritoId ?? cantonId` (§2.1, R25). Con una entrada del motor, el motor
+   * de N niveles y el nodo resuelto, con las 3 FK de `fksDeNodo` (§3.1). Un extractor que falla
+   * deja la fila en error con SU clave, sin llegar a resolver (feature 142/R29).
+   */
+  private resolverGeografia(entrada: GeoInput | EntradaDelMotor, ctx: PreloadedContext): GeografiaDeFila {
+    if (!entrada.ok) return { ok: false, fieldErrors: entrada.fieldErrors };
+
+    if ("entrada" in entrada) {
+      if (ctx.geografia === undefined) throw new Error(MSG_MOTOR_SIN_CATALOGO);
+      const r = resolverUbicacion(entrada.entrada, ctx.geografia.catalogo, ctx.geografia.asignaciones);
+      if (!r.ok) return r;
+      return { ok: true, geo: geoDeUbicacion(r.u), nodoGeograficoId: r.u.nodo.id, direccion: entrada.direccion };
+    }
+
+    const r = resolveGeo(entrada, ctx.provinciaIndex, ctx.cantonIndex, ctx.distritoIndex);
+    if (!r.ok) return r;
+    return {
+      ok: true,
+      geo: r.geo,
+      nodoGeograficoId: r.geo.distritoId ?? r.geo.cantonId,
+      direccion: entrada.direccion,
     };
   }
 }

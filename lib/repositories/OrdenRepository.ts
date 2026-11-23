@@ -2484,6 +2484,7 @@ export class OrdenRepository implements IOrdenRepository {
           provinciaId: data.provinciaId,
           cantonId: data.cantonId,
           distritoId: data.distritoId,
+          nodoGeograficoId: data.nodoGeograficoId, // SLT-45 (R26)
           zonaId: data.zonaId,
           // `peso` es `Decimal(10,3)` en la columna: se convierte igual que en `toUpdateData`.
           peso: data.peso !== undefined ? new Prisma.Decimal(data.peso) : undefined,
@@ -3287,6 +3288,7 @@ export class OrdenRepository implements IOrdenRepository {
       provinciaId: data.provinciaId,
       cantonId: data.cantonId,
       distritoId: data.distritoId ?? null,
+      nodoGeograficoId: data.nodoGeograficoId, // SLT-45 (R25)
       producto: data.producto,
       peso: data.peso !== null ? new Prisma.Decimal(data.peso) : null,
       notas: data.notas ?? null,
@@ -3675,6 +3677,19 @@ export class OrdenRepository implements IOrdenRepository {
     if (!row) return null;
     const [esZonaEspecialDeLaOrden] = await this.marcasDeOrdenes([row]);
     return toApiOrdenDetalleRow(row, esZonaEspecialDeLaOrden);
+  }
+
+  /**
+   * SLT-45 (design §4.3) — el lugar de la orden para la consulta v2. Mismo WHERE que
+   * `findDetalleByOrdenIdForOwner`; `organizacion_id` lo inyecta la extension del cliente (y lo
+   * respalda la RLS de `orden`), asi que la orden de otra empresa no se ve aunque el id coincida.
+   */
+  async findLugarDeOrdenForOwner(ordenId: string, ownerId: string): Promise<string | null> {
+    const row = await this.prisma.orden.findFirst({
+      where: { id: ordenId, tiendaId: ownerId, deletedAt: null },
+      select: { distritoId: true, cantonId: true },
+    });
+    return row === null ? null : lugarDeLaOrden(row);
   }
 
   /**

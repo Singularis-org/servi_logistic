@@ -59,6 +59,8 @@ function fakeBulk(summary: CargaViaApiSummary): IBulkOrdenService {
         summary,
         manifiestoOrdenIds: ["ord-1"],
       } satisfies CargaViaApiResult),
+    // SLT-45: exigido por IBulkOrdenService; no ejercitado por v1.
+    cargarViaApiV2: vi.fn(),
   };
 }
 

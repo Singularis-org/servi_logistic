@@ -102,6 +102,7 @@ import {
 } from "./filtro-estado-def";
 import { seleccionAFilter } from "./seleccion-a-filter";
 import type { OrdenesFilterUI } from "./serializar-filtro";
+import type { ColumnaGeoDePlantilla } from "@/lib/utils/plantilla-geo";
 
 type ModalAbierto =
   | "generar-guia"
@@ -276,6 +277,7 @@ export function OrdenesListado({
   puedeVerEliminadas = false,
   puedeImprimirEtiquetasPropias = false,
   fechasDiaReparto = SIN_FECHAS_DIA_REPARTO,
+  columnasGeoCarga = null,
 }: Readonly<{
   exclude?: string[];
   puedeCargarMasiva?: boolean;
@@ -436,6 +438,11 @@ export function OrdenesListado({
    * falsea.
    */
   fechasDiaReparto?: FechasDiaReparto;
+  /**
+   * SLT-45 (design §8; R29, R30): columnas de geografía de la plantilla de carga masiva de la
+   * empresa, calculadas en `page.tsx`. Solo las usa la carga masiva; sin ellas, las de hoy.
+   */
+  columnasGeoCarga?: ColumnaGeoDePlantilla[] | null;
 }>) {
   // SL-20 (R19): los nombres de nivel del país de la empresa, para columnas y filtros geográficos.
   const etiquetas = useEtiquetasGeograficas();
@@ -1470,13 +1477,13 @@ export function OrdenesListado({
           />
           {puedeCargarMasiva ? (
             <div className="ms-auto flex gap-2">
-              <OrdenesCargaMasivaButton />
+              <OrdenesCargaMasivaButton columnasGeo={columnasGeoCarga} />
             </div>
           ) : null}
         </div>
       ) : (
         <div className="flex flex-wrap items-center justify-end gap-2">
-          <OrdenesCargaMasivaButton />
+          <OrdenesCargaMasivaButton columnasGeo={columnasGeoCarga} />
         </div>
       )
     ) : null;

@@ -158,6 +158,7 @@ async function ordenConCargo(e: Empresa, monto: string): Promise<void> {
           provinciaId: geo.provinciaId,
           cantonId: geo.cantonId,
           distritoId: geo.distritoId,
+          nodoGeograficoId: geo.distritoId, // SLT-45 (R25): el nodo mas profundo resuelto
           producto: "Caja",
           peso: null,
           notas: null,

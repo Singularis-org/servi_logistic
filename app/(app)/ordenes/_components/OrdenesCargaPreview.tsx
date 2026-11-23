@@ -16,6 +16,7 @@ import {
 } from "@/app/(app)/ordenes/_components/carga-masiva-error-chips";
 import {
   ERRORES_EXPORT_FIELDS,
+  camposExportErrores,
   construirFilasErrorExport,
   nombreArchivoErrores,
 } from "@/app/(app)/ordenes/_components/carga-masiva-export-errores";
@@ -26,6 +27,8 @@ import type { FilaParseada } from "@/app/(app)/ordenes/_components/carga-masiva-
 // obliga a resolver el mismo módulo en este componente.
 import { XLSX_MIME, buildXlsxRows, toXlsxColumns } from "@/lib/utils/xlsx-template";
 import { useToast } from "@/hooks/useToast";
+import { camposDePlantilla } from "@/app/(app)/ordenes/_components/carga-masiva-fields";
+import type { ColumnaGeoDePlantilla } from "@/lib/utils/plantilla-geo";
 
 export interface OrdenesCargaPreviewProps {
   /** Clasificación de la validación previa (dry-run): nada se ha persistido. */
@@ -42,6 +45,12 @@ export interface OrdenesCargaPreviewProps {
   progresoTexto?: string | null;
   /** Dispara la carga real (persiste solo las nuevas válidas). */
   onConfirmar: () => void;
+  /**
+   * SLT-45 (R30): columnas de geografía de la plantilla de la empresa, para que el export de
+   * errores tenga las mismas columnas que la plantilla descargada. Sin ellas (país de forma CR),
+   * las de hoy.
+   */
+  columnasGeo?: ColumnaGeoDePlantilla[] | null;
 }
 
 /**
@@ -64,6 +73,7 @@ export function OrdenesCargaPreview({
   confirmando,
   progresoTexto,
   onConfirmar,
+  columnasGeo = null,
 }: OrdenesCargaPreviewProps) {
   const { numRemisionesNuevas, existentes, errores, ajustadas, normalizadas } =
     clasificacion;
@@ -108,13 +118,15 @@ export function OrdenesCargaPreview({
     if (errores.length === 0 || generandoErrores) return;
     setGenerandoErrores(true);
     try {
+      // SLT-45 (R30): con columnas de nivel, el export lleva las de la plantilla de la empresa.
+      const campos = camposDePlantilla(columnasGeo);
       const buffer = await buildXlsxRows(
         // R2/R14 — la cabecera DEBE ser la clave máquina para que el archivo se
         // pueda volver a subir. `toXlsxColumns` es quien lo garantiza (antes esa
         // regla vivía dentro del generador, que la feature 148 unificó): NO se
         // construyen columnas a mano aquí.
-        toXlsxColumns(ERRORES_EXPORT_FIELDS),
-        construirFilasErrorExport(errores, filas ?? []),
+        toXlsxColumns(columnasGeo == null ? ERRORES_EXPORT_FIELDS : camposExportErrores(campos)),
+        construirFilasErrorExport(errores, filas ?? [], campos),
         "Ordenes con error",
       );
       const blob = new Blob([buffer], { type: XLSX_MIME });

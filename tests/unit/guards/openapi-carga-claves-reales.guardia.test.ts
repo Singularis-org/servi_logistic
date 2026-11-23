@@ -442,7 +442,8 @@ describe("SLT-201 R3 — los errores que la ruta emite están en el contrato", (
         expect(op.responses).not.toHaveProperty("429");
       }
     }
-    expect(ops, "SLT-201: control, el canal tiene 10 operaciones").toBe(10);
+    // SLT-45: las 10 de v1 y las 5 de v2 (`/api/v2/**`).
+    expect(ops, "SLT-201: control, el canal tiene 15 operaciones (10 de v1 y 5 de v2)").toBe(15);
   });
 });
 

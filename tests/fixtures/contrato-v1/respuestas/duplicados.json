@@ -1,0 +1,242 @@
+{
+  "payload": "duplicados",
+  "pasos": [
+    {
+      "ruta": "carga",
+      "status": 200,
+      "cuerpo": {
+        "total": 3,
+        "creadas": 2,
+        "duplicadas": 1,
+        "conError": 0,
+        "filas": [
+          {
+            "fila": 1,
+            "numRemision": "R-1001",
+            "resultado": "creada",
+            "estado": "por_recolectar_en_tienda",
+            "estadoNombre": "Por recolectar en tienda",
+            "numGuia": "<numGuia#1>"
+          },
+          {
+            "fila": 2,
+            "numRemision": "R-1001",
+            "resultado": "duplicada",
+            "estado": "por_recolectar_en_tienda",
+            "estadoNombre": "Por recolectar en tienda"
+          },
+          {
+            "fila": 3,
+            "numRemision": "R-1002",
+            "resultado": "creada",
+            "estado": "por_recolectar_en_tienda",
+            "estadoNombre": "Por recolectar en tienda",
+            "numGuia": "<numGuia#2>"
+          }
+        ],
+        "errores": [],
+        "ordenes": [
+          {
+            "id": "<uuid#1>",
+            "numRemision": "R-1001",
+            "numGuia": "<numGuia#1>",
+            "estado": "por_recolectar_en_tienda",
+            "estadoNombre": "Por recolectar en tienda",
+            "costoEnvio": "2260.00",
+            "fulfillment": "0.00",
+            "ivaFulfillment": "0.00",
+            "downloadUrl": null
+          },
+          {
+            "id": "<uuid#2>",
+            "numRemision": "R-1002",
+            "numGuia": "<numGuia#2>",
+            "estado": "por_recolectar_en_tienda",
+            "estadoNombre": "Por recolectar en tienda",
+            "costoEnvio": "4520.00",
+            "fulfillment": "0.00",
+            "ivaFulfillment": "0.00",
+            "downloadUrl": null
+          }
+        ],
+        "cargaId": "<cargaId#1>",
+        "downloadType": "consolidate",
+        "etiquetasPdf": {
+          "url": "<url#1>",
+          "expiraEnSegundos": 3600
+        },
+        "manifiesto": {
+          "filas": [
+            {
+              "numGuia": "<numGuia#1>",
+              "numRemision": "R-1001",
+              "destinatario": "Destinatario 1",
+              "telefono": "80000001",
+              "direccion": "Direccion 1",
+              "zona": "zona_1",
+              "producto": "Producto 1",
+              "monto": 100,
+              "intentos": 0,
+              "origen": "Tienda Contrato",
+              "destino": "zona_1",
+              "responsable": "Tienda Contrato V1",
+              "fecha": "<fecha#1>"
+            },
+            {
+              "numGuia": "<numGuia#2>",
+              "numRemision": "R-1002",
+              "destinatario": "Destinatario 3",
+              "telefono": "80000003",
+              "direccion": "Direccion 3",
+              "zona": "zona_2",
+              "producto": "Producto 3",
+              "monto": 100,
+              "intentos": 0,
+              "origen": "Tienda Contrato",
+              "destino": "zona_1",
+              "responsable": "Tienda Contrato V1",
+              "fecha": "<fecha#1>"
+            }
+          ],
+          "omitidas": []
+        }
+      }
+    },
+    {
+      "ruta": "carga",
+      "status": 200,
+      "cuerpo": {
+        "total": 3,
+        "creadas": 1,
+        "duplicadas": 2,
+        "conError": 0,
+        "filas": [
+          {
+            "fila": 1,
+            "numRemision": "R-1001",
+            "resultado": "duplicada",
+            "estado": "por_recolectar_en_tienda",
+            "estadoNombre": "Por recolectar en tienda"
+          },
+          {
+            "fila": 2,
+            "numRemision": "R-1002",
+            "resultado": "duplicada",
+            "estado": "por_recolectar_en_tienda",
+            "estadoNombre": "Por recolectar en tienda"
+          },
+          {
+            "fila": 3,
+            "numRemision": "R-1003",
+            "resultado": "creada",
+            "estado": "por_recolectar_en_tienda",
+            "estadoNombre": "Por recolectar en tienda",
+            "numGuia": "<numGuia#3>"
+          }
+        ],
+        "errores": [],
+        "ordenes": [
+          {
+            "id": "<uuid#3>",
+            "numRemision": "R-1003",
+            "numGuia": "<numGuia#3>",
+            "estado": "por_recolectar_en_tienda",
+            "estadoNombre": "Por recolectar en tienda",
+            "costoEnvio": "2260.00",
+            "fulfillment": "0.00",
+            "ivaFulfillment": "0.00",
+            "downloadUrl": null
+          }
+        ],
+        "cargaId": "<cargaId#2>",
+        "downloadType": "consolidate",
+        "etiquetasPdf": {
+          "url": "<url#2>",
+          "expiraEnSegundos": 3600
+        },
+        "manifiesto": {
+          "filas": [
+            {
+              "numGuia": "<numGuia#3>",
+              "numRemision": "R-1003",
+              "destinatario": "Destinatario 4",
+              "telefono": "80000004",
+              "direccion": "Direccion 4",
+              "zona": "zona_1",
+              "producto": "Producto 4",
+              "monto": 100,
+              "intentos": 0,
+              "origen": "Tienda Contrato",
+              "destino": "zona_1",
+              "responsable": "Tienda Contrato V1",
+              "fecha": "<fecha#1>"
+            }
+          ],
+          "omitidas": []
+        }
+      }
+    },
+    {
+      "ruta": "cotizacion",
+      "status": 200,
+      "cuerpo": {
+        "total": 2,
+        "cotizadas": 2,
+        "conError": 0,
+        "filas": [
+          {
+            "fila": 1,
+            "numRemision": "R-1001",
+            "montoCobrar": "100.00",
+            "resultado": "cotizada",
+            "costos": {
+              "entregado": {
+                "flete": "2000.00",
+                "iva": "260.00",
+                "comision": "2.00",
+                "ivaComision": "0.26",
+                "fulfillment": "0.00",
+                "ivaFulfillment": "0.00",
+                "total": "-2162.26"
+              },
+              "devuelto": {
+                "flete": "1000.00",
+                "iva": "130.00",
+                "comision": "0.00",
+                "fulfillment": "0.00",
+                "ivaFulfillment": "0.00",
+                "total": "-1130.00"
+              }
+            }
+          },
+          {
+            "fila": 2,
+            "numRemision": "R-1001",
+            "montoCobrar": "100.00",
+            "resultado": "cotizada",
+            "costos": {
+              "entregado": {
+                "flete": "2000.00",
+                "iva": "260.00",
+                "comision": "2.00",
+                "ivaComision": "0.26",
+                "fulfillment": "0.00",
+                "ivaFulfillment": "0.00",
+                "total": "-2162.26"
+              },
+              "devuelto": {
+                "flete": "1000.00",
+                "iva": "130.00",
+                "comision": "0.00",
+                "fulfillment": "0.00",
+                "ivaFulfillment": "0.00",
+                "total": "-1130.00"
+              }
+            }
+          }
+        ],
+        "errores": []
+      }
+    }
+  ]
+}

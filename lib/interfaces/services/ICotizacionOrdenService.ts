@@ -7,6 +7,7 @@ import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { IOrdenRepository } from "@/lib/interfaces/repositories/IOrdenRepository";
 import type { RawRow } from "@/lib/parsers/spreadsheet";
 import type { CotizacionResumen } from "@/lib/types/cotizacion";
+import type { CotizacionResumenV2, FilaV2Interna } from "@/lib/types/api-v2";
 
 /**
  * Las TRES lecturas geograficas que la cotizacion necesita, y NADA MAS (alternativa A6 de
@@ -34,6 +35,12 @@ export type CotizacionOrdenResult =
   | { status: "sin_tarifa" }
   | { status: "forbidden" };
 
+/** SLT-45 (design §4.3): el de v1 con `filas[].ubicacion`. */
+export type CotizacionOrdenResultV2 =
+  | { status: "ok"; resumen: CotizacionResumenV2 }
+  | { status: "sin_tarifa" }
+  | { status: "forbidden" };
+
 export interface ICotizacionOrdenService {
   /**
    * Cotiza un lote de filas CRUDAS (clave = columna, valor = texto) contra la tarifa
@@ -43,4 +50,11 @@ export interface ICotizacionOrdenService {
    * No persiste NADA (R43), no consume guias (R44) y no deja rastro de auditoria (R45).
    */
   cotizar(rows: RawRow[], actor: Actor): Promise<CotizacionOrdenResult>;
+
+  /**
+   * SLT-45 (design §4.2, §4.3) — la cotizacion de v2: misma tarifa e importes que `cotizar` (R19),
+   * con la ubicacion resuelta por el motor de N niveles y la ruta de su nodo en `filas[].ubicacion`.
+   * Solo el rol `apiKey`. Sin catalogo geografico inyectado lanza un error de configuracion.
+   */
+  cotizarV2(filas: FilaV2Interna[], actor: Actor): Promise<CotizacionOrdenResultV2>;
 }

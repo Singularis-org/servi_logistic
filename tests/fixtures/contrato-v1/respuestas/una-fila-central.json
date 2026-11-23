@@ -1,0 +1,102 @@
+{
+  "payload": "una-fila-central",
+  "pasos": [
+    {
+      "ruta": "cotizacion",
+      "status": 200,
+      "cuerpo": {
+        "total": 1,
+        "cotizadas": 1,
+        "conError": 0,
+        "filas": [
+          {
+            "fila": 1,
+            "numRemision": "R-001",
+            "montoCobrar": "25900.00",
+            "resultado": "cotizada",
+            "costos": {
+              "entregado": {
+                "flete": "2000.00",
+                "iva": "260.00",
+                "comision": "518.00",
+                "ivaComision": "67.34",
+                "fulfillment": "0.00",
+                "ivaFulfillment": "0.00",
+                "total": "23054.66"
+              },
+              "devuelto": {
+                "flete": "1000.00",
+                "iva": "130.00",
+                "comision": "0.00",
+                "fulfillment": "0.00",
+                "ivaFulfillment": "0.00",
+                "total": "-1130.00"
+              }
+            }
+          }
+        ],
+        "errores": []
+      }
+    },
+    {
+      "ruta": "carga",
+      "status": 200,
+      "cuerpo": {
+        "total": 1,
+        "creadas": 1,
+        "duplicadas": 0,
+        "conError": 0,
+        "filas": [
+          {
+            "fila": 1,
+            "numRemision": "R-001",
+            "resultado": "creada",
+            "estado": "por_recolectar_en_tienda",
+            "estadoNombre": "Por recolectar en tienda",
+            "numGuia": "<numGuia#1>"
+          }
+        ],
+        "errores": [],
+        "ordenes": [
+          {
+            "id": "<uuid#1>",
+            "numRemision": "R-001",
+            "numGuia": "<numGuia#1>",
+            "estado": "por_recolectar_en_tienda",
+            "estadoNombre": "Por recolectar en tienda",
+            "costoEnvio": "2260.00",
+            "fulfillment": "0.00",
+            "ivaFulfillment": "0.00",
+            "downloadUrl": null
+          }
+        ],
+        "cargaId": "<cargaId#1>",
+        "downloadType": "consolidate",
+        "etiquetasPdf": {
+          "url": "<url#1>",
+          "expiraEnSegundos": 3600
+        },
+        "manifiesto": {
+          "filas": [
+            {
+              "numGuia": "<numGuia#1>",
+              "numRemision": "R-001",
+              "destinatario": "Destinatario 1",
+              "telefono": "80000001",
+              "direccion": "Direccion 1",
+              "zona": "zona_1",
+              "producto": "Producto 1",
+              "monto": 25900,
+              "intentos": 0,
+              "origen": "Tienda Contrato",
+              "destino": "zona_1",
+              "responsable": "Tienda Contrato V1",
+              "fecha": "<fecha#1>"
+            }
+          ],
+          "omitidas": []
+        }
+      }
+    }
+  ]
+}

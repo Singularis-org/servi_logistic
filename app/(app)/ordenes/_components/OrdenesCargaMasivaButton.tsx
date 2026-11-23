@@ -27,6 +27,7 @@ import { useToast } from "@/hooks/useToast";
 import { cargaMasivaConfig } from "@/lib/config/carga-masiva";
 import { notificarCargaMasivaTerminada } from "@/lib/actions/notificaciones";
 import { nuevoLoteId } from "@/app/(app)/ordenes/_components/lote-id";
+import type { ColumnaGeoDePlantilla } from "@/lib/utils/plantilla-geo";
 
 // Re-export por compatibilidad con consumidores previos de la constante.
 export { ORDENES_BULK_FIELDS } from "@/app/(app)/ordenes/_components/carga-masiva-fields";
@@ -119,7 +120,15 @@ function OrdenesCargaPasos({ step }: { step: Step }) {
  * y soporta archivos grandes. Flujo en dos fases: valida (dry-run) → confirma la
  * carga real. Ambas reutilizan `procesarEnChunks` sobre el mismo endpoint.
  */
-export function OrdenesCargaMasivaButton() {
+export function OrdenesCargaMasivaButton({
+  columnasGeo = null,
+}: Readonly<{
+  /**
+   * SLT-45 (design §8; R29, R30): columnas de geografía de la plantilla de la empresa, para la
+   * subida (plantilla y cabeceras) y el export de errores. Sin ellas, las de hoy.
+   */
+  columnasGeo?: ColumnaGeoDePlantilla[] | null;
+}> = {}) {
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState<Step>("upload");
   const [clasificacion, setClasificacion] =
@@ -249,7 +258,7 @@ export function OrdenesCargaMasivaButton() {
           <OrdenesCargaPasos step={step} />
 
           {step === "upload" ? (
-            <OrdenesCargaUpload onValidated={handleValidated} />
+            <OrdenesCargaUpload onValidated={handleValidated} columnasGeo={columnasGeo} />
           ) : step === "preview" ? (
             <OrdenesCargaPreview
               clasificacion={clasificacion}
@@ -258,6 +267,7 @@ export function OrdenesCargaMasivaButton() {
               confirmando={confirmando}
               progresoTexto={progresoTexto}
               onConfirmar={handleConfirmar}
+              columnasGeo={columnasGeo}
             />
           ) : (
             // R12: solo lectura. Sin `onDone`: no queda acción que confirmar, y el

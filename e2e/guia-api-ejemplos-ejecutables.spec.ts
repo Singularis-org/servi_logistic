@@ -626,10 +626,13 @@ test.describe.serial("SLT-208 — la guía, Postman y el aislamiento entre empre
       variables.set("baseUrl", base);
       variables.set("apiKey", e.clave);
       const marca = String(Date.now());
-      expect(coleccion.item.length, "SLT-208: una petición por endpoint").toBe(10);
+      // SLT-45: la colección gana la carpeta «v2» (un `item` con sus propias peticiones); este
+      // recorrido es el de las 10 peticiones de v1 de la guía, así que la carpeta no entra.
+      const peticionesV1 = coleccion.item.filter((i) => !("item" in i));
+      expect(peticionesV1.length, "SLT-208: una petición por endpoint").toBe(10);
 
       const resultados: string[] = [];
-      for (const item of coleccion.item) {
+      for (const item of peticionesV1) {
         // La cancelación necesita que el paquete esté en la bodega (sección 5.9 de la guía); con
         // fulfillment la orden no tiene guía y el script previo de la colección la omite.
         if (/Cancelar/.test(item.name) && escenario === "sin fulfillment") {

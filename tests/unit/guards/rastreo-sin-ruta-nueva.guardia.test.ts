@@ -60,7 +60,8 @@ const LISTAS_ESPERADAS: Record<string, string[]> = {
     "/api/docs",
   ],
   // Endpoints con autenticacion propia (Bearer o firma HMAC), validada en el handler.
-  SELF_AUTH_ROUTES: ["/api/cron", "/api/ordenes/api-key", "/api/webhooks"],
+  // SLT-45 (R11, design §4.4): `/api/v2` entra firmado; todo v2 se autentica por API key.
+  SELF_AUTH_ROUTES: ["/api/cron", "/api/ordenes/api-key", "/api/webhooks", "/api/v2"],
   // Feature 79: `/paquete` es PRIVADA y su rechazo va a `/`, no a `/login`. La 229 no la toca.
   REDIRECT_TO_ROOT: ["/paquete"],
 };

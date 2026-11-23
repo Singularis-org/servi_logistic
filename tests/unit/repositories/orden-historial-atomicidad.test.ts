@@ -64,6 +64,7 @@ describe("R7 · mecanismo insercion-en-transaccion (#2)", () => {
     zonaId: "z",
     provinciaId: "p",
     cantonId: "c",
+    nodoGeograficoId: "c",
     producto: "x",
     peso: null,
   };

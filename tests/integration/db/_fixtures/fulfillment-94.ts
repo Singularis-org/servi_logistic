@@ -156,6 +156,7 @@ export async function crearOrdenes(
     zonaId: e.zonaId,
     provinciaId: o.geo.provinciaId,
     cantonId: o.geo.cantonId,
+    nodoGeograficoId: o.geo.cantonId, // SLT-45 (R25): el nodo mas profundo resuelto
     producto: "Caja",
     peso: null,
   }));

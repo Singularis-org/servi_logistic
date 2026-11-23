@@ -62,6 +62,8 @@ function crearLote(sp: PrismaClient, usuarioCargaId: string, name: string): Prom
 function bulkServiceReal(sp: PrismaClient): IBulkOrdenService {
   return {
     cargarMasiva: vi.fn(),
+    // SLT-45: la via v2 no se ejerce aqui; el doble solo cumple la interfaz.
+    cargarViaApiV2: vi.fn(),
     cargarViaApi: vi.fn(async (_filas, actor, opciones) => {
       const cargaId = await crearLote(sp, actor.usuarioId, opciones?.name ?? "");
       return {

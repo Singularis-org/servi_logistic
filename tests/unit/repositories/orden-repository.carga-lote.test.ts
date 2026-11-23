@@ -53,6 +53,7 @@ function baseCreateData(overrides: Partial<CreateOrdenData> = {}): CreateOrdenDa
     zonaId: "z1",
     provinciaId: "p1",
     cantonId: "c1",
+    nodoGeograficoId: "c1",
     producto: "Caja",
     peso: null,
     direccion: null,

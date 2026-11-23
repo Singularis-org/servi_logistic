@@ -1,0 +1,23 @@
+{
+  "payload": "sin-tarifa",
+  "pasos": [
+    {
+      "ruta": "cotizacion",
+      "status": 409,
+      "cuerpo": {
+        "status": "error",
+        "code": "CONFLICT",
+        "message": "la tienda no tiene una tarifa vigente asociada: no se puede cotizar"
+      }
+    },
+    {
+      "ruta": "carga",
+      "status": 409,
+      "cuerpo": {
+        "status": "error",
+        "code": "CONFLICT",
+        "message": "la tienda no tiene una tarifa vigente asociada: no se pueden crear órdenes"
+      }
+    }
+  ]
+}

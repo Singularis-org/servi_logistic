@@ -61,6 +61,12 @@ export interface CreateOrdenData {
   provinciaId: string;
   cantonId: string;
   distritoId?: string | null;
+  /**
+   * SLT-45 (design §3.1, R25): la ubicacion resuelta, igual a `distritoId ?? cantonId`. Hoy el
+   * trigger `orden_nodo_geografico` de SLT-43 la pisa con ese mismo valor; la app la manda para
+   * que SLT-46 pueda cambiar el trigger sin tocar este camino.
+   */
+  nodoGeograficoId: string;
   producto: string;
   peso: number | null;
   notas?: string | null;
@@ -111,6 +117,8 @@ export interface CorregirDatosClienteData {
   distritoId?: string;
   /** DERIVADA del distrito por el servidor, jamas tomada de la entrada (327/R5). */
   zonaId?: string;
+  /** SLT-45 (design §3.2, R26): el distrito nuevo, en la misma escritura que las 3 FK. */
+  nodoGeograficoId?: string;
   /** Sin `| null` y `> 0`: no se deja la orden sin peso desde esta superficie (327/R9). */
   peso?: number;
 }
@@ -1434,6 +1442,12 @@ export interface IOrdenRepository {
    * proyeccion pero resuelto por `num_guia`; se retiro con su endpoint.
    */
   findDetalleByOrdenIdForOwner(ordenId: string, ownerId: string): Promise<ApiOrdenDetalleRow | null>;
+  /**
+   * SLT-45 (design §4.3, R20) — el lugar (`lugarDeLaOrden`: distrito o, si no hay, canton) de UNA
+   * orden, con el mismo alcance que `findDetalleByOrdenIdForOwner`: dueño forzado, viva y de la
+   * empresa del contexto. `null` en cualquier otro caso (el servicio → 404 uniforme). Solo LEE.
+   */
+  findLugarDeOrdenForOwner(ordenId: string, ownerId: string): Promise<string | null>;
   /**
    * Feature 177/R20/R21/R37/R38: lee la referencia persistida del PDF individual
    * (`orden.download_storage_path`) de una orden del owner. `null` = no hay PDF que reusar,

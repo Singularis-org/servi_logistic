@@ -1,0 +1,164 @@
+{
+  "payload": "geo-retirados-precedencia",
+  "pasos": [
+    {
+      "ruta": "cotizacion",
+      "status": 200,
+      "cuerpo": {
+        "total": 4,
+        "cotizadas": 1,
+        "conError": 3,
+        "filas": [
+          {
+            "fila": 4,
+            "numRemision": "R-704",
+            "montoCobrar": "100.00",
+            "resultado": "cotizada",
+            "costos": {
+              "entregado": {
+                "flete": "2000.00",
+                "iva": "260.00",
+                "comision": "2.00",
+                "ivaComision": "0.26",
+                "fulfillment": "0.00",
+                "ivaFulfillment": "0.00",
+                "total": "-2162.26"
+              },
+              "devuelto": {
+                "flete": "1000.00",
+                "iva": "130.00",
+                "comision": "0.00",
+                "fulfillment": "0.00",
+                "ivaFulfillment": "0.00",
+                "total": "-1130.00"
+              }
+            }
+          }
+        ],
+        "errores": [
+          {
+            "fila": 1,
+            "numRemision": "R-701",
+            "resultado": "error",
+            "errores": {
+              "provincia": [
+                "la provincia esta retirada del catalogo"
+              ]
+            }
+          },
+          {
+            "fila": 2,
+            "numRemision": "R-702",
+            "resultado": "error",
+            "errores": {
+              "distrito": [
+                "distrito es obligatorio"
+              ]
+            }
+          },
+          {
+            "fila": 3,
+            "numRemision": "R-703",
+            "resultado": "error",
+            "errores": {
+              "provincia": [
+                "la provincia esta retirada del catalogo"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "ruta": "carga",
+      "status": 200,
+      "cuerpo": {
+        "total": 4,
+        "creadas": 1,
+        "duplicadas": 0,
+        "conError": 3,
+        "filas": [
+          {
+            "fila": 4,
+            "numRemision": "R-704",
+            "resultado": "creada",
+            "estado": "por_recolectar_en_tienda",
+            "estadoNombre": "Por recolectar en tienda",
+            "numGuia": "<numGuia#1>"
+          }
+        ],
+        "errores": [
+          {
+            "fila": 1,
+            "numRemision": "R-701",
+            "resultado": "error",
+            "errores": {
+              "provincia": [
+                "la provincia esta retirada del catalogo"
+              ]
+            }
+          },
+          {
+            "fila": 2,
+            "numRemision": "R-702",
+            "resultado": "error",
+            "errores": {
+              "provincia": [
+                "la provincia esta retirada del catalogo"
+              ]
+            }
+          },
+          {
+            "fila": 3,
+            "numRemision": "R-703",
+            "resultado": "error",
+            "errores": {
+              "provincia": [
+                "la provincia esta retirada del catalogo"
+              ]
+            }
+          }
+        ],
+        "ordenes": [
+          {
+            "id": "<uuid#1>",
+            "numRemision": "R-704",
+            "numGuia": "<numGuia#1>",
+            "estado": "por_recolectar_en_tienda",
+            "estadoNombre": "Por recolectar en tienda",
+            "costoEnvio": "2260.00",
+            "fulfillment": "0.00",
+            "ivaFulfillment": "0.00",
+            "downloadUrl": null
+          }
+        ],
+        "cargaId": "<cargaId#1>",
+        "downloadType": "consolidate",
+        "etiquetasPdf": {
+          "url": "<url#1>",
+          "expiraEnSegundos": 3600
+        },
+        "manifiesto": {
+          "filas": [
+            {
+              "numGuia": "<numGuia#1>",
+              "numRemision": "R-704",
+              "destinatario": "Destinatario 4",
+              "telefono": "80000004",
+              "direccion": "Direccion 4",
+              "zona": "zona_1",
+              "producto": "Producto 4",
+              "monto": 100,
+              "intentos": 0,
+              "origen": "Tienda Contrato",
+              "destino": "zona_1",
+              "responsable": "Tienda Contrato V1",
+              "fecha": "<fecha#1>"
+            }
+          ],
+          "omitidas": []
+        }
+      }
+    }
+  ]
+}

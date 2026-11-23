@@ -2,6 +2,8 @@
 // subida y el generador de plantilla). Se aíslan aquí para evitar dependencias
 // circulares entre el botón orquestador y el componente de subida.
 import type { TemplateField, UploadFileType } from "@/components/shared/BulkUpload";
+// Solo el tipo: el valor arrastraria `geografia-dominio` entero al bundle del navegador.
+import type { ColumnaGeoDePlantilla } from "@/lib/utils/plantilla-geo";
 
 // Feature 276 — Plantilla v3: la columna unica `direccion_destinatario` de la v2
 // (`Pais / Provincia / Canton (Distrito) / Direccion`) se sustituye por TRES columnas
@@ -27,6 +29,36 @@ export const ORDENES_BULK_FIELDS: TemplateField[] = [
   { key: "peso", example: "1.5" },
   { key: "notas", example: "Entregar en la tarde" },
 ];
+
+/**
+ * Las dos columnas de geografia de `ORDENES_BULK_FIELDS`, las que sustituyen las de nivel. Copia de
+ * `COLUMNAS_GEO_DE_FORMA_CR` (`lib/utils/plantilla-geo.ts`) por el bundle (ver el import);
+ * `tests/components/CargaMasivaColumnasGeo.test.tsx` exige que sean iguales.
+ */
+export const COLUMNAS_GEO_DE_HOY: readonly string[] = ["provincia", "canton_distrito"];
+
+/**
+ * SLT-45 (design §8; R29, R30) — los campos de la plantilla con la geografia de la empresa.
+ *
+ * Sin columnas (`null`/`undefined`: pais de forma CR, o la pantalla no las recibio) son
+ * `ORDENES_BULK_FIELDS` tal cual, la misma referencia. Con ellas, las columnas de nivel ocupan, en
+ * su orden, el sitio de `provincia` y `canton_distrito`; el resto de la plantilla no se mueve.
+ * Las columnas las calcula `columnasGeoDePlantilla` (`lib/utils/plantilla-geo.ts`), la misma
+ * funcion con la que el servidor lee la fila: plantilla descargada y lectura no pueden divergir.
+ */
+export function camposDePlantilla(
+  columnasGeo?: readonly ColumnaGeoDePlantilla[] | null,
+): TemplateField[] {
+  if (columnasGeo == null) return ORDENES_BULK_FIELDS;
+  const [primeraGeo] = COLUMNAS_GEO_DE_HOY;
+  return ORDENES_BULK_FIELDS.flatMap((field) =>
+    field.key === primeraGeo
+      ? columnasGeo.map((c) => ({ ...c }))
+      : COLUMNAS_GEO_DE_HOY.includes(field.key)
+        ? []
+        : [field],
+  );
+}
 
 export const ORDENES_BULK_TEMPLATE_NAME = "plantilla-ordenes-carga-masiva.xlsx";
 

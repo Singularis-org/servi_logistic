@@ -5,6 +5,8 @@ roles: [maestro, admin]
 actualizado: 2026-11-18
 fuentes:
   - app/api/ordenes/api-key/
+  - app/api/v2/
+  - lib/types/api-v2.ts
   - lib/api/openapi-spec.ts
   - lib/types/api-orden.ts
   - lib/types/cotizacion.ts
@@ -53,6 +55,12 @@ Versión del documento: 18 de noviembre de 2026. Base URL de producción: `https
 - 5.8 `GET /api/ordenes/api-key/analitica` — Estadísticas de gestión
 - 5.9 `PUT /api/ordenes/api-key/{numGuia}/cancelar` — Cancelar una orden en bodega
 - 5.10 `POST /api/ordenes/api-key/habilitar` — Habilitar pedidos con novedad (lote)
+- API v2: ubicación por nodo del catálogo geográfico
+- 5.11 `POST /api/v2/ordenes/carga` — Crear órdenes por lote (v2)
+- 5.12 `POST /api/v2/ordenes` — Crear una orden (v2)
+- 5.13 `POST /api/v2/ordenes/cotizacion` — Cotizar un lote (v2, no crea nada)
+- 5.14 `GET /api/v2/ordenes/{id}` — Detalle de una orden, con su ubicación (v2)
+- 5.15 `GET /api/v2/geografia` — Catálogo geográfico de su país (v2)
 - **6. Webhooks salientes:** `orden.estado_actualizado` **y los eventos de orden**
 - 6.1 Alta de la suscripción · 6.2 Cuerpo del evento · 6.3 Autenticación de la entrega · 6.4 Idempotencia y confirmación · 6.5 Estados que este webhook puede emitir · 6.6 `motivo` depende de `estado` · 6.7 Eventos de gestión y de ayuda
 - **7. Checklist de puesta en producción**
@@ -816,6 +824,214 @@ curl -X POST https://www.servilogistic.co/api/ordenes/api-key/habilitar \
 - `error`: la fila no se procesó; `error.codigo` es uno de cuatro, cada uno con su `error.mensaje` fijo: `fila_invalida` (`num_guia debe ser un entero positivo y nota un texto no vacio de hasta 200 caracteres`), `duplicada_en_lote` (`esa guia ya aparece antes en este mismo lote`), `no_encontrada` (`no existe una orden viva con esa guia`; no distingue «no existe» de «es de otro dueño» ni de «es de otra empresa»), `estado_no_habilitable` (`el estado actual de la orden no admite habilitacion`) (la orden no tiene ayuda abierta ni está en `novedad`: incluye `reprogramado`, `devolucion_a_origen_por_rechazo`, `incidente`, `novedad_interna` y la segunda habilitación de una orden cuya ayuda ya se cerró).
 - Habilitar dos veces la misma orden devuelve `estado_no_habilitable` la segunda vez y no escribe nada: no se devuelve un acuse falso.
 
+## API v2: ubicación por nodo del catálogo geográfico
+
+Las secciones 5.11 a 5.15 son las cinco operaciones de la API v2. v2 es **aditiva**: v1 (secciones 5.1 a 5.10) no cambia, y un integrador que no la adopta no tiene que tocar nada. Usa la misma API key, el mismo header `Authorization: Bearer`, las mismas respuestas `401` y `403` y la misma forma de error (sección 4.3).
+
+Lo único que cambia es **cómo se indica el lugar de una orden**. En vez de `provincia`, `canton` y `distrito`, cada fila de v2 trae **una** de estas dos claves:
+
+- `ubicacion`: la ruta de nombres del catálogo, de la raíz hacia abajo (por ejemplo `["Cartago", "Cartago", "Occidental"]`). Los nombres se comparan sin tildes, sin mayúsculas y sin espacios de más.
+- `ubicacion_codigo`: el código oficial del nodo (por ejemplo `"30101"`).
+
+Los nombres y los códigos válidos salen del catálogo de su país (sección 5.15). Las demás claves de la fila son las de v1 (sección 5.1) y son texto.
+
+Una fila con la ubicación mal **no tumba el lote**: sale en `errores` con la clave `ubicacion`, igual que los errores de fila de v1. Los casos son:
+
+- Sin ninguna de las dos claves, o con las dos: `{ "ubicacion": ["indica ubicacion o ubicacion_codigo, uno de los dos"] }`.
+- Un nombre vacío, no encontrado, ambiguo o retirado del catálogo: el error dice el nivel y el nombre, y la resolución se detiene en el primer nivel que falla.
+- Un código que ningún nodo tiene, que tienen varios nodos, o de un nodo retirado.
+- Una ubicación que su país todavía no acepta para guardar una orden: el error de país no habilitado, y la orden no se crea.
+- Una ubicación que ninguna zona de la empresa cubre: el error de «sin zona», y la orden no se crea.
+
+En cambio, el lote entero responde `422` si `ubicacion` no es una lista de textos, está vacía, pasa del máximo de niveles o trae un nombre vacío o de más de 200 caracteres; si `ubicacion_codigo` está vacío o pasa de 64 caracteres; o si otra clave de la fila no es texto.
+
+Las respuestas de v2 devuelven el lugar en `ubicacion`: una lista con un elemento por nivel, de la raíz al nodo. Cada elemento trae `profundidad` (1 en la raíz), `id` del nodo, `nombre` **actual** del nodo en el catálogo (no una foto del momento de la carga), `codigoOficial` (o `null`) y `tipo` (`clave` y `nombre` en singular del tipo de nivel).
+
+El listado, el borrado, la cancelación, la habilitación, la analítica y los PDF siguen solo en v1.
+
+## 5.11 **POST** `/api/v2/ordenes/carga` — Crear órdenes por lote (v2)
+
+La carga de la sección 5.1 con la fila de v2: `ubicacion` o `ubicacion_codigo` en vez de `provincia`, `canton` y `distrito`. Mismo tope de lote (1 a 5000 filas), mismo `name` y `download_type`, mismas reglas de duplicados y tarifa, mismas etiquetas y manifiesto. La respuesta tiene la forma de la sección 5.1, y cada orden de `ordenes[]` trae además `ubicacion`.
+
+### Request
+
+```http
+POST https://www.servilogistic.co/api/v2/ordenes/carga
+Authorization: Bearer svl_XXXXXXXXXXXX
+Content-Type: application/json
+
+{
+  "ordenes": [
+    { "num_remision": "REM-0001", "destinatario": "Juan Pérez", "telefono": "88887777",
+      "direccion": "Av. Central, 200m norte del parque", "producto": "Camiseta talla M",
+      "monto_cobrar": "25900", "ubicacion": ["Cartago", "Cartago", "Occidental"] },
+    { "num_remision": "REM-0002", "destinatario": "Juan Pérez", "telefono": "88887777",
+      "direccion": "Av. Central, 200m norte del parque", "producto": "Camiseta talla M",
+      "monto_cobrar": "25900", "ubicacion_codigo": "30101" }
+  ]
+}
+```
+
+### Response `200`
+
+La de la sección 5.1. Cada orden creada lleva su `ubicacion`:
+
+```json
+{
+  "ordenes": [
+    { "id": "6f1c2d3e-4a5b-6c7d-8e9f-0a1b2c3d4e5f", "numRemision": "REM-0001", "numGuia": 100234,
+      "estado": "por_recolectar_en_tienda", "estadoNombre": "Por recolectar en tienda",
+      "costoEnvio": "3.39", "fulfillment": "0.00", "ivaFulfillment": "0.00", "downloadUrl": null,
+      "ubicacion": [
+        { "profundidad": 1, "id": "<id-del-nodo>", "nombre": "Cartago", "codigoOficial": "3",
+          "tipo": { "clave": "<clave-del-tipo>", "nombre": "Provincia" } },
+        { "profundidad": 2, "id": "<id-del-nodo>", "nombre": "Cartago", "codigoOficial": "301",
+          "tipo": { "clave": "<clave-del-tipo>", "nombre": "Cantón" } },
+        { "profundidad": 3, "id": "<id-del-nodo>", "nombre": "Occidental", "codigoOficial": "30102",
+          "tipo": { "clave": "<clave-del-tipo>", "nombre": "Distrito" } }
+      ] }
+  ]
+}
+```
+
+El resto de la respuesta (`total`, `filas`, `errores`, `cargaId`, `downloadType`, `etiquetasPdf` y `manifiesto`) es idéntico a la sección 5.1 y se omite aquí.
+
+### Comportamientos que debe manejar
+
+- Los errores de ubicación de una fila van en `errores[].errores.ubicacion`, nunca en `provincia`, `canton` o `distrito`.
+- `409` con los mismos dos motivos que la sección 5.1: ninguna de las filas que llegaron a la resolución de tarifa la resolvió, o el `name` del lote ya lo usó. No se crea ninguna orden ni lote: `{ "status": "error", "code": "CONFLICT", "message": "la tienda no tiene una tarifa vigente asociada: no se pueden crear órdenes" }`
+- `422` para el lote entero en los casos de la introducción de esta parte, además de los de la sección 5.1 (lote vacío, por encima del tope, cuerpo que no es JSON).
+
+## 5.12 **POST** `/api/v2/ordenes` — Crear una orden (v2)
+
+Crea **una** orden con la fila de v2, en la clave `orden` (no `ordenes`). Se procesa como un lote de una fila: crea su lote (`cargaId`), emite su etiqueta y su manifiesto igual que la sección 5.11, y responde con la misma forma. Acepta también `name` y `download_type`, como la carga por lote. Una fila con error **no** es un `4xx`: sale en `errores`, como en el lote.
+
+### Request
+
+```http
+POST https://www.servilogistic.co/api/v2/ordenes
+Authorization: Bearer svl_XXXXXXXXXXXX
+Content-Type: application/json
+
+{
+  "orden": { "num_remision": "REM-0001", "destinatario": "Juan Pérez", "telefono": "88887777",
+             "direccion": "Av. Central, 200m norte del parque", "producto": "Camiseta talla M",
+             "monto_cobrar": "25900", "ubicacion_codigo": "30101" }
+}
+```
+
+### Response `200`
+
+La de la sección 5.11, con una sola orden: `total` es `1`, y la orden aparece en `filas` y `ordenes` (creada o duplicada) o en `errores`.
+
+### Comportamientos que debe manejar
+
+- `409` con los mismos motivos que la sección 5.11 (sin tarifa vigente, o `name` repetido).
+- `422` si el cuerpo no trae `orden` (por ejemplo, si manda `ordenes`), o en los casos de la introducción de esta parte.
+
+## 5.13 **POST** `/api/v2/ordenes/cotizacion` — Cotizar un lote (v2, no crea nada)
+
+La cotización de la sección 5.2 con la fila de v2. Los importes salen del mismo cálculo y la misma tarifa que en v1; cada fila cotizada trae además `ubicacion`. Puede mandar la fila de la carga sin recortarla: las claves que la cotización no usa se ignoran. Mismo tope: 1 a 5000 filas.
+
+### Request
+
+```http
+POST https://www.servilogistic.co/api/v2/ordenes/cotizacion
+Authorization: Bearer svl_XXXXXXXXXXXX
+Content-Type: application/json
+
+{
+  "ordenes": [
+    { "num_remision": "REM-0001", "monto_cobrar": "25900",
+      "ubicacion": ["Cartago", "Cartago", "Occidental"] }
+  ]
+}
+```
+
+### Response `200`
+
+La de la sección 5.2. Cada fila de `filas[]` trae además `ubicacion` (la misma forma que en la sección 5.11), y los errores de ubicación de una fila van en `errores[].errores.ubicacion`.
+
+### Comportamientos que debe manejar
+
+- **Lectura pura**, como en v1: no crea órdenes ni persiste nada.
+- `409` si ninguna de las filas que llegaron a la resolución de tarifa la resolvió: no se cotiza ninguna fila. `{ "status": "error", "code": "CONFLICT", "message": "la tienda no tiene una tarifa vigente asociada: no se puede cotizar" }`
+- `422` para el lote entero en los mismos casos que la sección 5.11.
+
+## 5.14 **GET** `/api/v2/ordenes/{id}` — Detalle de una orden, con su ubicación (v2)
+
+El detalle de la sección 5.4 más `ubicacion`, el lugar de la orden. `{id}` es el número de guía o el número de remisión (1 a 128 caracteres) y se resuelve con la misma regla de la sección 5.4: si el valor casa con la guía de una orden y con la remisión de otra, gana la de la guía.
+
+### Request
+
+```http
+GET https://www.servilogistic.co/api/v2/ordenes/REM-0001
+Authorization: Bearer svl_XXXXXXXXXXXX
+```
+
+### Response `200`
+
+El objeto de la sección 5.4, con una clave más:
+
+```json
+{
+  "numGuia": 100234, "numRemision": "REM-0001",
+  "estado": "en_reparto", "estadoNombre": "En reparto",
+  "ubicacion": [
+    { "profundidad": 1, "id": "<id-del-nodo>", "nombre": "Cartago", "codigoOficial": "3",
+      "tipo": { "clave": "<clave-del-tipo>", "nombre": "Provincia" } },
+    { "profundidad": 2, "id": "<id-del-nodo>", "nombre": "Cartago", "codigoOficial": "301",
+      "tipo": { "clave": "<clave-del-tipo>", "nombre": "Cantón" } },
+    { "profundidad": 3, "id": "<id-del-nodo>", "nombre": "Occidental", "codigoOficial": "30102",
+      "tipo": { "clave": "<clave-del-tipo>", "nombre": "Distrito" } }
+  ]
+}
+```
+
+Las demás claves de la sección 5.4 viajan igual y se omiten aquí.
+
+### Comportamientos que debe manejar
+
+- Orden inexistente, borrada o ajena: responde el mismo `404` que en v1.
+- `422` si `{id}` no cumple el formato.
+
+## 5.15 **GET** `/api/v2/geografia` — Catálogo geográfico de su país (v2)
+
+Los tipos de nivel y **todos** los nodos del catálogo geográfico del país de la empresa de su key, sin paginación. Con esto arma `ubicacion` (los nombres, de la raíz hacia abajo) o `ubicacion_codigo` (el código oficial).
+
+El parámetro `pais` es **obligatorio**: el código del país de su empresa, de 2 o 3 letras mayúsculas.
+
+### Request
+
+```http
+GET https://www.servilogistic.co/api/v2/geografia?pais=CR
+Authorization: Bearer svl_XXXXXXXXXXXX
+```
+
+### Response `200`
+
+```json
+{
+  "pais": { "id": "CR", "nombre": "<nombre-del-pais>" },
+  "tipos": [
+    { "clave": "<clave-del-tipo>", "nombreSingular": "Provincia", "nombrePlural": "Provincias" }
+  ],
+  "nodos": [
+    { "id": "<id-del-nodo>", "padreId": null, "profundidad": 1, "tipo": "<clave-del-tipo>",
+      "nombre": "Cartago", "codigoOficial": "3", "activo": true }
+  ]
+}
+```
+
+Se muestra un elemento en cada lista; la respuesta real trae todos los tipos y todos los nodos.
+
+### Comportamientos que debe manejar
+
+- `nodos` va ordenado por nombre e id. `padreId` es `null` en la raíz; `tipo` es la `clave` de su tipo de nivel.
+- Los nodos retirados del catálogo también se listan, con `activo: false`. `activo` es `false` si el nodo **o alguno de sus ancestros** está retirado: no se acepta en cargas ni cotizaciones nuevas.
+- Un país que no es el de su empresa, o que no existe, responde el mismo `404`.
+- `422` si `pais` falta o no tiene el formato, con el detalle en `details.fieldErrors.pais`.
+
 # 6. Webhooks salientes: `orden.estado_actualizado` y los eventos de orden
 
 **Servi Logistic envía** (`POST`) al callback del dueño de la orden un evento cada vez que una orden suya cambia a un estado publicable (`orden.estado_actualizado`, secciones 6.2 a 6.6) y cada vez que ocurre un hecho sobre la orden que no es un cambio de estado (`orden.gestion_*`, `orden.ayuda_*`, sección 6.7). Todos llegan al **mismo callback**, con la **misma firma** y el mismo circuito de reintento.
@@ -1104,6 +1320,7 @@ Estos son los que más tiempo cuestan, porque la API responde `200`.
 
 | Fecha | Versión | Qué cambió |
 | --- | --- | --- |
+| 2026-11-xx | API v2 | Nuevas secciones 5.11 a 5.15: las cinco operaciones de la API v2, que indican el lugar de una orden con un nodo del catálogo geográfico (`ubicacion` o `ubicacion_codigo`) en vez de provincia, cantón y distrito. v1 no cambia. La fecha es la de la release. |
 | 2026-11-18 | Revisión completa | Revisada de principio a fin contra el código del canal, junto con la colección de Postman y el contrato de Swagger. URL base de producción real (`https://www.servilogistic.co`) en todos los ejemplos. Corregidos: campos obligatorios y mensajes de error de la carga, pantalla y rol que generan la clave, rotación, formato exacto del header, `409` sin mensaje propio, `403` de analítica por módulo apagado, zona horaria de las fechas, ejemplo de cancelación y de habilitación. Nuevos: ejemplos de cotización, detalle y habilitación, ejemplo verificable de firma de webhook, sección 3.7 (varias empresas, una sola URL) y sección 4.8 (Postman y Swagger). Las referencias internas se escriben como «sección 5.9». Todos los ejemplos `curl` de esta guía y todas las peticiones de la colección de Postman se ejecutan en una prueba automática contra la aplicación. |
 | noviembre 2026 | Cambios de contrato | Recoge los bloques A y B (códigos de estado y eventos nuevos) y los cambios del bloque C. |
 | agosto 2026 | Versión anterior | La versión que describe el canal antes de los bloques A, B y C. |

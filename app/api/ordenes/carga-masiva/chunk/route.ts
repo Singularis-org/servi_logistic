@@ -24,6 +24,7 @@ import {
 import { BulkOrdenService } from "@/lib/services/BulkOrdenService";
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
 import { TarifaVigenteRepository } from "@/lib/repositories/TarifaVigenteRepository";
+import { CatalogoGeograficoRepository } from "@/lib/repositories/CatalogoGeograficoRepository";
 import { notificadorNoOp } from "@/lib/notificaciones/notificadores";
 import { getPrismaClient } from "@/lib/db/prisma-client";
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
@@ -46,6 +47,9 @@ function buildBulkService(): IBulkOrdenService {
     // no aqui: el aviso queda en el NO-OP de siempre.
     notificadorNoOp,
     // SLT-86 (R8): ya no se lee el cupo de órdenes del plan antes de cargar; no hay tope de órdenes.
+    // SLT-45 (design §2.3, §8): el catalogo de la empresa, para elegir el extractor por la forma
+    // del pais.
+    new CatalogoGeograficoRepository(prisma),
   );
 }
 

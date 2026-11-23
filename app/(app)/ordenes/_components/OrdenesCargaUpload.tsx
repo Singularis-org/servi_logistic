@@ -10,8 +10,8 @@ import {
 } from "@/app/(app)/ordenes/_components/carga-masiva-clasificacion";
 import {
   ORDENES_BULK_ACCEPT,
-  ORDENES_BULK_FIELDS,
   ORDENES_BULK_TEMPLATE_NAME,
+  camposDePlantilla,
 } from "@/app/(app)/ordenes/_components/carga-masiva-fields";
 import {
   parseArchivo,
@@ -27,6 +27,7 @@ import {
 import { findMissingHeaders } from "@/lib/types/carga-masiva";
 import { FORMATO_CANTON_DISTRITO } from "@/lib/utils/canton-distrito";
 import { cargaMasivaConfig } from "@/lib/config/carga-masiva";
+import type { ColumnaGeoDePlantilla } from "@/lib/utils/plantilla-geo";
 
 export interface OrdenesCargaUploadResult {
   /** Clasificación agregada del dry-run (nada persistido aún). */
@@ -38,6 +39,12 @@ export interface OrdenesCargaUploadResult {
 export interface OrdenesCargaUploadProps {
   /** Se invoca tras validar (dry-run) todos los lotes sin persistir. */
   onValidated: (result: OrdenesCargaUploadResult) => void;
+  /**
+   * SLT-45 (design §8; R29, R30): columnas de geografía de la plantilla de la empresa
+   * (`columnasGeoDePlantilla`, calculadas en `app/(app)/ordenes/page.tsx`). Sin ellas (país de
+   * forma CR), la plantilla, las cabeceras obligatorias y la ayuda son las de hoy.
+   */
+  columnasGeo?: ColumnaGeoDePlantilla[] | null;
 }
 
 type Status = "idle" | "validando" | "error";
@@ -85,7 +92,10 @@ function mensajeDeError(cause: unknown): string {
  * para elegir otro (o el mismo). El archivo nunca se sube entero: la selección
  * la aporta `BulkUpload` (shared) y el transporte por chunks vive aquí.
  */
-export function OrdenesCargaUpload({ onValidated }: OrdenesCargaUploadProps) {
+export function OrdenesCargaUpload({ onValidated, columnasGeo = null }: OrdenesCargaUploadProps) {
+  const campos = camposDePlantilla(columnasGeo);
+  const clavesGeo = columnasGeo?.map((c) => c.key) ?? null;
+
   const [status, setStatus] = useState<Status>("idle");
   const [message, setMessage] = useState<string | null>(null);
   const [progreso, setProgreso] = useState<{ hechas: number; total: number } | null>(
@@ -115,7 +125,7 @@ export function OrdenesCargaUpload({ onValidated }: OrdenesCargaUploadProps) {
     try {
       const { headers, filas } = await parseArchivo(file);
 
-      const faltantes = findMissingHeaders(headers);
+      const faltantes = findMissingHeaders(headers, clavesGeo);
       if (faltantes.length > 0) {
         setStatus("error");
         setMessage(mensajeCabeceraFaltante(faltantes, headers));
@@ -154,7 +164,7 @@ export function OrdenesCargaUpload({ onValidated }: OrdenesCargaUploadProps) {
   return (
     <BulkUpload
       accept={ORDENES_BULK_ACCEPT}
-      fields={ORDENES_BULK_FIELDS}
+      fields={campos}
       templateFileName={ORDENES_BULK_TEMPLATE_NAME}
       maxSizeBytes={cargaMasivaConfig.MAX_FILE_BYTES}
       // Este flujo históricamente valida SOLO por extensión: las hojas exportadas
@@ -167,18 +177,35 @@ export function OrdenesCargaUpload({ onValidated }: OrdenesCargaUploadProps) {
       onFileSelected={handleFileSelected}
       onClear={handleQuitar}
       hint={
-        <>
-          La geografía va en tres columnas:{" "}
-          <code className="rounded bg-muted px-1 py-0.5 text-xs">provincia</code>,{" "}
-          <code className="rounded bg-muted px-1 py-0.5 text-xs">
-            canton_distrito
-          </code>{" "}
-          (formato {FORMATO_CANTON_DISTRITO}) y{" "}
-          <code className="rounded bg-muted px-1 py-0.5 text-xs">direccion</code>.
-          Se valida en tu navegador (geografía y números de remisión duplicados)
-          apenas lo cargues y se procesa por lotes. Máximo{" "}
-          {cargaMasivaConfig.MAX_ROWS.toLocaleString()} filas.
-        </>
+        clavesGeo !== null ? (
+          <>
+            La geografía va en una columna por nivel, de mayor a menor:{" "}
+            {clavesGeo.map((clave, i) => (
+              <span key={clave}>
+                {i > 0 ? ", " : null}
+                <code className="rounded bg-muted px-1 py-0.5 text-xs">{clave}</code>
+              </span>
+            ))}
+            . Llénalas desde el primer nivel y sin huecos: si un nivel queda vacío, los
+            siguientes también. La dirección va en{" "}
+            <code className="rounded bg-muted px-1 py-0.5 text-xs">direccion</code>. Se valida
+            en tu navegador (geografía y números de remisión duplicados) apenas lo cargues y se
+            procesa por lotes. Máximo {cargaMasivaConfig.MAX_ROWS.toLocaleString()} filas.
+          </>
+        ) : (
+          <>
+            La geografía va en tres columnas:{" "}
+            <code className="rounded bg-muted px-1 py-0.5 text-xs">provincia</code>,{" "}
+            <code className="rounded bg-muted px-1 py-0.5 text-xs">
+              canton_distrito
+            </code>{" "}
+            (formato {FORMATO_CANTON_DISTRITO}) y{" "}
+            <code className="rounded bg-muted px-1 py-0.5 text-xs">direccion</code>.
+            Se valida en tu navegador (geografía y números de remisión duplicados)
+            apenas lo cargues y se procesa por lotes. Máximo{" "}
+            {cargaMasivaConfig.MAX_ROWS.toLocaleString()} filas.
+          </>
+        )
       }
     >
       {validando ? (
