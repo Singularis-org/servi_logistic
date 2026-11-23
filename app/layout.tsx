@@ -3,6 +3,7 @@ import Script from "next/script";
 import { Archivo, JetBrains_Mono } from "next/font/google";
 import { RESCATE_INLINE } from "@/lib/pwa/rescate-inline";
 import { ZodEnEspanol } from "@/components/shared/ZodEnEspanol";
+import { BannerAmbientePruebas } from "@/components/shared/BannerAmbientePruebas";
 import { MARCA } from "@/lib/config/marca";
 import "./globals.css";
 
@@ -61,6 +62,9 @@ export default function RootLayout({
         <script dangerouslySetInnerHTML={{ __html: RESCATE_INLINE }} />
       </head>
       <body className="min-h-full flex flex-col">
+        {/* SLT-257: franja «Sandbox», PRIMER hijo del body para que salga arriba en todas las
+            pantallas. Solo se pinta con `AMBIENTE_PRUEBAS=true`; fuera del sandbox no deja nada. */}
+        <BannerAmbientePruebas />
         {/* Mensajes de validación de zod en español en el navegador (el servidor los carga en
             `instrumentation.ts`). No pinta nada. */}
         <ZodEnEspanol />
