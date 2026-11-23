@@ -119,10 +119,12 @@ exacta `true` (sin recortar espacios y distinguiendo mayúsculas).
 - `tests/unit/config/ambiente-config.test.ts`
 - `tests/components/BannerAmbientePruebas.test.tsx`
 - `tests/unit/config/banner-ambiente-layout.test.ts`
+- `tests/unit/guards/marca-texto-amarillo.guardia.test.ts` — una fila en `CENSO_NEGRO_FIJO` para el
+  negro fijo de la franja (R7). Autorizado por el humano el 2026-11-23 (8.º archivo).
 
 ## Tamaño
 
-7 archivos (tope 40). Producción ≈ 40 líneas; tests ≈ 150 líneas.
+8 archivos (tope 40; el 8.º autorizado el 2026-11-23). Producción ≈ 40 líneas; tests ≈ 150 líneas.
 
 ## Preguntas abiertas
 
