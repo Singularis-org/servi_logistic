@@ -43,7 +43,9 @@ import {
   esMontoNegativo,
   rotuloIngresoBodega,
 } from "@/app/(app)/cierres-admin/_components/cierre-detalle-shared";
-import { money } from "@/lib/config/moneda";
+import { money, type FormatoMoneda } from "@/lib/config/moneda";
+// SLT-244 (T2.1, provisional): lo retira T2.2 al pasar `pais` a `cifrasDe` y `lineasDinero`.
+import { IMPUESTO_ROTULO } from "@/lib/constants/impuesto-rotulo";
 import { hrefDetalleCierre } from "@/lib/utils/cierre-enlace";
 import { lineasCascadaCentral } from "@/app/(app)/cierres-admin/_components/cascadas-bodega";
 import { marcaDeVariasTiendas } from "@/app/(app)/cierres-admin/_components/cierre-labels";
@@ -57,6 +59,12 @@ import * as L from "./detalle-cierre-labels";
 import { folioCierre } from "@/lib/utils/folio-cierre";
 
 // ═══ Props del componente (design.md > 1. Detalle del cierre) ═══════════════════════════════════
+
+/** SLT-244 (design §4.1): la moneda y el nombre del impuesto del país de la empresa, para los textos del cierre. */
+export interface PaisDelCierre {
+  moneda: FormatoMoneda;
+  impuesto: string;
+}
 
 export type TipoDetalle = "mensajero" | "bodega";
 export type Audiencia = "central" | "satelite" | "mensajero";
@@ -385,7 +393,7 @@ export function cifrasDe(
     recaudado,
     cifraParaTienda(e.pagoTienda, d.conteos.tiendas),
     pago,
-    cifra("leQueda", L.LE_QUEDA_A_LA_EMPRESA_LABEL, e.netoEmpresa, L.NOTA_LE_QUEDA_MENSAJERO, {
+    cifra("leQueda", L.LE_QUEDA_A_LA_EMPRESA_LABEL, e.netoEmpresa, L.notaLeQuedaMensajero(IMPUESTO_ROTULO), {
       destacada: true,
     }),
   ];
@@ -446,7 +454,7 @@ function cifrasBodega(d: DetalleBodegaVista): Cifra[] {
   const leQueda =
     d.netoEmpresa === null
       ? []
-      : [cifra("leQueda", L.LE_QUEDA_A_LA_EMPRESA_LABEL, d.netoEmpresa, L.NOTA_LE_QUEDA_BODEGA, { destacada: true })];
+      : [cifra("leQueda", L.LE_QUEDA_A_LA_EMPRESA_LABEL, d.netoEmpresa, L.notaLeQuedaBodega(IMPUESTO_ROTULO), { destacada: true })];
   return [
     cifra("recaudado", L.RECAUDADO_LABEL, d.totales.general, "", { conMetodos: true }),
     cifra(
@@ -755,8 +763,8 @@ function cuentaFactura(t: DineroEmpresaMensajero["totalesIngreso"], modeloNuevo:
   return {
     titulo: L.CUENTA_FACTURA_TITULO,
     lineas: [
-      partida(L.FLETE_POR_ENTREGADO_LABEL, t.fleteConIva),
-      partida(L.COMISION_COD_LABEL, t.comisionConIva),
+      partida(L.fletePorEntregadoConImpuesto(IMPUESTO_ROTULO), t.fleteConIva),
+      partida(L.comisionCodConImpuesto(IMPUESTO_ROTULO), t.comisionConIva),
       partida(modeloNuevo ? FLETE_NO_ENTREGADAS_CON_IVA_LABEL : FLETE_DEV_CON_IVA_LABEL, t.fleteDevolucionConIva, "suma"),
       { label: L.TOTAL_FACTURADO_LABEL, monto: t.total, signo: "neutro", tipo: "total" },
     ],
@@ -776,7 +784,7 @@ function cuentaQueda(
     titulo: L.CUENTA_QUEDA_TITULO,
     lineas: [
       partida(L.TOTAL_FACTURADO_LABEL, total),
-      partida(L.IVA_NO_ES_DE_LA_EMPRESA, iva, "resta"),
+      partida(L.impuestoNoEsDeLaEmpresa(IMPUESTO_ROTULO), iva, "resta"),
       partida(pago[0], pago[1], "resta"),
       notasBodega && notasBodega.length > 0 ? { ...lineaBodega, notas: notasBodega } : lineaBodega,
       { label: L.LE_QUEDA_A_LA_EMPRESA_LABEL, monto: neto, signo: "neutro", tipo: "total" },

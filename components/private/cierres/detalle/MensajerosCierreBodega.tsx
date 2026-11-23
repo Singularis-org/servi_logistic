@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 
-import { money } from "@/lib/config/moneda";
+import { useMonedaDelPais } from "@/hooks/use-moneda-del-pais";
+import { formatearMontoEn, SIN_MONTO_RAYA } from "@/lib/config/moneda";
 
 import * as L from "./detalle-cierre-labels";
 import type { FilaMensajeroBodega } from "./detalle-cierre-vista";
@@ -12,7 +13,7 @@ import type { FilaMensajeroBodega } from "./detalle-cierre-vista";
 // por cierre del día incluido, en el orden del servidor. Rejilla CSS como `GestionesCierre`, con roles
 // de tabla para quien no ve la pantalla.
 //
-// No calcula nada (R71): los tres importes son el STRING del servidor pasado por `money()`; las filas
+// No calcula nada (R71): los tres importes son el STRING del servidor pasado por `formatearMontoEn` (moneda del país); las filas
 // las arma `filasMensajeros` (`detalle-cierre-vista.ts`).
 
 /** Las columnas del canvas: Mensajero · Gestiones · Recaudado · Pago · A la central · Señales · enlace. */
@@ -25,6 +26,7 @@ export interface MensajerosCierreBodegaProps {
 }
 
 export function MensajerosCierreBodega({ filas, onVerSuCierre }: Readonly<MensajerosCierreBodegaProps>) {
+  const moneda = useMonedaDelPais();
   const C = L.MENSAJEROS_COLUMNAS;
   return (
     <div role="table" aria-label={L.MENSAJEROS_REGION_LABEL} className="rounded-xl border border-border bg-card px-4 py-1">
@@ -61,13 +63,13 @@ export function MensajerosCierreBodega({ filas, onVerSuCierre }: Readonly<Mensaj
             {f.gestiones}
           </span>
           <span role="cell" className="text-right tabular-nums">
-            {money(f.recaudado)}
+            {formatearMontoEn(moneda, f.recaudado, SIN_MONTO_RAYA)}
           </span>
           <span role="cell" className="text-right tabular-nums">
-            {money(f.pago)}
+            {formatearMontoEn(moneda, f.pago, SIN_MONTO_RAYA)}
           </span>
           <span role="cell" className="text-right tabular-nums">
-            {money(f.aLaCentral)}
+            {formatearMontoEn(moneda, f.aLaCentral, SIN_MONTO_RAYA)}
           </span>
           <span role="cell" className="pl-4 text-xs text-warning-strong">
             {f.senal}

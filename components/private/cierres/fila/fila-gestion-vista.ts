@@ -42,10 +42,23 @@ import {
   SIN_COMISION_NOTA,
 } from "@/app/(app)/cierres-admin/_components/cierre-detalle-shared";
 
-import type { LineaCuenta } from "../detalle/detalle-cierre-vista";
-import { COMISION_COD_LABEL, FLETE_POR_ENTREGADO_LABEL, TU_GANANCIA_LABEL } from "../detalle/detalle-cierre-labels";
+import { MONEDA_PLATAFORMA } from "@/lib/config/moneda";
+import { IMPUESTO_ROTULO } from "@/lib/constants/impuesto-rotulo";
+
+import type { LineaCuenta, PaisDelCierre } from "../detalle/detalle-cierre-vista";
+import {
+  TU_GANANCIA_LABEL,
+  comisionCodConImpuesto,
+  fletePorEntregadoConImpuesto,
+} from "../detalle/detalle-cierre-labels";
 import { COLUMNA_GANA_BODEGA } from "../cola/cola-cierres-labels";
 import * as L from "./fila-gestion-labels";
+
+/**
+ * SLT-244 (T2.1, provisional): la moneda y el rótulo de la plataforma, el mismo texto de antes. Lo
+ * retira T2.3 al pasar `pais` a `tarjetasDe` y `calculoDe`.
+ */
+const PAIS_PROVISIONAL: PaisDelCierre = { moneda: MONEDA_PLATAFORMA, impuesto: IMPUESTO_ROTULO };
 
 // ═══ Audiencia y filtros ═════════════════════════════════════════════════════════════════════════
 
@@ -314,8 +327,8 @@ function tarjetaCobro(g: CierreDetalleGestion): TarjetaFila {
   const ing = g.ingresoEmpresa ?? null;
   if (ing === null) return { ...base, lineas: [], vacio: L.SIN_DATO };
   const conceptos: [string, string | null][] = [
-    [FLETE_POR_ENTREGADO_LABEL, ing.fleteConIva],
-    [COMISION_COD_LABEL, ing.comisionConIva],
+    [fletePorEntregadoConImpuesto(IMPUESTO_ROTULO), ing.fleteConIva],
+    [comisionCodConImpuesto(IMPUESTO_ROTULO), ing.comisionConIva],
     [fleteDevConIvaDeGestion(g), ing.fleteDevolucionConIva],
   ];
   const presentes = conceptos.filter((c): c is [string, string] => c[1] !== null);
@@ -323,7 +336,7 @@ function tarjetaCobro(g: CierreDetalleGestion): TarjetaFila {
   return {
     ...base,
     lineas: [...presentes.map(([label, monto], i) => partida(label, monto, i === 0)), total(L.COBRO_TOTAL, ing.total)],
-    ...(ivaIncluido === null ? {} : { aparte: { label: L.DE_ESO_IVA, monto: ivaIncluido } }),
+    ...(ivaIncluido === null ? {} : { aparte: { label: L.deEsoImpuesto(IMPUESTO_ROTULO), monto: ivaIncluido } }),
   };
 }
 
@@ -371,7 +384,7 @@ function tarjetaFulfillment(ing: IngresoEmpresaDTO): TarjetaFila | null {
   const lineas: LineaCuenta[] = [partida(FULFILLMENT_COL, fulfillment, true)];
   const pct = ing.ivaPctFulfillment ?? null;
   if (pct !== null && ing.ivaFulfillment !== null) {
-    lineas.push(partida(L.ivaConPorcentaje(pct), ing.ivaFulfillment, false));
+    lineas.push(partida(L.impuestoConPorcentaje(pct, PAIS_PROVISIONAL), ing.ivaFulfillment, false));
   }
   const conIva = ing.fulfillmentConIva ?? null;
   if (conIva !== null) lineas.push(total(L.FULFILLMENT_TOTAL, conIva));
@@ -469,7 +482,7 @@ function calculoNuevo(g: CierreDetalleGestion, ing: IngresoEmpresaDTO): CuentaCa
       cuentaConcepto(
         titulo,
         [rotuloBase, base],
-        [L.ivaConPorcentaje(t.ivaPct), iva],
+        [L.impuestoConPorcentaje(t.ivaPct, PAIS_PROVISIONAL), iva],
         conIva,
         L.tarifaDe(L.origenDe(t.nivel, t)),
       ),

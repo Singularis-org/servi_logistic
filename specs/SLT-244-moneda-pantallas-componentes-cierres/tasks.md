@@ -17,12 +17,12 @@
 
 ## Bloque 1 — Importes de los componentes (R1, R2, R4, R10)
 
-- [ ] **T1.1** [P] La cola: `ColaCierres.tsx` (11 `money(`) y `TablaColaPropia.tsx` (3) leen
+- [x] **T1.1** [P] La cola: `ColaCierres.tsx` (11 `money(`) y `TablaColaPropia.tsx` (3) leen
   `useMonedaDelPais()` y pasan a `formatearMontoEn(moneda, …, SIN_MONTO_RAYA)` (design §3).
   - Casos de R1.
   - *Hecho:* en verde; `CierresAdminModule.test.tsx`, los tests de la cola y de `/cierre-dia` y la
     guardia `liquidacion-money-safe` pasan sin tocarlos.
-- [ ] **T1.2** [P] El detalle: `CifrasCierre.tsx`, `Cuenta.tsx`, `DineroCierre.tsx` y
+- [x] **T1.2** [P] El detalle: `CifrasCierre.tsx`, `Cuenta.tsx`, `DineroCierre.tsx` y
   `MensajerosCierreBodega.tsx` (design §3).
   - Casos de R2.
   - *Hecho:* en verde; `DetalleCierre.test.tsx`, `DetalleCierreBodega.test.tsx`,
@@ -30,7 +30,7 @@
 
 ## Bloque 2 — Textos de los módulos puros (R3, R5, R6, R8) (en paralelo con el bloque 1)
 
-- [ ] **T2.1** Rótulos con el impuesto (design §5).
+- [x] **T2.1** Rótulos con el impuesto (design §5).
   - Funciones nuevas en `detalle-cierre-labels.ts` (5) y `fila-gestion-labels.ts` (`deEsoImpuesto`,
     `impuestoConPorcentaje`), que sustituyen a sus constantes (que salen).
   - Funciones nuevas en `cierre-labels.ts` (4) y `cierre-detalle-shared.tsx` (3). Sus constantes se

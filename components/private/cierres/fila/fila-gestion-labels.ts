@@ -7,14 +7,18 @@
 // reciben como STRING del servidor y lo pasan por `money()`.
 
 import { money } from "@/lib/config/moneda";
-import { porcentajeParaVerEnLaPlataforma } from "@/app/(app)/configuracion/tarifas/_components/tarifas-textos";
+import {
+  porcentajeParaVer,
+  porcentajeParaVerEnLaPlataforma,
+} from "@/app/(app)/configuracion/tarifas/_components/tarifas-textos";
 import type { OrigenTarifaDTO } from "@/lib/interfaces/services/ICierreDiaService";
 
 import {
   COBRO_A_LA_TIENDA_COL,
-  IVA_NO_ES_DE_LA_EMPRESA,
   PAGO_AL_MENSAJERO_COL,
+  impuestoNoEsDeLaEmpresa,
 } from "../detalle/detalle-cierre-labels";
+import type { PaisDelCierre } from "../detalle/detalle-cierre-vista";
 
 // --- Lista (R23, R84, R89) ---
 export const FILTRAR_POR_RESULTADO = "Filtrar por resultado";
@@ -69,7 +73,8 @@ export const RECIBIO_TITULO = "Recibió el mensajero";
 export const RECIBIO_TOTAL = "Recibió";
 export const COBRO_TITULO = "Se le cobra a la tienda";
 export const COBRO_TOTAL = "Se le cobra";
-export const DE_ESO_IVA = `de eso, ${IVA_NO_ES_DE_LA_EMPRESA}`;
+/** SLT-244 (R6): con el nombre del impuesto del país. */
+export const deEsoImpuesto = (impuesto: string): string => `de eso, ${impuestoNoEsDeLaEmpresa(impuesto)}`;
 export const VER_CALCULO = "Ver cómo se calculó";
 export const OCULTAR_CALCULO = "Ocultar cómo se calculó";
 export const PAGO_TITULO = "Se le paga al mensajero";
@@ -80,7 +85,9 @@ export const motivoAjuste = (motivo: string): string => `Motivo: «${motivo}»`;
 export const ajusto = (nombre: string, cuando: string): string => `Ajustó ${nombre} · ${cuando}`;
 export const FULFILLMENT_TITULO = "Fulfillment · se cobró al crear la orden";
 export const FULFILLMENT_TOTAL = "Se cobró";
-export const ivaConPorcentaje = (pct: string): string => `IVA ${porcentajeParaVerEnLaPlataforma(pct)} %`;
+/** SLT-244 (R5, R6): «<impuesto> 13 %», con el separador decimal de la moneda del país. */
+export const impuestoConPorcentaje = (pct: string, pais: PaisDelCierre): string =>
+  `${pais.impuesto} ${porcentajeParaVer(pct, pais.moneda)} %`;
 export const FULFILLMENT_NO_DEPENDE = "No depende de esta gestión ni de este cierre.";
 /** R94: sin fecha de cargo solo queda la segunda frase. */
 export const notaFulfillment = (fecha: string | null): string =>

@@ -7,7 +7,6 @@
 
 import { EMPRESA } from "@/lib/config/marca";
 import { money } from "@/lib/config/moneda";
-import { IMPUESTO_ROTULO } from "@/lib/constants/impuesto-rotulo";
 
 /** «1 tienda» / «2 tiendas». Los conteos son números enteros del servidor, no dinero. */
 function cuantos(n: number, singular: string, plural: string): string {
@@ -94,8 +93,11 @@ export const contextoPagoMensajeros = (mensajeros: number, ajustes: number): str
   ajustes > 0
     ? `${cuantos(mensajeros, "mensajero", "mensajeros")} · ${cuantos(ajustes, "ajuste", "ajustes")}`
     : cuantos(mensajeros, "mensajero", "mensajeros");
-export const NOTA_LE_QUEDA_MENSAJERO = `sin ${IMPUESTO_ROTULO}, ya restados mensajero y bodega`;
-export const NOTA_LE_QUEDA_BODEGA = `sin ${IMPUESTO_ROTULO}, ya restados mensajeros y satélite`;
+// SLT-244 (R6): las notas y los rótulos con el impuesto reciben el nombre del impuesto del país.
+export const notaLeQuedaMensajero = (impuesto: string): string =>
+  `sin ${impuesto}, ya restados mensajero y bodega`;
+export const notaLeQuedaBodega = (impuesto: string): string =>
+  `sin ${impuesto}, ya restados mensajeros y satélite`;
 // Texto propio y no el nombre del resultado: el participio plural suelto («entregadas») es el
 // nombre de un estado retirado (ficha 455) y el nombre vigente pide su botón de información (456).
 export const contextoGestiones = (entregadas: number, vuelven: number): string =>
@@ -207,11 +209,12 @@ export const REPARTO_TITULO = "¿A dónde va lo recaudado?";
 // El reparto NO tiene rótulos propios: cada parte se llama como su cifra o su línea de cuenta
 // (decisión de Carlos 2026-11-09, R9/R14/R16: una cifra, un nombre).
 export const CUENTA_FACTURA_TITULO = "Lo que se le factura a la tienda";
-export const FLETE_POR_ENTREGADO_LABEL = `Flete por entregado + ${IMPUESTO_ROTULO}`;
-export const COMISION_COD_LABEL = `Comisión COD + ${IMPUESTO_ROTULO}`;
+export const fletePorEntregadoConImpuesto = (impuesto: string): string => `Flete por entregado + ${impuesto}`;
+export const comisionCodConImpuesto = (impuesto: string): string => `Comisión COD + ${impuesto}`;
 export const TOTAL_FACTURADO_LABEL = "Total facturado";
 export const CUENTA_QUEDA_TITULO = `De lo facturado, le queda a ${EMPRESA.enFrase}`;
-export const IVA_NO_ES_DE_LA_EMPRESA = `${IMPUESTO_ROTULO} (no es de ${EMPRESA.enFrase})`;
+export const impuestoNoEsDeLaEmpresa = (impuesto: string): string =>
+  `${impuesto} (no es de ${EMPRESA.enFrase})`;
 export const POR_TIENDA_TITULO = "Por tienda";
 export const POR_TIENDA_COLUMNAS = {
   tienda: "Tienda",
