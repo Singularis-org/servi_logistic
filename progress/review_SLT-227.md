@@ -167,3 +167,28 @@ Fase F2.2, vuelta 1 (2026-11-23). Diff revisado: `origin/dev...HEAD` (`55762813`
 **RECHAZADO**, por B1 (la constancia de los E2E locales), que es de proceso. El código cumple R1–R27 con tests reales,
 y el foco de dinero, secretos, firma, reintentos, mapeo, RLS y migración está bien resuelto. Al cerrar B1, una vuelta 2
 acotada a la bitácora basta para dar OK.
+
+## Vuelta 2 (acotada a bd4a38d1..b430d00b)
+
+**B1, constancia de los E2E en local: cerrado.** `progress/impl_SLT-227.md > Review vuelta 1` deja todo lo que pide
+la regla:
+- el `grep -rl` en `e2e/`: la tabla no aparece y `rebill` solo sale en el doble;
+- una base desechable nueva, `servi_logistic_slt227_e2e`, con `migrate deploy` y `db:seed`;
+- el `next build` con `NEXT_PUBLIC_APP_URL` y `APP_BASE_URL` como en `gate.yml`;
+- `pnpm exec playwright test --project=dinero`: `143 passed`, con 0 failed, 0 flaky y 0 skipped.
+
+**El arreglo de `tests/integration/db/orden-traspaso-migration.test.ts` no debilita el test.**
+- La afirmación compara con `toEqual` la lista exacta de migraciones posteriores a la de la tabla.
+- Cada ficha con migración suma la suya al final, con su comentario: es la convención del archivo (SLT-226, SLT-121…).
+- El cambio solo añade `20261127120000_cobro_proveedor_credencial`. No quita ni relaja nada, y la comparación sigue
+  siendo exacta.
+- El comentario dice la verdad: ni `migration.sql` ni `down.sql` nombran `orden_traspaso` (`grep -c` da 0 en los dos).
+- Corrido por el reviewer contra la base de la feature: `Test Files 1 passed (1) · Tests 15 passed (15)`.
+
+**Regresiones:** ninguna. El commit toca solo la bitácora y esa línea del test.
+
+**Pendiente, sin ser hallazgo:** al revisar, los checks del CI de #277 (vitest y los tres grupos de e2e) estaban en
+`pending` sobre `b430d00b`. El leader confirma `gate-completo` en verde antes del aviso de merge. Los menores m1–m4 de
+la vuelta 1 siguen como notas.
+
+### Veredicto vuelta 2: **OK**
