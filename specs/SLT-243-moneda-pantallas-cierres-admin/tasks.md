@@ -96,13 +96,13 @@
 
 ## Bloque 5 — Guardias y cierre (depende de los bloques 1–4)
 
-- [ ] **T5.1** Censo de R18 de SLT-235 (design §7).
+- [x] **T5.1** Censo de R18 de SLT-235 (design §7).
   - `CENSO_MONEDA_DEL_PAIS` gana el bloque «SLT-243» con los 10 archivos, más un comentario con los
     que quedan fuera y su motivo (P1, P3).
   - El caso de SLT-242 corta 17 entradas.
   - Caso nuevo: «los 10 de SLT-243 dan rojo con `money(` o `formatMontoString(`» (R15).
   - *Hecho:* en verde, y rojo si se reescribe un `money(` en uno de ellos.
-- [ ] **T5.2** Caso de R16 en `moneda-del-pais-cierres-admin.test.tsx`: ninguna excepción con
+- [x] **T5.2** Caso de R16 en `moneda-del-pais-cierres-admin.test.tsx`: ninguna excepción con
   `ficha === "SLT-243"` y `TOPE_EXCEPCIONES` ≤ 12 (`toBeLessThanOrEqual`). No se edita
   `_pais-sin-literales-excepciones.ts`.
   - *Hecho:* `pnpm run test:guardias` en verde.

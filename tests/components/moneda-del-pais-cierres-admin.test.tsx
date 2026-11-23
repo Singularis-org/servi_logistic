@@ -1015,3 +1015,19 @@ describe("SLT-243 R11 — censo «sin IVA» de las declaraciones de columnas de 
     expect(usaRotuloDePantalla("// antes era FLETE_DEV_CON_IVA_LABEL\nconst e = 1;")).toBe(false);
   });
 });
+
+describe("SLT-243 R16 — la lista de excepciones de `pais-sin-literales` no tiene nada a nombre de SLT-243", () => {
+  it("ninguna excepcion esta a nombre de SLT-243", async () => {
+    const { EXCEPCIONES_PAIS_SIN_LITERALES } = await import("@/tests/unit/guards/_pais-sin-literales-excepciones");
+    expect(EXCEPCIONES_PAIS_SIN_LITERALES.filter((e) => e.ficha === "SLT-243")).toEqual([]);
+  });
+
+  it("el tope queda en 12 o menos y la lista no lo supera", async () => {
+    const { EXCEPCIONES_PAIS_SIN_LITERALES, TOPE_EXCEPCIONES } = await import(
+      "@/tests/unit/guards/_pais-sin-literales-excepciones"
+    );
+    // Rebanadas posteriores de SLT-235 bajan el tope: se fija como maximo, no exacto.
+    expect(TOPE_EXCEPCIONES).toBeLessThanOrEqual(12);
+    expect(EXCEPCIONES_PAIS_SIN_LITERALES.length).toBeLessThanOrEqual(TOPE_EXCEPCIONES);
+  });
+});

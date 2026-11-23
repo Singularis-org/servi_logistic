@@ -88,3 +88,42 @@ Veredicto: bloques 1–3 hechos, typecheck/lint/tests tocados en verde, sin bloq
 - E2E editado, no corrido (T5.3).
 
 Veredicto: bloque 4 hecho, typecheck/lint/tests tocados en verde, sin bloqueos.
+
+## Tanda 3 (frontend_dev, 2026-11-23): bloque 5 (T5.1, T5.2; T5.3 queda para CI)
+
+### Archivos
+- `tests/components/moneda-del-pais-pantallas.test.tsx` (T5.1): `CENSO_MONEDA_DEL_PAIS` gana el bloque «SLT-243»
+  con los 10 archivos de design §7 y un comentario con los que quedan fuera (`cierre-detalle-shared.tsx` y
+  `cierre-factura.tsx` por P1; `cierres-gestiones-modelo-nuevo-descarga-columnas.ts` por P3). El caso de SLT-242
+  pasa a `slice(i, i + 17)`. Caso nuevo «SLT-243 R15: los 10 de SLT-243 dan rojo con money( o formatMontoString(».
+- `tests/components/moneda-del-pais-cierres-admin.test.tsx` (T5.2): describe «SLT-243 R16 — …» (ninguna excepción
+  con `ficha === "SLT-243"`; `TOPE_EXCEPCIONES` ≤ 12 y la lista ≤ tope).
+- `tests/unit/guards/_pais-sin-literales-excepciones.ts` no se toca. Ningún archivo de producción en esta tanda.
+
+### Prueba de rojo (T5.1)
+Se añadió temporalmente `export const _rojo = money("1.00");` al final de `MarcaAjustado.tsx`: el censo dio rojo
+(2 tests: el `it.each` de R18 sobre ese archivo y «SLT-243 R15», ambos con `[ 'llama a money(' ]`). Se restauró
+desde una copia y `git diff --stat HEAD -- MarcaAjustado.tsx` quedó vacío.
+
+### Mapa R → test completo (R1–R16)
+| R | Test |
+|---|---|
+| R1–R7, R9 | `moneda-del-pais-cierres-admin.test.tsx`, describes «SLT-243 R1» … «SLT-243 R9» (tanda 1) |
+| R8 | «SLT-243 R8 — el typecheck rechaza…»: 3 `@ts-expect-error`, comprobados por `pnpm run typecheck` |
+| R10, R11 | «SLT-243 R10 — …» y «SLT-243 R11 — censo «sin IVA» …» (tanda 2) |
+| R12, R13 | `it.each` sobre los 3 montajes en R1–R7 y R9 (CR = sin proveedor); R10 (a) y (d) para descargas; suites de §7 |
+| R14 | Lo comprueba el reviewer en el diff (design §8): sin sumas/restas nuevas, sin claves «iva» renombradas, sin `components/private/cierres/**`, wallet, plataforma ni órdenes; `cierre-labels.ts` fuera del diff; solo `TotalesPanel` en `cierre-detalle-shared.tsx` |
+| R15 | `moneda-del-pais-pantallas.test.tsx` > «R18: $archivo …» (it.each del censo con los 10) y «SLT-243 R15: los 10 de SLT-243 dan rojo con money( o formatMontoString(» |
+| R16 | `moneda-del-pais-cierres-admin.test.tsx` > «SLT-243 R16 — …» (2 casos); `pais-sin-literales.guardia` verde sin tocarlo |
+
+### Verificación (NODE_OPTIONS=--max-old-space-size=8192)
+- `pnpm run typecheck`: exit 0.
+- `pnpm exec eslint` de los 2 archivos: «ESLint: No issues found», exit 0.
+- `pnpm exec vitest run` de los 2 archivos: **2 archivos, 189 tests, verdes**.
+- `pnpm run test:guardias`: **358 archivos verdes, 3 omitidos (361); 5436 tests verdes, 28 omitidos (5464)**.
+
+### Pendiente (T5.3)
+- `./init.sh` y E2E (grupo `dinero`, `cierres-admin`, `cierre-dia`, `ajuste-pago-mensajero-cierre`,
+  `cierre-bodega-satelite`, `cierres-rediseno`): en CI, **no corridos aquí**.
+
+Veredicto: bloque 5 (T5.1, T5.2) hecho; typecheck, lint, los 2 tests y las guardias en verde; sin bloqueos.

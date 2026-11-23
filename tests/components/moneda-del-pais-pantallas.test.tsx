@@ -732,6 +732,22 @@ const CENSO_MONEDA_DEL_PAIS: readonly { archivo: string; servidor?: true }[] = [
   { archivo: "app/(app)/analitica/_components/entregas/DineroProductoDetalle.tsx" },
   { archivo: "app/(app)/analitica/_components/finanzas/KpisFinancieros.tsx" },
   { archivo: "app/(app)/analitica/_components/finanzas/FinanzasDiarioBarras.tsx" },
+  // SLT-243 (cierres del admin, design §7, R15). Quedan fuera, con motivo:
+  //  - `cierres-admin/_components/cierre-detalle-shared.tsx` y `cierre-factura.tsx` (P1): conservan
+  //    `money(` en el código que no monta ninguna pantalla; de `cierre-detalle-shared` solo se migró
+  //    `TotalesPanel`. Los poda SLT-146.
+  //  - `cierres-admin/_components/cierres-gestiones-modelo-nuevo-descarga-columnas.ts` (P3): el texto
+  //    de la tarifa de la descarga «Gestiones» es de SLT-244.
+  { archivo: "app/(app)/cierre-dia/_components/CierreDiaModule.tsx" },
+  { archivo: "app/(app)/cierres-admin/_components/AjustarPagoMensajeroDialog.tsx" },
+  { archivo: "app/(app)/cierres-admin/_components/MarcaAjustado.tsx" },
+  { archivo: "app/(app)/cierres-admin/_components/ConsolidacionBodegaModule.tsx" },
+  { archivo: "app/(app)/cierres-admin/_components/PendienteLiquidarBadge.tsx" },
+  { archivo: "app/(app)/cierres-admin/_components/pago-mensajero-labels.ts" },
+  { archivo: "app/(app)/cierres-admin/_components/CorregirPagosDialog.tsx" },
+  { archivo: "app/(app)/cierres-admin/_components/CierresAdminModule.tsx" },
+  { archivo: "app/(app)/cierres-admin/_components/RegistrarPagoMensajeroDialog.tsx" },
+  { archivo: "app/(app)/cierres-admin/_components/PagoMensajeroSeccion.tsx" },
 ];
 
 /** Los formateadores que usan la moneda de la plataforma sin nombrarla (R18). */
@@ -867,9 +883,35 @@ describe("SLT-235/T4.1 — censo de R18: las pantallas en la moneda del país no
   });
 
   it("SLT-242 R15: los 17 archivos de la analítica están en el censo y dan rojo con money( o formatMontoString(", () => {
-    const deSlt242 = CENSO_MONEDA_DEL_PAIS.slice(CENSO_MONEDA_DEL_PAIS.findIndex((e) => e.archivo === "components/private/analytics/formato.ts"));
+    const i = CENSO_MONEDA_DEL_PAIS.findIndex((e) => e.archivo === "components/private/analytics/formato.ts");
+    const deSlt242 = CENSO_MONEDA_DEL_PAIS.slice(i, i + 17);
     expect(deSlt242).toHaveLength(17);
     for (const { archivo, servidor } of deSlt242) {
+      expect(infraccionesDeMoneda(leer(archivo), { servidor }), archivo).toEqual([]);
+      const conMoney = `${leer(archivo)}\nexport const _m = money(1);\n`;
+      expect(infraccionesDeMoneda(conMoney, { servidor }), archivo).toContain("llama a money(");
+      const conString = `${leer(archivo)}\nexport const _s = formatMontoString("1");\n`;
+      expect(infraccionesDeMoneda(conString, { servidor }), archivo).toContain("llama a formatMontoString(");
+    }
+  });
+
+  it("SLT-243 R15: los 10 de SLT-243 dan rojo con money( o formatMontoString(", () => {
+    const i = CENSO_MONEDA_DEL_PAIS.findIndex((e) => e.archivo === "app/(app)/cierre-dia/_components/CierreDiaModule.tsx");
+    const deSlt243 = CENSO_MONEDA_DEL_PAIS.slice(i, i + 10);
+    expect(deSlt243).toHaveLength(10);
+    expect(deSlt243.map((e) => e.archivo.split("/").pop())).toEqual([
+      "CierreDiaModule.tsx",
+      "AjustarPagoMensajeroDialog.tsx",
+      "MarcaAjustado.tsx",
+      "ConsolidacionBodegaModule.tsx",
+      "PendienteLiquidarBadge.tsx",
+      "pago-mensajero-labels.ts",
+      "CorregirPagosDialog.tsx",
+      "CierresAdminModule.tsx",
+      "RegistrarPagoMensajeroDialog.tsx",
+      "PagoMensajeroSeccion.tsx",
+    ]);
+    for (const { archivo, servidor } of deSlt243) {
       expect(infraccionesDeMoneda(leer(archivo), { servidor }), archivo).toEqual([]);
       const conMoney = `${leer(archivo)}\nexport const _m = money(1);\n`;
       expect(infraccionesDeMoneda(conMoney, { servidor }), archivo).toContain("llama a money(");
