@@ -76,6 +76,8 @@ T9 (payloads reales desde la copia de producción) la hace una persona, no un ag
   tsc 0; eslint 0 errores; guardias + `tests/unit/{api,ayuda,asistente}` 425 archivos verdes; integración
   en `servi_logistic_slt45_integ`: contrato v1 22/22, v2 13/13, planes, pago-plataforma, orden-nodo
   verdes; `carga-nombre-duplicado-real` 1 rojo local por Postgres 16 (CI usa ≥17).
+  Merge `b8e8de4d`. CI `gate.yml` run 45183419205: gate-completo verde a la primera (vitest 3/3, e2e
+  aislamiento/dinero/reparto, estático): https://github.com/Singularis-org/servi_logistic/actions/runs/45183419205
 
 <!-- tamano-pr-aceptado: 2026-11-21 · pila geo, aceptado por el humano -->
 
