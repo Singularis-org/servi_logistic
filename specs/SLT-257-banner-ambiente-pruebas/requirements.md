@@ -105,7 +105,8 @@ exacta `true` (sin recortar espacios y distinguiendo mayúsculas).
   **Hecho:** `tests/unit/config/ambiente-config.test.ts` incluye un caso que encuentra la línea
   `AMBIENTE_PRUEBAS=` en `.env.example`, y `pnpm run test:guardias` en verde (incluida
   `env-example-sin-valores` y `marca-texto-amarillo`).
-- [ ] **T5** (depende de T3 y T4) — `./init.sh` en verde. Nota para el PR: el layout raíz puede
+- [x] **T5** (depende de T3 y T4) — `./init.sh` en verde (2026-11-23: único rojo el cupo fullstack
+  del humano, 12/7, ajeno a esta ficha; typecheck, lint, guardias y tests de la ficha en verde a mano). Nota para el PR: el layout raíz puede
   prerenderizarse en el build, así que encender o apagar la variable en Vercel pide un redeploy.
   La comprobación de R8 en un iPhone con la PWA instalada es manual y va descrita en el PR (sin
   E2E, por decisión).
