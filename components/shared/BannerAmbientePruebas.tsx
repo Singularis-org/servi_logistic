@@ -8,18 +8,11 @@ import { ambienteDePruebas } from "@/lib/config/ambiente";
 // barras pegadas ni Sheets (R11); `shrink-0` la deja a su alto natural en el body flex (R9). El
 // padding de arriba incluye el area segura de iOS para la PWA con barra `black-translucent` (R8).
 
-interface BannerAmbientePruebasProps {
-  /** Texto de la franja. Prop para un i18n futuro; por decision (R4) es «Sandbox». */
-  texto?: string;
-}
-
-export function BannerAmbientePruebas({
-  texto = "Sandbox",
-}: BannerAmbientePruebasProps = {}) {
+export function BannerAmbientePruebas() {
   if (!ambienteDePruebas()) return null;
   return (
     <div className="shrink-0 bg-brand-light text-brand-dark text-center text-xs font-semibold tracking-wide pb-1 pt-[calc(env(safe-area-inset-top)+0.25rem)]">
-      {texto}
+      Sandbox
     </div>
   );
 }
