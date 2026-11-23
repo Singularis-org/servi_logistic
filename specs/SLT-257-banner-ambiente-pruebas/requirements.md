@@ -81,12 +81,12 @@ exacta `true` (sin recortar espacios y distinguiendo mayúsculas).
 
 ## Tasks
 
-- [ ] **T1** — `lib/config/ambiente.ts`: `ambienteDePruebas(): boolean`, que devuelve
+- [x] **T1** — `lib/config/ambiente.ts`: `ambienteDePruebas(): boolean`, que devuelve
   `process.env.AMBIENTE_PRUEBAS === "true"` y nada más (sin `VERCEL_ENV`, sin `trim`, sin
   minúsculas). El nombre de la variable vive solo aquí. **Hecho:** test unitario
   `tests/unit/config/ambiente-config.test.ts` en verde, con un caso por valor de R2, el `true`
   de R1 y las combinaciones con `VERCEL_ENV` de R3; restaura `process.env` tras cada caso.
-- [ ] **T2** (depende de T1) — `components/shared/BannerAmbientePruebas.tsx`, Server Component
+- [x] **T2** (depende de T1) — `components/shared/BannerAmbientePruebas.tsx`, Server Component
   (sin `"use client"`): si `ambienteDePruebas()` es `false` devuelve `null`; si no, una franja con
   el texto «Sandbox», colores fijos `bg-brand-light text-brand-dark`, `shrink-0`, centrada, sin
   controles, y `padding-top` que incluye `env(safe-area-inset-top)`. **Hecho:**
@@ -96,12 +96,12 @@ exacta `true` (sin recortar espacios y distinguiendo mayúsculas).
   `role="alert"` ni `aria-live="assertive"`), R7 (clases fijas, sin `text-brand-light` ni
   `text-brand`, y `contraste("#111111", "#FFD000") >= 4.5`), R8 (el estilo contiene
   `env(safe-area-inset-top)`), R9 (`shrink-0`), R11 (sin clases `sticky`, `fixed` ni `z-*`).
-- [ ] **T3** (depende de T2) — `app/layout.tsx`: `<BannerAmbientePruebas />` como primer hijo de
+- [x] **T3** (depende de T2) — `app/layout.tsx`: `<BannerAmbientePruebas />` como primer hijo de
   `<body>`, antes de `<ZodEnEspanol />` y de `{children}`, con un comentario `SLT-257`. **Hecho:**
   `tests/unit/config/banner-ambiente-layout.test.ts` en verde: lee el fuente del layout (como
   `marca-layout.test.ts`) y comprueba que la etiqueta está dentro de `<body` y antes de
   `{children}` (R5); `pnpm run typecheck` y `pnpm run lint` en verde.
-- [ ] **T4** [P] — `.env.example`: bloque comentado y `AMBIENTE_PRUEBAS=` sin valor (R10).
+- [x] **T4** [P] — `.env.example`: bloque comentado y `AMBIENTE_PRUEBAS=` sin valor (R10).
   **Hecho:** `tests/unit/config/ambiente-config.test.ts` incluye un caso que encuentra la línea
   `AMBIENTE_PRUEBAS=` en `.env.example`, y `pnpm run test:guardias` en verde (incluida
   `env-example-sin-valores` y `marca-texto-amarillo`).
