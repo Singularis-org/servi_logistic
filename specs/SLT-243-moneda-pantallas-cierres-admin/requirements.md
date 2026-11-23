@@ -158,9 +158,9 @@ Vocabulario:
 
 ## Preguntas abiertas
 
-P1–P3 se cerraron el 2026-11-23 (tabla de decisiones); se dejan abajo como registro. Queda abierta P4.
+P1–P4 se cerraron el 2026-11-23; se dejan abajo como registro.
 
-- **P4 (abierta). La ficha ya no cabe en un PR: ¿se corta en dos?**
+- **P4 (cerrada 2026-11-23: el humano acepta 33/40 en un solo PR; no se corta). La ficha ya no cabe en un PR: ¿se corta en dos?**
   - Con la forma de P2, los encabezados de descarga cambian también en Costa Rica. Eso obliga a
     actualizar los encabezados esperados de 8 suites de descarga y de `e2e/cierres-rediseno.spec.ts`.
   - Total: 33 archivos (20 de producción, 13 de tests), el 82,5% de `gate.tamano_pr` (40). El
