@@ -157,7 +157,7 @@ Vocabulario:
 Este spec está escrito con la recomendación de cada pregunta. Si el humano elige otra cosa, lo que
 cambia está dicho en la pregunta.
 
-- **P1. ¿Qué forma llevan los rótulos de pantalla con impuesto de los componentes de cierres?**
+- **P1 (cerrada 2026-11-23: nombre a secas, la recomendación). ¿Qué forma llevan los rótulos de pantalla con impuesto de los componentes de cierres?**
   - Hay dos formas en el repo:
     - **el nombre a secas** («Flete + IGV», «IGV del flete»): la del listado y la descarga de
       órdenes (SLT-240) y la que ya componen hoy estos rótulos con `IMPUESTO_ROTULO`
@@ -179,18 +179,18 @@ cambia está dicho en la pregunta.
       `cierre-modelo-nuevo-plan-porcentual.spec.ts`);
     - la ficha pasa de 24 a unos 35 archivos, por encima del 80% (32), y habría que cortarla
       (propuesta: rótulos de impuesto en una ficha aparte, R6 y R13).
-- **P2. ¿El texto de la tarifa de la descarga «Gestiones» pasa entero a la moneda del país?**
+- **P2 (cerrada 2026-11-23: todo en la moneda del país, la recomendación). ¿El texto de la tarifa de la descarga «Gestiones» pasa entero a la moneda del país?**
   - Hoy: «Monto fijo ₡3.500 · …» y «2 % de ₡25.000 · …», los dos con la moneda de la plataforma.
   - **Recomendación: sí, los dos textos con la moneda del país, y el porcentaje con su separador
     decimal** (R7): «Monto fijo €3 500 · …», «2 % de €25 000 · …». Es el mismo texto que pinta «Ver
     cómo se calculó» en pantalla (R5).
   - Migrar solo uno dejaría la columna con dos monedas según la fila (lo que SLT-243 P3 quiso evitar).
   - En Costa Rica no cambia nada.
-- **P3. `FichaQueLoRetira` y `FICHAS_ADMITIDAS`: confirmar que no se tocan aquí.**
+- **P3 (cerrada 2026-11-23: no se tocan, se limpian en la última rebanada). `FichaQueLoRetira` y `FICHAS_ADMITIDAS`: confirmar que no se tocan aquí.**
   - Ya lo cubre la decisión heredada (SLT-240 P2): se limpian en la última rebanada del corte.
   - **Recomendación: no se tocan.** `"SLT-244"` se queda en `FichaQueLoRetira` aunque no tenga
     ninguna entrada.
-- **P4. ¿Se borra `porcentajeParaVerEnLaPlataforma`?**
+- **P4 (cerrada 2026-11-23: se borra, la recomendación). ¿Se borra `porcentajeParaVerEnLaPlataforma`?**
   - SLT-241 la creó «para los textos que todavía no pasan a la moneda del país (la fila de gestión de
     cierres)». Con esta ficha se queda sin llamadores.
   - **Recomendación: sí, se borra**, y el caso que la prueba en `moneda-del-pais-tarifas.test.tsx`
