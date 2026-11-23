@@ -154,3 +154,86 @@ paralelo caen. En la ronda 2, el segundo `darPlazo` no vio la fecha del primero.
 
 Tanda 2 en verde. Quedan dos deudas para la Tanda 4: la anotación `@sin-superficie` de `quitarPlazoEmpresaAction` y los
 textos de la UI.
+
+## Tanda 4 — Interfaz (frontend_dev, 2026-11-23)
+
+### Archivos
+
+- `app/(app)/_components/AvisoMora.tsx`: el caso `con_plazo` ya venía de la Tanda 2 (`MORA_TEXTOS.banner.conPlazo`,
+  tono aviso, sin enlace). Solo se añadió el comentario de cabecera de SLT-255.
+- `tests/components/AvisoMora.test.tsx`: el caso `con_plazo` es ahora `it.each` para maestro y admin. Comprueba que
+  sale `status`, `data-tono="aviso"`, sin `alert`, sin «esta madrugada», sin «habilitada hasta» y sin enlace.
+
+### Qué cubre cada test
+
+- R11 → `tests/components/AvisoMora.test.tsx` › «SLT-255 R11: con plazo, el aviso (`status`)…» (maestro, admin).
+- R12 → sin cambio de UI. Lo decide `estadoMora` (Tanda 2): los casos `en_plazo` y `al_dia` del mismo archivo siguen en
+  verde.
+- R13 → **pendiente** (T4.2 bloqueada; ver abajo).
+
+### Verificación (salida real)
+
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck` → `tsc --noEmit` sin errores.
+- `pnpm exec eslint "app/(app)/_components/AvisoMora.tsx" tests/components/AvisoMora.test.tsx` → exit 0, sin avisos.
+- `pnpm exec vitest run tests/components/AvisoMora.test.tsx tests/unit/guards/superficie-de-uso.guardia.test.ts` →
+  `Test Files 2 passed (2) · Tests 27 passed (27)`.
+
+### T4.2 bloqueada: textos que el spec no fija
+
+design §5.2 fija estos textos:
+
+- el estado «Con prórroga hasta el …»;
+- los botones «Dar plazo hasta…» y «Quitar prórroga…»;
+- los tres títulos del diálogo «dar plazo»;
+- el campo «Hasta»;
+- `sin_cambio` → «La fecha es la misma de la prórroga vigente.»;
+- `sin_plazo` → `errores.sinPlazo`.
+
+**No fija** estos, aunque son visibles y R13 exige el aviso:
+
+1. El aviso del efecto en el diálogo «dar plazo» sin congelar (con y sin prórroga vigente). Con la empresa congelada,
+   sirve el aviso que ya existe, `avisoDescongelar`.
+2. El botón de confirmar del diálogo «dar plazo» cuando no descongela. Hoy dice «Descongelar».
+3. El diálogo «quitar»: su título, su aviso del efecto y su botón de confirmar.
+
+T4.2 no se tocó, así que `@sin-superficie` sigue en `quitarPlazoEmpresaAction`. No se tocaron `MoraEmpresa.tsx`,
+`page.tsx` ni `MoraEmpresa.test.tsx`.
+
+### Veredicto
+
+T4.1 en verde (R11). T4.2 queda parada hasta que el humano fije los textos 1 a 3.
+
+## Tanda 3 — Correos (backend_dev, 2026-11-23)
+
+### Archivos
+
+- `lib/services/email/plantillas/mora-aviso.ts`: contenidos `prorroga`, `prorroga_quitada`, `prorroga_vence` y
+  `plazoHasta` en `recordatorio`, con los textos de design §4.3 en `MORA_AVISO_TEXTOS`.
+- `lib/planes/jobs-mora.ts`: el zod acepta los tres payloads nuevos; `contenidoVigente` relee con `plazoVigente`
+  (design §4.2). Se quitó la guarda provisional de la Tanda 2.
+- `tests/unit/services/email/plantilla-mora-aviso.test.ts`, `tests/unit/planes/jobs-mora.test.ts`: ampliados.
+
+Nota: el spec no fija los preheaders de los tres correos nuevos. Repiten la primera frase del cuerpo, sin texto
+inventado.
+
+### R → test
+
+| R | Test |
+|---|---|
+| R16 | `plantilla-mora-aviso.test.ts > SLT-255/R16`; `jobs-mora.test.ts > SLT-255/R16, R19, R20` |
+| R17 | `plantilla-mora-aviso.test.ts > SLT-255/R17`; `jobs-mora.test.ts > SLT-255/R17, R19` (con y sin vencidas) |
+| R18 | `plantilla-mora-aviso.test.ts > SLT-255/R18`; `jobs-mora.test.ts > SLT-255/R18, R19` |
+| R19 | `jobs-mora.test.ts`: hasta cambiada, quitada, vuelta a dar, congelada y víspera sin vencidas → no sale |
+| R20 | `jobs-mora.test.ts > SLT-255/R20` (envío fallido sigue y lanza); el encolado en la transacción ya lo cubre `mora-empresa-repository.test.ts` (Tanda 2) |
+| R22 | `plantilla-mora-aviso.test.ts > SLT-255/R22`; `jobs-mora.test.ts > SLT-255/R22` (`plazoHasta` solo si `h >= fechaLimite`) |
+
+### Verificación
+
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck` → `tsc --noEmit` sin errores.
+- `pnpm exec eslint` de los 4 archivos → exit 0, sin avisos.
+- `pnpm exec vitest run tests/unit/planes/jobs-mora.test.ts tests/unit/services/email/plantilla-mora-aviso.test.ts`
+  → `Test Files 2 passed (2) · Tests 79 passed (79)`.
+
+### Veredicto
+
+Tanda 3 en verde (R16–R20, R22).

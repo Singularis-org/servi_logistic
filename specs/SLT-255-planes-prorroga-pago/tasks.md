@@ -45,16 +45,16 @@
 
 ## Tanda 3 — Correos (backend_dev)
 
-- [ ] **T3.1** [P] En `mora-aviso.ts`: los contenidos `prorroga`, `prorroga_quitada` y `prorroga_vence`, y
+- [x] **T3.1** [P] En `mora-aviso.ts`: los contenidos `prorroga`, `prorroga_quitada` y `prorroga_vence`, y
       `plazoHasta` en `recordatorio`, con sus textos (design §4.3). Ampliar `plantilla-mora-aviso.test.ts`.
       *Hecho:* asunto y cuerpo de cada caso. El recordatorio con plazo no dice «se congela» (R16, R17, R18, R22).
-- [ ] **T3.2** En `jobs-mora.ts`: el zod del payload y `contenidoVigente` con la relectura de design §4.2. Depende
+- [x] **T3.2** En `jobs-mora.ts`: el zod del payload y `contenidoVigente` con la relectura de design §4.2. Depende
       de T2.2 y T3.1.
       *Hecho:* `jobs-mora.test.ts` en verde (R16–R20, R22).
 
 ## Tanda 4 — Interfaz (frontend_dev)
 
-- [ ] **T4.1** [P] En `AvisoMora.tsx`, el caso `con_plazo` (design §5.1). Ampliar `AvisoMora.test.tsx`. Depende de
+- [x] **T4.1** [P] En `AvisoMora.tsx`, el caso `con_plazo` (design §5.1). Ampliar `AvisoMora.test.tsx`. Depende de
       T2.1.
       *Hecho:* R11 en el test de componente.
 - [ ] **T4.2** En `MoraEmpresa.tsx`, los botones «Dar plazo hasta…» y «Quitar prórroga…», con sus dos diálogos. En
