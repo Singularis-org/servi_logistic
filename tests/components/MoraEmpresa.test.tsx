@@ -9,7 +9,7 @@ import userEvent from "@testing-library/user-event";
 
 import { money } from "@/lib/config/moneda";
 import type {
-  DescongelarResult,
+  DarPlazoResult,
   EstadoMora,
   FijarGraciaResult,
   FilaHistorialMora,
@@ -69,20 +69,20 @@ function vista(parcial: Partial<MoraEmpresaVista> = {}): MoraEmpresaVista {
       { ...VENCIDA_2, vencida: true },
     ],
     facturasVencidas: [VENCIDA_1, VENCIDA_2],
-    descongelar: { desde: "2026-11-21", hasta: "2027-01-20", porDefecto: "2026-11-28" },
+    plazo: { desde: "2026-11-21", hasta: "2027-01-20", porDefecto: "2026-11-28", vigente: null },
     historial: HISTORIAL,
     ...parcial,
   };
 }
 
 type Fijar = (i: { dias: number | null }) => Promise<FijarGraciaResult>;
-type Descongelar = (i: { motivo: string; hasta: string }) => Promise<DescongelarResult>;
+type Descongelar = (i: { motivo: string; hasta: string }) => Promise<DarPlazoResult>;
 
 function montar(
   datos: MoraEmpresaVista | null = vista(),
   {
     fijarGracia = vi.fn<Fijar>().mockResolvedValue({ estado: "ok" }),
-    descongelar = vi.fn<Descongelar>().mockResolvedValue({ estado: "ok" }),
+    descongelar = vi.fn<Descongelar>().mockResolvedValue({ estado: "descongelada" }),
   } = {},
 ) {
   render(<MoraEmpresa datos={datos} fijarGracia={fijarGracia} descongelar={descongelar} />);
@@ -131,7 +131,7 @@ describe("SLT-121 R32 — lo que ve el superadmin", () => {
     ["en plazo, con su fecha límite", { estado: "en_plazo", fechaLimite: "2026-12-05" }, "En plazo · fecha límite 05/12/2026"],
     ["vencida", { estado: "vencida", facturas: [VENCIDA_1], saldoVencido: "50000.00" }, "Vencida"],
     ["congelada, desde cuándo", CONGELADA, "Congelada desde el 19 nov 2026"],
-    ["descongelada a mano, hasta cuándo", { estado: "descongelada_a_mano", hasta: "2026-11-30" }, "Descongelada a mano hasta el 30/11/2026"],
+    ["descongelada a mano, hasta cuándo", { estado: "con_plazo", hasta: "2026-11-30" }, "Descongelada a mano hasta el 30/11/2026"],
   ])("el estado %s", (_caso, estado, texto) => {
     montar(vista({ estado }));
     expect(seccion().getByText(texto)).toBeInTheDocument();
@@ -150,7 +150,7 @@ describe("SLT-121 R32 — lo que ve el superadmin", () => {
   });
 
   it("descongelada a mano también enseña las vencidas (el estado no las trae)", () => {
-    montar(vista({ estado: { estado: "descongelada_a_mano", hasta: "2026-11-30" } }));
+    montar(vista({ estado: { estado: "con_plazo", hasta: "2026-11-30" } }));
     const tabla = within(seccion().getByRole("table", { name: "Facturas vencidas" }));
     expect(tabla.getAllByRole("row").slice(1)).toHaveLength(2);
   });
@@ -247,7 +247,7 @@ describe("SLT-121 R22, R32 — descongelar a mano", () => {
     ["al día", { estado: "al_dia" }],
     ["en plazo", { estado: "en_plazo", fechaLimite: "2026-12-05" }],
     ["vencida", { estado: "vencida", facturas: [VENCIDA_1], saldoVencido: "50000.00" }],
-    ["descongelada a mano", { estado: "descongelada_a_mano", hasta: "2026-11-30" }],
+    ["descongelada a mano", { estado: "con_plazo", hasta: "2026-11-30" }],
   ])("«Descongelar…» no aparece si está %s", (_caso, estado) => {
     montar(vista({ estado }));
     expect(seccion().queryByRole("button", { name: "Descongelar…" })).not.toBeInTheDocument();
@@ -302,8 +302,7 @@ describe("SLT-121 R22, R32 — descongelar a mano", () => {
     expect(descongelar).not.toHaveBeenCalled();
   });
 
-  it.each<[DescongelarResult, string]>([
-    [{ estado: "no_congelada" }, "La empresa no está congelada."],
+  it.each<[DarPlazoResult, string]>([
     [{ estado: "not_found" }, "La empresa no existe."],
     [{ estado: "forbidden" }, "No tienes permiso para cambiar la mora de una empresa."],
   ])("un resultado %o se muestra en el diálogo, que sigue abierto", async (resultado, mensaje) => {

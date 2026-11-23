@@ -56,3 +56,101 @@ Modificados:
 
 Tanda 1 en verde. La guardia del censo sigue roja hasta T2.3, y `orden-traspaso-migration` es un archivo fuera de
 la lista de `tasks.md`.
+
+## Tanda 2 — Dominio, repositorio, servicio y actions (backend_dev, 2026-11-23)
+
+T2.1 a T2.5 hechas. Base: `servi_logistic_slt255`. El MCP del grafo no se usó: la tanda se exploró con Grep/Read.
+
+### Archivos
+
+Producción:
+
+- `lib/planes/mora.ts` (T2.1): `plazoVigente`, el estado `con_plazo` en lugar de `descongelada_a_mano`, el orden nuevo
+  de `estadoDeMora` (design §2) y `MORA_TEXTOS` (`banner.conPlazo`, `estado.con_plazo`, `errores.sinPlazo`; sale
+  `noCongelada`).
+- `lib/repositories/_shared/encolar-aviso-mora.ts` (T2.2): las formas `prorroga`, `prorroga_quitada` y `prorroga_vence`
+  de `AvisoMoraPayload`, y sus tres dedupes.
+- `lib/repositories/MoraEmpresaRepository.ts` e `IMoraEmpresaRepository.ts` (T2.3):
+  - `darPlazo` y `quitarPlazo` en lugar de `descongelarAMano`;
+  - el helper `filaDelPlazo` toma la fila con `FOR NO KEY UPDATE`;
+  - la víspera del plazo entra en `encolarRecordatorios`.
+- `lib/services/MoraEmpresaService.ts`, `IMoraEmpresaService.ts` y `lib/types/mora.ts` (T2.4):
+  - `darPlazo` y `quitarPlazo`, con `darPlazoSchema` y `quitarPlazoSchema`;
+  - los resultados `DarPlazoResult` y `QuitarPlazoResult`;
+  - `MoraEmpresaVista.plazo`, que reemplaza a `descongelar`. `rangoDeDescongelar` pasa a `rangoDelPlazo`.
+- `lib/actions/mora-empresa.ts` (T2.5): `darPlazoEmpresaAction` y `quitarPlazoEmpresaAction`.
+  - `quitarPlazoEmpresaAction` lleva por ahora `@sin-superficie`, porque ninguna página la importa hasta T4.2. Sin la
+    anotación, `superficie-de-uso.guardia` se pone roja.
+  - La guardia exige quitar la anotación en cuanto `page.tsx` la ligue.
+
+**Fuera de la lista de la tanda**, cambios mínimos para que compile:
+
+- `lib/planes/jobs-mora.ts` (T3.2): una guarda `if (aviso.tipo !== "descongelada") return null;` en
+  `contenidoVigente`. Sin ella, la unión ampliada no compila. El zod del payload todavía no deja pasar los tipos
+  nuevos, y T3.2 la reemplaza.
+- `app/(app)/_components/AvisoMora.tsx` (T4.1): el caso `con_plazo` con `banner.conPlazo`.
+- `app/(app)/plataforma/empresas/[organizacionId]/_components/MoraEmpresa.tsx` (T4.2):
+  - `DarPlazoResult` y `datos.plazo`;
+  - el caso `con_plazo`, que sigue con el texto viejo «Descongelada a mano hasta…»;
+  - `descongelada`, `prorroga` y `sin_cambio` cierran el diálogo;
+  - sale `no_congelada`. La prop sigue llamándose `descongelar`.
+- `app/(app)/plataforma/empresas/[organizacionId]/page.tsx` (T4.2): liga `darPlazoEmpresaAction` en la prop
+  `descongelar`.
+
+Tests:
+
+- Ampliados: `tests/unit/planes/mora.test.ts`, `tests/integration/repositories/mora-empresa-repository.test.ts`,
+  `tests/unit/services/mora-empresa-service.test.ts` y `tests/unit/actions/mora-empresa.test.ts`.
+- Guardias enmendadas:
+  - `historial-accion-escrituras-cubiertas` (censo): dos entradas de `darPlazo`, una por tipo y con su mutación, y una
+    de `quitarPlazo`. El total pasa de 95 a 97;
+  - `historial-accion-sin-datos-cliente`: dos excepciones `SLT-255`, con su control positivo y su contraprueba.
+- Renombres mínimos en tres dobles y componentes:
+  - `tests/unit/planes/jobs-mora.test.ts`: el doble del repositorio;
+  - `tests/components/AvisoMora.test.tsx`: el caso `con_plazo` con el texto nuevo;
+  - `tests/components/MoraEmpresa.test.tsx`: `DarPlazoResult`, `plazo` y `con_plazo`. Sale la fila `no_congelada`.
+
+### Qué cubre cada test
+
+| Requisito | Test |
+|---|---|
+| R1 | `mora.test.ts` > «SLT-255 R1 — plazoVigente» (hasta las 23:59:59, ayer no, congelada → `null`). `mora-empresa-repository` > «R1: un plazo ya vencido no cuenta como anterior» |
+| R2 | `mora-empresa-repository` > «R2, R15, R21: con la empresa congelada, la descongela…» |
+| R3 | `mora-empresa-repository` > «R3, R15, R16: sin congelar, deja la prórroga sin tocar la gracia, las facturas…» y «R3: también a una empresa sin facturas» |
+| R4 | `mora-empresa-repository` > «R4, R15, R16: alargar y acortar…» y «R4: la misma fecha vigente responde sin_cambio…» |
+| R5 | `mora-empresa-repository` > «SLT-255 quitarPlazo» (ok; sin plazo o vencido; congelada → `sin_plazo`) |
+| R6 | `mora-empresa-service` > «darPlazo — R6: …» (los extremos, el hoy de la plataforma, fechas, motivos y el error por campo) y «quitarPlazo — R6» |
+| R7 | `mora-empresa-service` > «R4 (SLT-255 R7)» (`forbidden` sin llamadas, `not_found`). `actions/mora-empresa` > las dos actions con la empresa ligada y `forbidden` sin base |
+| R8, R9 | `mora-empresa-repository` > «R8, R9: con la prórroga vigente no congela…» y «R9: la primera madrugada después de quitar…» |
+| R10 | `mora-empresa-repository` > «R10: si la corrida congeló primero…» y «SLT-255 — R10: darPlazo en paralelo no da 40P01» (5 rondas de dos `darPlazo` y 5 de `darPlazo` contra `congelarSiVencida`, con filas commiteadas y dos conexiones) |
+| R11, R12 | `mora.test.ts` > «SLT-255 R11, R12 — estadoDeMora con plazo» y los textos |
+| R13 | `mora-empresa-service` > «moraDeEmpresa» (`plazo.vigente` y `porDefecto`, con plazo, vencido y congelada). La pantalla es T4.2 |
+| R15 | Las filas y el motivo de 200 en `mora-empresa-repository`, incluido «R15: si el registro falla…». Las dos guardias del historial |
+| R16, R17 (encolado) | Los avisos `prorroga` (`dada`, `alargada`, `acortada`) y `prorroga_quitada` en `mora-empresa-repository`. El envío y la relectura son T3 |
+| R18 (encolado) | `mora-empresa-repository` > «R18: la víspera del plazo…» y «R18: sin vencidas, o con la empresa congelada…» |
+| R21 | `mora-empresa-repository` > «R2, R15, R21…»: el aviso es `descongelada`/`a_mano`, no `prorroga` |
+
+R19, R20, R22 y R23 son de las tandas 3 y 5. R14 quedó en la Tanda 1.
+
+**Prueba de mutación** sobre el cruce en paralelo: sin el `FOR NO KEY UPDATE` de `filaDelPlazo`, los dos casos en
+paralelo caen. En la ronda 2, el segundo `darPlazo` no vio la fecha del primero. Se restauró el archivo.
+
+### Verificación (salida real)
+
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck`: salida 0, sin errores.
+- `pnpm exec eslint` sobre los 21 archivos tocados: salida 0, «No issues found».
+- `pnpm exec vitest run`, con `DATABASE_URL` de la base de la feature, sobre:
+  - `mora.test`, `mora-empresa-service`, `actions/mora-empresa` y `jobs-mora`;
+  - las dos guardias del historial y `superficie-de-uso`;
+  - `AvisoMora.test` y `MoraEmpresa.test`;
+  - `mora-empresa-repository`.
+
+  Resultado: `Test Files 10 passed (10)`, `Tests 393 passed (393)`, sin saltados. El repositorio solo: 32 de 32.
+- `pnpm run test:guardias`, antes de la anotación: 1 rojo, `superficie-de-uso`, por `quitarPlazoEmpresaAction`. Con
+  la anotación, `superficie-de-uso` pasa 18 de 18. No se volvió a correr el resto de las guardias, que estaba en verde
+  (357 archivos pasados).
+
+### Veredicto
+
+Tanda 2 en verde. Quedan dos deudas para la Tanda 4: la anotación `@sin-superficie` de `quitarPlazoEmpresaAction` y los
+textos de la UI.

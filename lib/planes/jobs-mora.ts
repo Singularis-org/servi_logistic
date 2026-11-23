@@ -188,6 +188,8 @@ async function contenidoVigente(
       saldoVencido: aTexto(total),
     };
   }
+  // SLT-255: los tres avisos de la prórroga todavía no tienen contenido (T3.2); el zod de arriba no los deja pasar.
+  if (aviso.tipo !== "descongelada") return null;
   if (mora.congeladaAt !== null) return null;
   return { tipo: "descongelada", motivo: aviso.motivo, ...(aviso.hasta !== undefined ? { hasta: aviso.hasta } : {}) };
 }

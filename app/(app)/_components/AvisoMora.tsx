@@ -26,8 +26,8 @@ function contenido(estado: EstadoMora): { texto: string; tono: Tono } | null {
       return { texto: MORA_TEXTOS.banner.vencida, tono: "alerta" };
     case "congelada":
       return { texto: MORA_TEXTOS.banner.congelada, tono: "alerta" };
-    case "descongelada_a_mano":
-      return { texto: MORA_TEXTOS.banner.descongeladaAMano(estado.hasta), tono: "aviso" };
+    case "con_plazo":
+      return { texto: MORA_TEXTOS.banner.conPlazo(estado.hasta), tono: "aviso" };
   }
 }
 

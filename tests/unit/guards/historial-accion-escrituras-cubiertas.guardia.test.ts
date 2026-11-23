@@ -823,12 +823,31 @@ const CENSO: EntradaCenso[] = [
     forma: "abre_tx",
     mutacion: /organizacion_mora_congelar\(/,
   },
+  // SLT-255 (design §3.1; R2-R5, R15): `descongelarAMano` pasa a `darPlazo`, que produce DOS tipos segun la empresa
+  // este congelada o no. Van en dos entradas, cada una con SU mutacion: la funcion del dueño que descongela, y el
+  // UPDATE de `descongelada_hasta` de la prorroga. `quitarPlazo` deja la columna en NULL. Las tres abren su
+  // `$transaction` dentro de `comoPlataforma`; que las filas y los avisos se escriban de verdad, en la misma
+  // transaccion, lo prueba `tests/integration/repositories/mora-empresa-repository.test.ts`.
   {
     tipos: ["empresa_descongelada_a_mano"],
     archivo: "lib/repositories/MoraEmpresaRepository.ts",
-    metodo: "descongelarAMano",
+    metodo: "darPlazo",
     forma: "abre_tx",
     mutacion: /organizacion_mora_descongelar_a_mano\(/,
+  },
+  {
+    tipos: ["empresa_prorroga_fijada"],
+    archivo: "lib/repositories/MoraEmpresaRepository.ts",
+    metodo: "darPlazo",
+    forma: "abre_tx",
+    mutacion: /tx\.\$executeRaw`\s*UPDATE "organizacion" SET "descongelada_hasta" = \$\{hasta\}/,
+  },
+  {
+    tipos: ["empresa_prorroga_quitada"],
+    archivo: "lib/repositories/MoraEmpresaRepository.ts",
+    metodo: "quitarPlazo",
+    forma: "abre_tx",
+    mutacion: /tx\.\$executeRaw`\s*UPDATE "organizacion" SET "descongelada_hasta" = NULL/,
   },
   {
     tipos: ["factura_dias_gracia_cambiada"],
@@ -898,7 +917,7 @@ interface TiposConEscritorPendiente {
   tarea: string;
 }
 
-// SLT-52 T6.2, SLT-77 T2.2, SLT-221 (PR 2) y SLT-121 (T2.4, T2.5) ya escriben sus tipos (ver el censo).
+// SLT-52 T6.2, SLT-77 T2.2, SLT-221 (PR 2), SLT-121 (T2.4, T2.5) y SLT-255 (T2.3) ya escriben sus tipos (ver el censo).
 const ESCRITOR_PENDIENTE_EN_CURSO: TiposConEscritorPendiente[] = [];
 
 /** Los archivos `.ts` de `lib/`, relativos a la raiz. */
@@ -1355,7 +1374,9 @@ describe("362/R16 — cada tipo del catalogo tiene al menos un punto de escritur
     // `usuario_email_cambiado`, de `UserRepository.aplicarCambioCorreo`).
     // 90 desde SLT-225 (`zona_desactivada`/`zona_reactivada`, de `ZonaRepository.desactivar`/`reactivar`).
     // 95 desde SLT-121 (los cinco de la mora, escritos por `MoraEmpresaRepository` y `mora-recalcular`).
-    expect(HISTORIAL_ACCION_TIPOS).toHaveLength(95);
+    // 97 desde SLT-255 (`empresa_prorroga_fijada` y `empresa_prorroga_quitada`, de `MoraEmpresaRepository.darPlazo`
+    // y `quitarPlazo`).
+    expect(HISTORIAL_ACCION_TIPOS).toHaveLength(97);
   });
 });
 

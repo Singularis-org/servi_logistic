@@ -53,7 +53,9 @@ export type EstadoMora =
   | { estado: "en_plazo"; fechaLimite: string }
   | { estado: "vencida"; facturas: FacturaVencida[]; saldoVencido: string }
   | { estado: "congelada"; desde: Date; facturas: FacturaVencida[]; saldoVencido: string }
-  | { estado: "descongelada_a_mano"; hasta: string };
+  // SLT-255 (R11): reemplaza al `descongelada_a_mano` de SLT-121. El plazo es el mismo, venga de un
+  // descongelamiento a mano o de una prórroga: la base no los distingue (design §1.1).
+  | { estado: "con_plazo"; hasta: string };
 
 /** R1: el día de emisión (el de la plataforma en que empieza `hasta`) más la gracia, en días corridos. */
 export function fechaLimiteDePago(hasta: Date, gracia: number): string {
@@ -87,23 +89,32 @@ function sumaDeSaldos(facturas: readonly FacturaVencida[]): string {
 }
 
 /**
- * R24, R32: el estado que ven el banner y el superadmin. Congelada manda; un descongelamiento a mano vigente
- * solo se dice mientras haya vencidas (si ya no las hay, no hay nada que avisar); después, vencida, en plazo
- * con la fecha límite más próxima, o al día.
+ * SLT-255 R1: el plazo vigente (`AAAA-MM-DD`) o `null`. Vale hasta las 23:59:59 de su día en la hora de la
+ * plataforma, como lo mira `organizacion_mora_congelar`. Una congelada no tiene plazo vigente (design §1.1).
+ */
+export function plazoVigente(o: OrganizacionMora, ahora: Date): string | null {
+  if (o.congeladaAt !== null || o.descongeladaHasta === null) return null;
+  return o.descongeladaHasta >= fechaCalendarioPlataforma(ahora) ? o.descongeladaHasta : null;
+}
+
+/**
+ * SLT-121 R24, R32 y SLT-255 R11, R12: el estado que ven el banner y el superadmin. Congelada manda. Después, el
+ * plazo vigente, si alguna factura con saldo vence dentro de él (una vencida siempre cumple). Si no, vencida, en
+ * plazo con la fecha límite más próxima, o al día.
  */
 export function estadoDeMora(o: OrganizacionMora, facturas: readonly FilaMora[], ahora: Date): EstadoMora {
   const lasVencidas = vencidas(facturas, ahora);
   if (o.congeladaAt !== null) {
     return { estado: "congelada", desde: o.congeladaAt, facturas: lasVencidas, saldoVencido: sumaDeSaldos(lasVencidas) };
   }
+  const conSaldo = facturas.filter((f) => aCentimosConSigno(f.saldo) > BigInt(0));
+  const plazo = plazoVigente(o, ahora);
+  if (plazo !== null && conSaldo.some((f) => f.fechaLimite <= plazo)) {
+    return { estado: "con_plazo", hasta: plazo };
+  }
   if (lasVencidas.length > 0) {
-    const hoy = fechaCalendarioPlataforma(ahora);
-    if (o.descongeladaHasta !== null && o.descongeladaHasta >= hoy) {
-      return { estado: "descongelada_a_mano", hasta: o.descongeladaHasta };
-    }
     return { estado: "vencida", facturas: lasVencidas, saldoVencido: sumaDeSaldos(lasVencidas) };
   }
-  const conSaldo = facturas.filter((f) => aCentimosConSigno(f.saldo) > BigInt(0));
   if (conSaldo.length > 0) {
     const fechaLimite = conSaldo.map((f) => f.fechaLimite).sort()[0];
     return { estado: "en_plazo", fechaLimite };
@@ -126,7 +137,8 @@ export const MORA_TEXTOS = {
     vencida: "Tienes facturas vencidas. Si no se pagan, la operación se congela esta madrugada.",
     congelada:
       "Empresa congelada por falta de pago. Puedes ver tus datos, cambiar tu cuenta y pagar a la plataforma desde la wallet.",
-    descongeladaAMano: (hasta: string) => `La operación está habilitada hasta el ${fechaLegible(hasta)}.`,
+    conPlazo: (hasta: string) =>
+      `Tienes prórroga de pago hasta el ${fechaLegible(hasta)}. Si no pagas, la operación se congela la madrugada siguiente.`,
     verFacturas: "Ver facturas",
   },
   // La sección de la ficha de la empresa en plataforma (design §7.2). La clave no es `superadmin`: ese literal solo
@@ -141,14 +153,14 @@ export const MORA_TEXTOS = {
       en_plazo: "En plazo",
       vencida: "Vencida",
       congelada: "Congelada",
-      descongelada_a_mano: "Descongelada a mano",
+      con_plazo: "Con prórroga",
     } satisfies Record<EstadoMora["estado"], string>,
     // Los rechazos de `MoraEmpresaService` (design §5.3), por campo; la pantalla los pinta bajo el suyo.
     errores: {
       dias: `La gracia debe ser un número entero de ${GRACIA_MIN} a ${GRACIA_MAX} días.`,
       motivo: `El motivo es obligatorio y tiene como máximo ${MOTIVO_MAX} caracteres.`,
       hasta: `La fecha hasta debe estar entre hoy y dentro de ${HASTA_MAX_DIAS} días.`,
-      noCongelada: "La empresa no está congelada.",
+      sinPlazo: "La empresa no tiene una prórroga vigente.",
       noEncontrada: "La empresa no existe.",
       sinPermiso: "No tienes permiso para cambiar la mora de una empresa.",
     },

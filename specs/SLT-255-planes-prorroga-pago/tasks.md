@@ -22,24 +22,24 @@
 
 ## Tanda 2 — Dominio, repositorio, servicio y actions (backend_dev)
 
-- [ ] **T2.1** [P] En `lib/planes/mora.ts`: añadir `plazoVigente`, cambiar el estado `descongelada_a_mano` por
+- [x] **T2.1** [P] En `lib/planes/mora.ts`: añadir `plazoVigente`, cambiar el estado `descongelada_a_mano` por
       `con_plazo`, reordenar `estadoDeMora` y actualizar `MORA_TEXTOS` (`conPlazo`, `con_plazo`, `sinPlazo`) (design
       §2). Ampliar `tests/unit/planes/mora.test.ts`.
       *Hecho:* R1, R11 y R12 cubiertos con los casos de design §8.
-- [ ] **T2.2** En `encolar-aviso-mora.ts`, añadir las tres formas nuevas de `AvisoMoraPayload` y su
+- [x] **T2.2** En `encolar-aviso-mora.ts`, añadir las tres formas nuevas de `AvisoMoraPayload` y su
       `dedupeAvisoMora` (design §4.1).
       *Hecho:* `typecheck` en verde.
-- [ ] **T2.3** En `MoraEmpresaRepository` e `IMoraEmpresaRepository`: `darPlazo` y `quitarPlazo` en lugar de
+- [x] **T2.3** En `MoraEmpresaRepository` e `IMoraEmpresaRepository`: `darPlazo` y `quitarPlazo` en lugar de
       `descongelarAMano`, y la víspera del plazo dentro de `encolarRecordatorios` (design §3.1). Enmendar las
       guardias `historial-accion-escrituras-cubiertas` (censo) y `historial-accion-sin-datos-cliente` (dos
       excepciones `SLT-255`). Depende de T1.2, T2.1 y T2.2.
       *Hecho:* `mora-empresa-repository.test.ts` ampliado y en verde contra Postgres real (R2–R5, R8–R10, R15, R18,
       R21), incluido el cruce en paralelo sin `40P01`. Las dos guardias en verde.
-- [ ] **T2.4** En `MoraEmpresaService` e `IMoraEmpresaService`: `darPlazo`, `quitarPlazo` y `datos.plazo`. En
+- [x] **T2.4** En `MoraEmpresaService` e `IMoraEmpresaService`: `darPlazo`, `quitarPlazo` y `datos.plazo`. En
       `lib/types/mora.ts`: `darPlazoSchema`, `quitarPlazoSchema`, los nuevos `*Result` y `MoraEmpresaVista.plazo`
       (design §3.2). Depende de T2.3.
       *Hecho:* `mora-empresa-service.test.ts` en verde (R6, R7, R13).
-- [ ] **T2.5** En `lib/actions/mora-empresa.ts`: `darPlazoEmpresaAction` y `quitarPlazoEmpresaAction` (design §3.3).
+- [x] **T2.5** En `lib/actions/mora-empresa.ts`: `darPlazoEmpresaAction` y `quitarPlazoEmpresaAction` (design §3.3).
       Depende de T2.4.
       *Hecho:* `tests/unit/actions/mora-empresa.test.ts` en verde (R7).
 

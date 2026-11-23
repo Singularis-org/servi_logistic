@@ -13,6 +13,9 @@ import { MoraEmpresaService } from "@/lib/services/MoraEmpresaService";
 // mide: quién pasa (sin permiso, ninguna llamada al repositorio), qué se valida antes de escribir (días, motivo y el
 // rango de la fecha hasta de la decisión P4) y la forma de la lectura del superadmin. Las reglas del congelamiento
 // las miden los tests de la base y del repositorio.
+//
+// SLT-255 (design §3.2; R6, R7, R13): `descongelar` pasa a `darPlazo`, se suma `quitarPlazo`, y la lectura lleva
+// `datos.plazo` (el rango, el valor por defecto del diálogo y el plazo vigente).
 
 const MAESTRO: Actor = { usuarioId: "u-maestro", rol: "maestro", organizacionId: "org-propia" };
 const ADMIN: Actor = { usuarioId: "u-admin", rol: "admin", organizacionId: "org-propia" };
@@ -54,7 +57,8 @@ function repoDoble(over: Partial<Repo> = {}): Repo & IMoraEmpresaRepository {
     estaCongelada: prohibido(),
     moraParaPlataforma: prohibido(),
     fijarGracia: prohibido(),
-    descongelarAMano: prohibido(),
+    darPlazo: prohibido(),
+    quitarPlazo: prohibido(),
     existeEmpresa: vi.fn(async () => true),
     empresasConMora: prohibido(),
     congelarSiVencida: prohibido(),
@@ -72,11 +76,12 @@ function sinLlamadas(repo: Repo) {
   }
 }
 
-describe("MoraEmpresaService — R4: solo el superadmin, y sin leer nada si no lo es", () => {
+describe("MoraEmpresaService — R4 (SLT-255 R7): solo el superadmin, y sin leer nada si no lo es", () => {
   const entradas = {
     moraDeEmpresa: { organizacionId: ORG },
     fijarGracia: { organizacionId: ORG, dias: 15 },
-    descongelar: { organizacionId: ORG, motivo: "Acuerdo de pago", hasta: "2026-11-30" },
+    darPlazo: { organizacionId: ORG, motivo: "Acuerdo de pago", hasta: "2026-11-30" },
+    quitarPlazo: { organizacionId: ORG, motivo: "Pagó por fuera" },
   } as const;
 
   for (const [nombre, actor] of [
@@ -98,7 +103,8 @@ describe("MoraEmpresaService — R4: solo el superadmin, y sin leer nada si no l
   it("con una entrada inválida y sin permiso, sigue siendo forbidden (quién va antes que qué)", async () => {
     const repo = repoDoble();
     expect(await servicio(repo).fijarGracia(MAESTRO, { organizacionId: ORG, dias: 0 })).toEqual({ estado: "forbidden" });
-    expect(await servicio(repo).descongelar(ADMIN, {})).toEqual({ estado: "forbidden" });
+    expect(await servicio(repo).darPlazo(ADMIN, {})).toEqual({ estado: "forbidden" });
+    expect(await servicio(repo).quitarPlazo(MAESTRO, { organizacionId: ORG, motivo: "" })).toEqual({ estado: "forbidden" });
     sinLlamadas(repo);
   });
 });
@@ -144,27 +150,30 @@ describe("MoraEmpresaService.fijarGracia — R3", () => {
   });
 });
 
-describe("MoraEmpresaService.descongelar — R22, decisión P4", () => {
-  it("descongela con el motivo recortado, la fecha hasta y el mismo ahora", async () => {
-    const repo = repoDoble({ descongelarAMano: vi.fn(async () => "ok") });
-    const r = await servicio(repo).descongelar(SUPERADMIN, { organizacionId: ORG, motivo: "  Acuerdo de pago  ", hasta: "2026-11-30" });
-    expect(r).toEqual({ estado: "ok" });
-    expect(repo.descongelarAMano).toHaveBeenCalledWith(ORG, "2026-11-30", "Acuerdo de pago", "u-super", AHORA);
-  });
+describe("MoraEmpresaService.darPlazo — SLT-255 R2-R4, R6, R7", () => {
+  it.each(["descongelada", "prorroga", "sin_cambio"] as const)(
+    "pasa al repositorio el motivo recortado, la fecha hasta y el mismo ahora, y devuelve %s",
+    async (resultado) => {
+      const repo = repoDoble({ darPlazo: vi.fn(async () => resultado) });
+      const r = await servicio(repo).darPlazo(SUPERADMIN, { organizacionId: ORG, motivo: "  Acuerdo de pago  ", hasta: "2026-11-30" });
+      expect(r).toEqual({ estado: resultado });
+      expect(repo.darPlazo).toHaveBeenCalledWith(ORG, "2026-11-30", "Acuerdo de pago", "u-super", AHORA);
+    },
+  );
 
-  it("acepta los dos extremos: hoy y hoy + 60 de la plataforma", async () => {
+  it("R6: acepta los dos extremos, hoy y hoy + 60 de la plataforma", async () => {
     for (const hasta of ["2026-11-24", "2027-01-23"]) {
-      const repo = repoDoble({ descongelarAMano: vi.fn(async () => "ok") });
-      expect(await servicio(repo).descongelar(SUPERADMIN, { organizacionId: ORG, motivo: "m", hasta })).toEqual({ estado: "ok" });
+      const repo = repoDoble({ darPlazo: vi.fn(async () => "prorroga") });
+      expect(await servicio(repo).darPlazo(SUPERADMIN, { organizacionId: ORG, motivo: "m", hasta })).toEqual({ estado: "prorroga" });
     }
   });
 
-  it("hoy es el de la plataforma: a las 23:30 de la plataforma (ya el 25 en UTC) ayer no vale y hoy sí", async () => {
+  it("R6: hoy es el de la plataforma: a las 23:30 de la plataforma (ya el 25 en UTC) ayer no vale y hoy sí", async () => {
     const tarde = new Date("2026-11-25T05:30:00.000Z");
-    const repo = repoDoble({ descongelarAMano: vi.fn(async () => "ok") });
+    const repo = repoDoble({ darPlazo: vi.fn(async () => "prorroga") });
     const s = new MoraEmpresaService(repo, () => tarde, () => GLOBAL);
-    expect(await s.descongelar(SUPERADMIN, { organizacionId: ORG, motivo: "m", hasta: "2026-11-24" })).toEqual({ estado: "ok" });
-    expect(await s.descongelar(SUPERADMIN, { organizacionId: ORG, motivo: "m", hasta: "2026-11-23" })).toMatchObject({
+    expect(await s.darPlazo(SUPERADMIN, { organizacionId: ORG, motivo: "m", hasta: "2026-11-24" })).toEqual({ estado: "prorroga" });
+    expect(await s.darPlazo(SUPERADMIN, { organizacionId: ORG, motivo: "m", hasta: "2026-11-23" })).toMatchObject({
       estado: "validation_error",
     });
   });
@@ -174,9 +183,9 @@ describe("MoraEmpresaService.descongelar — R22, decisión P4", () => {
     ["hoy + 61", "2027-01-24"],
     ["una fecha que no existe", "2026-02-30"],
     ["otro formato", "30/11/2026"],
-  ])("rechaza la fecha hasta %s sin tocar el repositorio", async (_caso, hasta) => {
+  ])("R6: rechaza la fecha hasta %s sin tocar el repositorio", async (_caso, hasta) => {
     const repo = repoDoble();
-    const r = await servicio(repo).descongelar(SUPERADMIN, { organizacionId: ORG, motivo: "Acuerdo", hasta });
+    const r = await servicio(repo).darPlazo(SUPERADMIN, { organizacionId: ORG, motivo: "Acuerdo", hasta });
     expect(r).toEqual({ estado: "validation_error", errores: { hasta: MORA_TEXTOS.plataforma.errores.hasta } });
     sinLlamadas(repo);
   });
@@ -185,30 +194,75 @@ describe("MoraEmpresaService.descongelar — R22, decisión P4", () => {
     ["vacío", ""],
     ["solo espacios", "   "],
     ["de 201 caracteres", "m".repeat(201)],
-  ])("rechaza un motivo %s", async (_caso, motivo) => {
+  ])("R6: rechaza un motivo %s", async (_caso, motivo) => {
     const repo = repoDoble();
-    const r = await servicio(repo).descongelar(SUPERADMIN, { organizacionId: ORG, motivo, hasta: "2026-11-30" });
+    const r = await servicio(repo).darPlazo(SUPERADMIN, { organizacionId: ORG, motivo, hasta: "2026-11-30" });
     expect(r).toEqual({ estado: "validation_error", errores: { motivo: MORA_TEXTOS.plataforma.errores.motivo } });
     sinLlamadas(repo);
   });
 
-  it("acepta un motivo de 200 caracteres", async () => {
-    const repo = repoDoble({ descongelarAMano: vi.fn(async () => "ok") });
-    const r = await servicio(repo).descongelar(SUPERADMIN, { organizacionId: ORG, motivo: "m".repeat(200), hasta: "2026-11-30" });
-    expect(r).toEqual({ estado: "ok" });
+  it("R6: con motivo y fecha mal, un error por campo", async () => {
+    const repo = repoDoble();
+    const r = await servicio(repo).darPlazo(SUPERADMIN, { organizacionId: ORG, motivo: "", hasta: "30/11/2026" });
+    expect(r).toEqual({
+      estado: "validation_error",
+      errores: { motivo: MORA_TEXTOS.plataforma.errores.motivo, hasta: MORA_TEXTOS.plataforma.errores.hasta },
+    });
+    sinLlamadas(repo);
   });
 
-  it("una empresa no congelada responde no_congelada", async () => {
-    const repo = repoDoble({ descongelarAMano: vi.fn(async () => "no_congelada") });
-    const r = await servicio(repo).descongelar(SUPERADMIN, { organizacionId: ORG, motivo: "m", hasta: "2026-11-30" });
-    expect(r).toEqual({ estado: "no_congelada" });
+  it("R6: acepta un motivo de 200 caracteres", async () => {
+    const repo = repoDoble({ darPlazo: vi.fn(async () => "prorroga") });
+    const r = await servicio(repo).darPlazo(SUPERADMIN, { organizacionId: ORG, motivo: "m".repeat(200), hasta: "2026-11-30" });
+    expect(r).toEqual({ estado: "prorroga" });
   });
 
-  it("una empresa que no existe responde not_found, no no_congelada", async () => {
+  it("R7: una empresa que no existe responde not_found sin escribir", async () => {
     const repo = repoDoble({ existeEmpresa: vi.fn(async () => false) });
-    const r = await servicio(repo).descongelar(SUPERADMIN, { organizacionId: ORG, motivo: "m", hasta: "2026-11-30" });
+    const r = await servicio(repo).darPlazo(SUPERADMIN, { organizacionId: ORG, motivo: "m", hasta: "2026-11-30" });
     expect(r).toEqual({ estado: "not_found" });
-    expect(repo.descongelarAMano).not.toHaveBeenCalled();
+    expect(repo.darPlazo).not.toHaveBeenCalled();
+  });
+
+  it("R7: un id que no es uuid responde not_found sin leer", async () => {
+    const repo = repoDoble();
+    expect(await servicio(repo).darPlazo(SUPERADMIN, { organizacionId: "x", motivo: "m", hasta: "2026-11-30" })).toEqual({
+      estado: "not_found",
+    });
+    sinLlamadas(repo);
+  });
+});
+
+describe("MoraEmpresaService.quitarPlazo — SLT-255 R5, R6, R7", () => {
+  it.each(["ok", "sin_plazo"] as const)("pasa el motivo recortado y el ahora, y devuelve %s", async (resultado) => {
+    const repo = repoDoble({ quitarPlazo: vi.fn(async () => resultado) });
+    const r = await servicio(repo).quitarPlazo(SUPERADMIN, { organizacionId: ORG, motivo: "  Pagó por fuera  " });
+    expect(r).toEqual({ estado: resultado });
+    expect(repo.quitarPlazo).toHaveBeenCalledWith(ORG, "Pagó por fuera", "u-super", AHORA);
+  });
+
+  it.each([
+    ["vacío", ""],
+    ["solo espacios", "   "],
+    ["de 201 caracteres", "m".repeat(201)],
+    ["ausente", undefined],
+  ])("R6: rechaza un motivo %s sin tocar el repositorio", async (_caso, motivo) => {
+    const repo = repoDoble();
+    const r = await servicio(repo).quitarPlazo(SUPERADMIN, { organizacionId: ORG, motivo });
+    expect(r).toEqual({ estado: "validation_error", errores: { motivo: MORA_TEXTOS.plataforma.errores.motivo } });
+    sinLlamadas(repo);
+  });
+
+  it("R7: una empresa que no existe responde not_found sin escribir", async () => {
+    const repo = repoDoble({ existeEmpresa: vi.fn(async () => false) });
+    expect(await servicio(repo).quitarPlazo(SUPERADMIN, { organizacionId: ORG, motivo: "m" })).toEqual({ estado: "not_found" });
+    expect(repo.quitarPlazo).not.toHaveBeenCalled();
+  });
+
+  it("R7: un id que no es uuid responde not_found sin leer", async () => {
+    const repo = repoDoble();
+    expect(await servicio(repo).quitarPlazo(SUPERADMIN, { organizacionId: "x", motivo: "m" })).toEqual({ estado: "not_found" });
+    sinLlamadas(repo);
   });
 });
 
@@ -295,7 +349,7 @@ describe("MoraEmpresaService.moraDeEmpresa — R31, R32", () => {
           { facturaId: "f-2", numero: 2, fechaLimite: "2026-11-27", saldo: "250.50", vencida: false },
         ],
         facturasVencidas: [{ facturaId: "f-1", numero: 1, fechaLimite: "2026-11-23", saldo: "1000.00" }],
-        descongelar: { desde: "2026-11-24", hasta: "2027-01-23", porDefecto: "2026-12-01" },
+        plazo: { desde: "2026-11-24", hasta: "2027-01-23", porDefecto: "2026-12-01", vigente: null },
         historial,
       },
     });
@@ -307,16 +361,30 @@ describe("MoraEmpresaService.moraDeEmpresa — R31, R32", () => {
     expect(r).toMatchObject({ estado: "ok", datos: { gracia: { dias: 15, origen: "propia", propia: 15, global: 7 } } });
   });
 
-  it("descongelada a mano: el estado dice hasta cuándo y las vencidas siguen a la vista", async () => {
+  it("SLT-255 R13: con plazo vigente, el estado dice hasta cuándo, el diálogo lo propone y las vencidas siguen a la vista", async () => {
     const repo = repoDoble({ moraParaPlataforma: vi.fn(async () => leida({ descongeladaHasta: "2026-11-30" })) });
     const r = await servicio(repo).moraDeEmpresa(SUPERADMIN, { organizacionId: ORG });
     expect(r).toMatchObject({
       estado: "ok",
       datos: {
-        estado: { estado: "descongelada_a_mano", hasta: "2026-11-30" },
+        estado: { estado: "con_plazo", hasta: "2026-11-30" },
         facturasVencidas: [{ facturaId: "f-1", saldo: "1000.00" }],
+        plazo: { desde: "2026-11-24", hasta: "2027-01-23", porDefecto: "2026-11-30", vigente: "2026-11-30" },
       },
     });
+  });
+
+  it("SLT-255 R13: un plazo ya vencido no es vigente y el diálogo propone hoy + 7", async () => {
+    const repo = repoDoble({ moraParaPlataforma: vi.fn(async () => leida({ descongeladaHasta: "2026-11-23" })) });
+    const r = await servicio(repo).moraDeEmpresa(SUPERADMIN, { organizacionId: ORG });
+    expect(r).toMatchObject({ datos: { plazo: { porDefecto: "2026-12-01", vigente: null } } });
+  });
+
+  it("SLT-255 R13: congelada, el plazo viejo no es vigente aunque su fecha no haya pasado", async () => {
+    const congelada = leida({ congeladaAt: new Date("2026-11-24T06:30:00.000Z"), descongeladaHasta: "2026-11-30" });
+    const repo = repoDoble({ moraParaPlataforma: vi.fn(async () => congelada) });
+    const r = await servicio(repo).moraDeEmpresa(SUPERADMIN, { organizacionId: ORG });
+    expect(r).toMatchObject({ datos: { estado: { estado: "congelada" }, plazo: { porDefecto: "2026-12-01", vigente: null } } });
   });
 
   it("R33: una empresa que no existe responde not_found sin leer su mora", async () => {

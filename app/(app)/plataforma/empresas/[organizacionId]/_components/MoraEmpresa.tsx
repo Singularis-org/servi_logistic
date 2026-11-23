@@ -15,7 +15,7 @@ import { money } from "@/lib/config/moneda";
 import { GRACIA_MAX, GRACIA_MIN, MORA_TEXTOS, MOTIVO_MAX, fechaLegible } from "@/lib/planes/mora";
 import { ACCION_LABELS } from "@/lib/types/historial-accion";
 import type {
-  DescongelarResult,
+  DarPlazoResult,
   EstadoMora,
   FijarGraciaResult,
   FilaHistorialMora,
@@ -78,7 +78,7 @@ function textoDelEstado(estado: EstadoMora): string {
       return TEXTOS.enPlazo(fechaLegible(estado.fechaLimite));
     case "congelada":
       return TEXTOS.congeladaDesde(fecha(estado.desde));
-    case "descongelada_a_mano":
+    case "con_plazo":
       return TEXTOS.descongeladaHasta(fechaLegible(estado.hasta));
     case "al_dia":
     case "vencida":
@@ -87,10 +87,8 @@ function textoDelEstado(estado: EstadoMora): string {
 }
 
 /** El mensaje de un rechazo que no es de un campo. */
-function mensajeDeRechazo(estado: "forbidden" | "not_found" | "no_congelada"): string {
-  if (estado === "forbidden") return T.errores.sinPermiso;
-  if (estado === "not_found") return T.errores.noEncontrada;
-  return T.errores.noCongelada;
+function mensajeDeRechazo(estado: "forbidden" | "not_found"): string {
+  return estado === "forbidden" ? T.errores.sinPermiso : T.errores.noEncontrada;
 }
 
 /** El error de un campo; un texto vacío (campo ya corregido) no es error. */
@@ -104,8 +102,8 @@ export interface MoraEmpresaProps {
   datos: MoraEmpresaVista | null;
   /** `fijarGraciaEmpresaAction` ligada a la empresa de la URL (R3). */
   fijarGracia: (input: { dias: number | null }) => Promise<FijarGraciaResult>;
-  /** `descongelarEmpresaAction` ligada a la empresa de la URL (R22). */
-  descongelar: (input: { motivo: string; hasta: string }) => Promise<DescongelarResult>;
+  /** `darPlazoEmpresaAction` ligada a la empresa de la URL (R22; SLT-255 R2). */
+  descongelar: (input: { motivo: string; hasta: string }) => Promise<DarPlazoResult>;
 }
 
 export function MoraEmpresa({ datos, fijarGracia, descongelar }: Readonly<MoraEmpresaProps>) {
@@ -176,7 +174,7 @@ function ContenidoMora({
 
       {descongelando ? (
         <DialogoDescongelar
-          rango={datos.descongelar}
+          rango={datos.plazo}
           descongelar={descongelar}
           onCerrar={() => setDescongelando(false)}
         />
@@ -387,7 +385,7 @@ function DialogoDescongelar({
   descongelar,
   onCerrar,
 }: {
-  rango: MoraEmpresaVista["descongelar"];
+  rango: MoraEmpresaVista["plazo"];
   descongelar: MoraEmpresaProps["descongelar"];
   onCerrar: () => void;
 }) {
@@ -413,7 +411,7 @@ function DialogoDescongelar({
       setErrores(delCliente);
       return;
     }
-    let r: DescongelarResult;
+    let r: DarPlazoResult;
     try {
       r = await descongelar({ motivo: motivo.trim(), hasta });
     } catch (e) {
@@ -422,7 +420,9 @@ function DialogoDescongelar({
       return;
     }
     switch (r.estado) {
-      case "ok":
+      case "descongelada":
+      case "prorroga":
+      case "sin_cambio":
         onCerrar();
         router.refresh();
         return;
@@ -432,7 +432,6 @@ function DialogoDescongelar({
           setFallo(Object.values(r.errores)[0] ?? TEXTOS.fallo);
         }
         return;
-      case "no_congelada":
       case "forbidden":
       case "not_found":
         setFallo(mensajeDeRechazo(r.estado));

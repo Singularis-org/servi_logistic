@@ -28,7 +28,7 @@ const CONGELADA: EstadoMora = {
   facturas: [FACTURA],
   saldoVencido: "120000.00",
 };
-const DESCONGELADA: EstadoMora = { estado: "descongelada_a_mano", hasta: "2026-11-30" };
+const DESCONGELADA: EstadoMora = { estado: "con_plazo", hasta: "2026-11-30" };
 
 describe("SLT-121 R24 — AvisoMora", () => {
   it("R24: en plazo, la fecha límite como aviso (`status`) y el enlace «Ver facturas» a /mi-plan para el maestro", () => {
@@ -67,9 +67,11 @@ describe("SLT-121 R24 — AvisoMora", () => {
     expect(screen.queryByRole("link")).toBeNull();
   });
 
-  it("R24: descongelada a mano, el aviso (`status`) con la fecha hasta", () => {
+  it("R24 (SLT-255 R11): con plazo, el aviso (`status`) con la fecha hasta", () => {
     render(<AvisoMora estado={DESCONGELADA} rol="admin" />);
-    expect(screen.getByRole("status")).toHaveTextContent("La operación está habilitada hasta el 30/11/2026.");
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Tienes prórroga de pago hasta el 30/11/2026. Si no pagas, la operación se congela la madrugada siguiente.",
+    );
     expect(screen.queryByRole("link")).toBeNull();
   });
 

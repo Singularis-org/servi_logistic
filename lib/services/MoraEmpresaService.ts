@@ -7,14 +7,23 @@ import type { IMoraEmpresaRepository } from "@/lib/interfaces/repositories/IMora
 import type { IMoraEmpresaService } from "@/lib/interfaces/services/IMoraEmpresaService";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import { fechaCalendarioPlataforma } from "@/lib/planes/ciclo";
-import { HASTA_MAX_DIAS, MORA_TEXTOS, estadoDeMora, estaVencida, type EstadoMora } from "@/lib/planes/mora";
 import {
-  descongelarSchema,
+  HASTA_MAX_DIAS,
+  MORA_TEXTOS,
+  estadoDeMora,
+  estaVencida,
+  plazoVigente,
+  type EstadoMora,
+} from "@/lib/planes/mora";
+import {
+  darPlazoSchema,
   fijarGraciaSchema,
   moraDeEmpresaSchema,
-  type DescongelarResult,
+  quitarPlazoSchema,
+  type DarPlazoResult,
   type FijarGraciaResult,
   type MoraDeEmpresaResult,
+  type QuitarPlazoResult,
 } from "@/lib/types/mora";
 import { sumarDiasCalendario } from "@/lib/utils/calendario-zona";
 
@@ -22,14 +31,13 @@ import { sumarDiasCalendario } from "@/lib/utils/calendario-zona";
 // (R4: ningún rol de empresa llega a la base, ni para un error de validación), luego qué (zod), y al final el
 // repositorio. Las reglas del congelamiento las decide la base; aquí solo el rango de las entradas.
 //
-// `not_found` antes de escribir: `fijarGracia` del repositorio lanza sin empresa y `descongelarAMano` respondería
-// `no_congelada`, que a la pantalla le diría algo falso.
+// `not_found` antes de escribir: `fijarGracia`, `darPlazo` y `quitarPlazo` del repositorio lanzan sin empresa.
 
 const FORBIDDEN = { estado: "forbidden" } as const;
 const NOT_FOUND = { estado: "not_found" } as const;
 const ERRORES = MORA_TEXTOS.plataforma.errores;
 
-/** El valor por defecto de la fecha hasta del diálogo «Descongelar» (design §7.2). */
+/** SLT-255 R13: el valor por defecto de la fecha hasta del diálogo «Dar plazo hasta…» sin plazo vigente. */
 const HASTA_POR_DEFECTO_DIAS = 7;
 
 function esSuperadmin(actor: Actor | null): actor is Actor {
@@ -46,14 +54,10 @@ function erroresDeCampo(error: z.ZodError): Record<string, string> {
   return errores;
 }
 
-/** Hoy y hoy + 60, calendario de la plataforma (decisión P4). */
-function rangoDeDescongelar(ahora: Date) {
+/** SLT-255 R6: hoy y hoy + 60, calendario de la plataforma. */
+function rangoDelPlazo(ahora: Date) {
   const desde = fechaCalendarioPlataforma(ahora);
-  return {
-    desde,
-    hasta: sumarDiasCalendario(desde, HASTA_MAX_DIAS),
-    porDefecto: sumarDiasCalendario(desde, HASTA_POR_DEFECTO_DIAS),
-  };
+  return { desde, hasta: sumarDiasCalendario(desde, HASTA_MAX_DIAS) };
 }
 
 export class MoraEmpresaService implements IMoraEmpresaService {
@@ -89,6 +93,9 @@ export class MoraEmpresaService implements IMoraEmpresaService {
       saldo: f.saldo,
       vencida: estaVencida(f, ahora),
     }));
+    // SLT-255 R13: el diálogo propone el plazo vigente, si lo hay, o hoy + 7.
+    const rango = rangoDelPlazo(ahora);
+    const vigente = plazoVigente(mora, ahora);
     return {
       estado: "ok",
       datos: {
@@ -103,7 +110,7 @@ export class MoraEmpresaService implements IMoraEmpresaService {
         facturasVencidas: facturas
           .filter((f) => f.vencida)
           .map((f) => ({ facturaId: f.facturaId, numero: f.numero, fechaLimite: f.fechaLimite, saldo: f.saldo })),
-        descongelar: rangoDeDescongelar(ahora),
+        plazo: { ...rango, porDefecto: vigente ?? sumarDiasCalendario(rango.desde, HASTA_POR_DEFECTO_DIAS), vigente },
         historial: mora.historial,
       },
     };
@@ -121,22 +128,34 @@ export class MoraEmpresaService implements IMoraEmpresaService {
     return { estado: r };
   }
 
-  async descongelar(actor: Actor | null, input: unknown): Promise<DescongelarResult> {
+  async darPlazo(actor: Actor | null, input: unknown): Promise<DarPlazoResult> {
     if (!esSuperadmin(actor)) return FORBIDDEN;
     if (!moraDeEmpresaSchema.safeParse(input).success) return NOT_FOUND;
-    const parsed = descongelarSchema.safeParse(input);
+    const parsed = darPlazoSchema.safeParse(input);
     if (!parsed.success) return { estado: "validation_error", errores: erroresDeCampo(parsed.error) };
     const { organizacionId, motivo, hasta } = parsed.data;
 
-    // Decisión P4: el rango es del calendario de la plataforma, con el mismo «ahora» que la escritura.
+    // R6: el rango es del calendario de la plataforma, con el mismo «ahora» que la escritura.
     const ahora = this.ahora();
-    const rango = rangoDeDescongelar(ahora);
+    const rango = rangoDelPlazo(ahora);
     if (hasta < rango.desde || hasta > rango.hasta) {
       return { estado: "validation_error", errores: { hasta: ERRORES.hasta } };
     }
     if (!(await this.repo.existeEmpresa(organizacionId))) return NOT_FOUND;
 
-    const r = await this.repo.descongelarAMano(organizacionId, hasta, motivo, actor.usuarioId, ahora);
+    const r = await this.repo.darPlazo(organizacionId, hasta, motivo, actor.usuarioId, ahora);
+    return { estado: r };
+  }
+
+  async quitarPlazo(actor: Actor | null, input: unknown): Promise<QuitarPlazoResult> {
+    if (!esSuperadmin(actor)) return FORBIDDEN;
+    if (!moraDeEmpresaSchema.safeParse(input).success) return NOT_FOUND;
+    const parsed = quitarPlazoSchema.safeParse(input);
+    if (!parsed.success) return { estado: "validation_error", errores: erroresDeCampo(parsed.error) };
+    const { organizacionId, motivo } = parsed.data;
+    if (!(await this.repo.existeEmpresa(organizacionId))) return NOT_FOUND;
+
+    const r = await this.repo.quitarPlazo(organizacionId, motivo, actor.usuarioId, this.ahora());
     return { estado: r };
   }
 }

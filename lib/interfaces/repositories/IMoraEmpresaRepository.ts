@@ -60,23 +60,31 @@ export interface IMoraEmpresaRepository {
     ahora: Date,
     gracia: number,
   ): Promise<"ok" | "sin_cambio">;
-  /** Superadmin: descongela a mano hasta `hasta` (`AAAA-MM-DD`), con su motivo en el historial (R22, R30). */
-  descongelarAMano(
+  /**
+   * SLT-255 R2-R4, R15: da plazo hasta `hasta` (`AAAA-MM-DD`). Congelada: la descongela a mano (`descongelada`).
+   * No congelada: le deja una prórroga (`prorroga`), o `sin_cambio` si ya tenía vigente esa misma fecha.
+   */
+  darPlazo(
     organizacionId: string,
     hasta: string,
     motivo: string,
     actorUsuarioId: string,
     ahora: Date,
-  ): Promise<"ok" | "no_congelada">;
+  ): Promise<"descongelada" | "prorroga" | "sin_cambio">;
+  /** SLT-255 R5, R15: quita el plazo vigente de una no congelada; `sin_plazo` si no lo hay o está congelada. */
+  quitarPlazo(organizacionId: string, motivo: string, actorUsuarioId: string, ahora: Date): Promise<"ok" | "sin_plazo">;
   /**
-   * Superadmin: si la empresa existe. El servicio lo pregunta antes de `fijarGracia` (que lanza sin ella) y de
-   * `descongelarAMano` (que diría `no_congelada`), para responder `not_found`.
+   * Superadmin: si la empresa existe. El servicio lo pregunta antes de `fijarGracia`, `darPlazo` y `quitarPlazo`
+   * (que lanzan sin ella), para responder `not_found`.
    */
   existeEmpresa(organizacionId: string): Promise<boolean>;
   /** Corrida: las empresas con alguna factura cerrada con saldo o congeladas (§4.1). */
   empresasConMora(): Promise<string[]>;
   /** Corrida: congela si toca, con su historial y su correo (R7-R9, R27, R30). */
   congelarSiVencida(organizacionId: string, ahora: Date, gracia: number): Promise<ResultadoCongelar>;
-  /** Corrida: encola el recordatorio de cada factura cuya fecha límite es mañana (R26). Cuántos se encolaron. */
+  /**
+   * Corrida: encola el recordatorio de cada factura cuya fecha límite es mañana (R26) y, si el plazo vence mañana con
+   * vencidas, el de su víspera (SLT-255 R18). Cuántos se encolaron.
+   */
   encolarRecordatorios(organizacionId: string, ahora: Date, gracia: number): Promise<number>;
 }
