@@ -82,6 +82,8 @@ el leader debe confirmarlo antes de aprobar (T0).
 
 - **T0** — (leader) Confirmar en los logs de Vercel que los usuarios de los 3 errores son `superadmin`.
   Si alguno es de empresa, la causa no es esta: se para y se vuelve al diagnóstico.
+  **ABIERTA (2026-11-23):** spec aprobado por Carlos sin confirmar T0. No bloquea la implementación;
+  si los logs muestran un usuario de empresa, se reabre el diagnóstico.
 - **T1** — Test rojo. Archivo nuevo `tests/components/OrdenesPageSuperadmin.test.tsx`:
   - dobla `resolveActorFromSession` a `{ rol: "superadmin" }`;
   - dobla `zonaDelBorde` para que lance `EmpresaNoResuelta("Pais","zonaHoraria")`, como en producción;

@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { AppPage } from "@/components/shared/AppPage";
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
 import { esAccesoTotal } from "@/lib/auth/acceso-total";
+import { esPlataforma } from "@/lib/auth/plataforma";
 // FICHA 424 (R20): la MISMA función que autoriza el borrado en el servidor decide si la pantalla
 // lo ofrece. Es pura (sin Prisma, sin `next/`, sin entorno), como `esAccesoTotal`.
 import { resolverAlcanceBorradoOrden } from "@/lib/services/alcance-borrado-orden";
@@ -86,7 +87,11 @@ export default async function OrdenesPage() {
   // opera en `/mis-asignaciones` y el adminSatelite en `/recepcion-satelite`; ninguno
   // debe alcanzar el listado plano de todas las ordenes aqui (defensa junto al
   // acotamiento server-side de OrdenService.listar).
-  if (rol === RolValue.mensajero || rol === RolValue.adminSatelite) notFound();
+  // SLT-250: el superadmin no tiene empresa; sin esta puerta caía en `zonaDelBorde()` (abajo) con
+  // `EmpresaNoResuelta`, en vez del 404 que dan las demás páginas de empresa.
+  if (rol === RolValue.mensajero || rol === RolValue.adminSatelite || (rol !== undefined && esPlataforma(rol))) {
+    notFound();
+  }
   const puedeCargarMasiva = rol === RolValue.adminTienda;
   // Escaneo del QR de la etiqueta para saltar a la orden: solo adminTienda.
   const puedeEscanearQr = rol === RolValue.adminTienda;
