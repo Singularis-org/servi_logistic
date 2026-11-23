@@ -62,6 +62,9 @@ exacta `true` (sin recortar espacios y distinguiendo mayúsculas).
 - **R10** — El sistema DEBE documentar `AMBIENTE_PRUEBAS` en `.env.example` como `AMBIENTE_PRUEBAS=`
   sin valor, con un comentario que diga que solo se pone `true` en el proyecto Vercel del sandbox
   (lo vigila además `tests/unit/guards/env-example-sin-valores.guardia.test.ts`).
+- **R11** — CUANDO la franja se pinta, el sistema DEBE dejarla en el flujo normal del documento: se
+  desplaza con el scroll y NO usa `position: sticky` ni `fixed` ni un `z-index` propio, de modo que
+  no tapa la barra lateral, las barras pegadas, los `Sheet` ni el aviso de versión nueva.
 
 ### Cobertura de las decisiones cerradas
 
@@ -69,7 +72,7 @@ exacta `true` (sin recortar espacios y distinguiendo mayúsculas).
 |---|---|
 | Detección por `AMBIENTE_PRUEBAS` exacto `true`, no `VERCEL_ENV` | R1, R2, R3, R10 |
 | Layout raíz, todas las pantallas | R5 |
-| No se cierra, fija arriba, también en celular y PWA | R4, R5, R8, R9 (el comportamiento al desplazar: pregunta abierta P1) |
+| No se cierra, fija arriba, también en celular y PWA | R4, R5, R8, R9, R11 |
 | Texto «Sandbox», solo eso | R1, R4 |
 | La guía de integración no cambia | Fuera de alcance: ningún archivo de `docs/ayuda/` en `## Archivos esperados` |
 | Crons sin cambio | Fuera de alcance: ningún archivo de crons en `## Archivos esperados` |
@@ -92,7 +95,7 @@ exacta `true` (sin recortar espacios y distinguiendo mayúsculas).
   exacto «Sandbox», cero `button`/`a`/elementos enfocables), R6 (sin `aria-hidden`, sin
   `role="alert"` ni `aria-live="assertive"`), R7 (clases fijas, sin `text-brand-light` ni
   `text-brand`, y `contraste("#111111", "#FFD000") >= 4.5`), R8 (el estilo contiene
-  `env(safe-area-inset-top)`), R9 (`shrink-0`).
+  `env(safe-area-inset-top)`), R9 (`shrink-0`), R11 (sin clases `sticky`, `fixed` ni `z-*`).
 - [ ] **T3** (depende de T2) — `app/layout.tsx`: `<BannerAmbientePruebas />` como primer hijo de
   `<body>`, antes de `<ZodEnEspanol />` y de `{children}`, con un comentario `SLT-257`. **Hecho:**
   `tests/unit/config/banner-ambiente-layout.test.ts` en verde: lee el fuente del layout (como
@@ -123,22 +126,7 @@ exacta `true` (sin recortar espacios y distinguiendo mayúsculas).
 
 ## Preguntas abiertas
 
-- **P1 — ¿La franja se queda pegada arriba al desplazar, o se va con el scroll?** «Fija arriba,
-  siempre visible» admite las dos lecturas, y cada una choca con capas que ya existen:
-  - *Pegada (`sticky`/`fixed`):* para verse siempre necesita un `z-index` por encima de la barra
-    lateral de escritorio (`components/ui/sidebar.tsx:233`, `fixed inset-y-0 z-10 h-svh`), de los
-    `sticky top-0` de algunas pantallas (`analitica`, `BuscadorFiltros`, `LandingNav` z-50) y del
-    aviso de versión nueva (`components/shared/AvisoVersionNueva.tsx`, `fixed top-0 z-50`). Por
-    encima de todo, tapa el borde superior de esas capas (la cabecera de la barra lateral, el botón
-    de cerrar de los `Sheet` en el celular); por debajo de los modales y `Sheet` (z-50), deja de
-    verse mientras están abiertos. Evitar el solape pide desplazar esas capas el alto de la franja,
-    lo que toca `components/ui/sidebar.tsx` y otros archivos compartidos.
-  - *En el flujo (se va con el scroll):* no tapa nada ni toca otros archivos; está siempre al
-    cargar cada pantalla, pero no al bajar. En escritorio, la barra lateral fija cubre la parte
-    izquierda de la franja; el texto centrado queda visible en la zona de contenido.
-
-  Los requisitos R1-R10 valen para las dos. Según la respuesta se añade un R11 (y, si es
-  «pegada sin solaparse», crecen `## Archivos esperados`).
+Ninguna. P1 (pegada o con el scroll) la cerró el humano el 2026-11-23: se va con el scroll (R11).
 
 ## Decisiones cerradas (no reabrir)
 
@@ -152,3 +140,4 @@ exacta `true` (sin recortar espacios y distinguiendo mayúsculas).
 | 2026-11-23 | ¿Crons más espaciados en el sandbox? | No por ahora. Se revisa el costo en Usage de Vercel tras una semana. |
 | 2026-11-23 | ¿E2E? | No: no es un flujo crítico. Test del componente: con `true` se pinta; sin la variable o con otro valor, no. |
 | 2026-11-23 | ¿Ruta? | Ligera: un solo `requirements.md` con EARS, tasks y archivos esperados. |
+| 2026-11-23 | ¿La franja queda pegada al desplazar o se va con el scroll? (P1 de `spec_author`) | Se va con el scroll: en el flujo, sin `sticky`/`fixed`, no tapa nada ni toca componentes compartidos (R11). |
