@@ -20,6 +20,7 @@ import type { OrigenFlete } from "@/lib/utils/ingreso-empresa";
 import type { EtiquetasGeograficas } from "@/lib/types/pais";
 import { useEtiquetasGeograficas } from "@/hooks/use-etiquetas-geograficas";
 import { useMonedaDelPais } from "@/hooks/use-moneda-del-pais";
+import { IMPUESTO_ROTULO } from "@/lib/constants/impuesto-rotulo";
 // SLT-56 (R19/R20) — la marca «Ajustado» con su historial. Vive en su propio archivo: lleva un
 // popover, y este archivo pinta nombres de estado (guardia `estado-con-info`, brazo d).
 import { MarcaAjustado } from "./MarcaAjustado";
@@ -461,11 +462,24 @@ export const TARIFA_ESPECIAL_DEV_LABEL = "Tarifa especial devuelta";
 // primera corrección. `tests/unit/guards/flete-por-rechazo-censo.guardia.test.ts` vigila que
 // ningún archivo de `app/` vuelva a decir «flete de devolución» ni «flete devuelto».
 export const FLETE_LABEL = "Flete";
-export const IVA_FLETE_LABEL = "IVA flete";
+/** SLT-244 (R6): «<impuesto> flete», con el nombre del impuesto del país. */
+export function impuestoFleteLabel(impuesto: string): string {
+  return `${impuesto} flete`;
+}
+/** SLT-244: el código sin montar sigue leyendo el rótulo de la plataforma (mismo texto de siempre). */
+export const IVA_FLETE_LABEL = impuestoFleteLabel(IMPUESTO_ROTULO);
 export const FLETE_RECHAZO_LABEL = "Flete por devolución a origen";
-export const IVA_FLETE_RECHAZO_LABEL = "IVA del flete por devolución a origen";
+/** SLT-244 (R6): «<impuesto> del flete por devolución a origen». */
+export function impuestoFleteRechazoLabel(impuesto: string): string {
+  return `${impuesto} del flete por devolución a origen`;
+}
+export const IVA_FLETE_RECHAZO_LABEL = impuestoFleteRechazoLabel(IMPUESTO_ROTULO);
 export const COMISION_COD_LABEL = "Comisión COD";
-export const IVA_COMISION_LABEL = "IVA comisión";
+/** SLT-244 (R6): «<impuesto> comisión». */
+export function impuestoComisionLabel(impuesto: string): string {
+  return `${impuesto} comisión`;
+}
+export const IVA_COMISION_LABEL = impuestoComisionLabel(IMPUESTO_ROTULO);
 /**
  * Los cuatro nombres de COLUMNA de la tabla de precios: la misma zona paga distinto dentro y
  * fuera del GAM, así que son cuatro cobros POSIBLES y no dos. Coinciden a propósito con los

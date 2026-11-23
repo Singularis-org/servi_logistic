@@ -1,6 +1,7 @@
 "use client";
 
-import { money } from "@/lib/config/moneda";
+import { useMonedaDelPais } from "@/hooks/use-moneda-del-pais";
+import { formatearMontoEn, SIN_MONTO_RAYA } from "@/lib/config/moneda";
 import { esMontoNegativo } from "@/app/(app)/cierres-admin/_components/cierre-detalle-shared";
 import { cn } from "@/lib/utils";
 
@@ -26,6 +27,7 @@ export interface DineroCierreProps {
 }
 
 export function DineroCierre({ dinero }: Readonly<DineroCierreProps>) {
+  const moneda = useMonedaDelPais();
   const conBarra = dinero.reparto.every((p) => p.porcentaje !== null);
   return (
     <div className="flex flex-col gap-4">
@@ -50,7 +52,7 @@ export function DineroCierre({ dinero }: Readonly<DineroCierreProps>) {
             <li key={p.label} className="flex items-center gap-1.5">
               <span aria-hidden="true" className={cn("size-2.5 rounded-sm", COLOR_PARTE[i % COLOR_PARTE.length])} />
               {p.label}{" "}
-              <strong className="font-semibold text-foreground tabular-nums">{money(p.monto)}</strong>
+              <strong className="font-semibold text-foreground tabular-nums">{formatearMontoEn(moneda, p.monto, SIN_MONTO_RAYA)}</strong>
               {p.porcentaje !== null ? ` (${p.porcentaje} %)` : null}
             </li>
           ))}
@@ -90,7 +92,7 @@ export function DineroCierre({ dinero }: Readonly<DineroCierreProps>) {
                     <th scope="row" className="py-2.5 text-left font-normal">
                       {t.tiendaNombre}
                     </th>
-                    <td className="py-2.5 text-right tabular-nums">{money(t.recaudado)}</td>
+                    <td className="py-2.5 text-right tabular-nums">{formatearMontoEn(moneda, t.recaudado, SIN_MONTO_RAYA)}</td>
                     {/* SLT-169 (R627): una sola cifra con su signo; negativa, en rojo y «(la tienda debe)». */}
                     <td
                       className={cn(
@@ -98,7 +100,7 @@ export function DineroCierre({ dinero }: Readonly<DineroCierreProps>) {
                         esMontoNegativo(t.pagoTienda) && "text-danger-strong",
                       )}
                     >
-                      {money(t.pagoTienda)}
+                      {formatearMontoEn(moneda, t.pagoTienda, SIN_MONTO_RAYA)}
                       {esMontoNegativo(t.pagoTienda) ? ` ${TIENDA_DEBE(1)}` : null}
                     </td>
                   </tr>

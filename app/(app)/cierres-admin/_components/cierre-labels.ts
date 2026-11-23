@@ -180,11 +180,19 @@ export const FULFILLMENT_COL = "Fulfillment";
 // Conceptos AGRUPADOS (cada uno con su IVA incluido): así se leen en tablas y paneles.
 export const FLETE_CON_IVA_LABEL = "Flete + IVA";
 export const COMISION_CON_IVA_LABEL = "Comisión + IVA";
-export const FLETE_DEV_CON_IVA_LABEL = "Flete por devolución a origen + IVA";
+/** SLT-244 (R6): con el nombre del impuesto del país. La constante es el rótulo de la plataforma. */
+export function fleteDevConImpuestoLabel(impuesto: string): string {
+  return `Flete por devolución a origen + ${impuesto}`;
+}
+export const FLETE_DEV_CON_IVA_LABEL = fleteDevConImpuestoLabel(IMPUESTO_ROTULO);
 // SLT-54 (R65): en el modelo nuevo ese mismo concepto suma también reprogramado, novedad e incidente
 // (SLT-52 R29). Llamarlo «devolución a origen» diría que se cobró una que no hubo.
 export const FLETE_NO_ENTREGADAS_LABEL = "Flete de gestiones no entregadas";
-export const FLETE_NO_ENTREGADAS_CON_IVA_LABEL = `${FLETE_NO_ENTREGADAS_LABEL} + IVA`;
+/** SLT-244 (R6): con el nombre del impuesto del país. La constante es el rótulo de la plataforma. */
+export function fleteNoEntregadasConImpuestoLabel(impuesto: string): string {
+  return `${FLETE_NO_ENTREGADAS_LABEL} + ${impuesto}`;
+}
+export const FLETE_NO_ENTREGADAS_CON_IVA_LABEL = fleteNoEntregadasConImpuestoLabel(IMPUESTO_ROTULO);
 // Menor 2 de la revisión F2.2: en el nuevo tampoco se descuentan los fletes de reprogramado, novedad e
 // incidente. `PAGO_TIENDA_NOTA` es cierta y completa solo en el viejo, donde esos no se cobran.
 export const PAGO_TIENDA_NOTA_MODELO_NUEVO =
@@ -199,18 +207,29 @@ export function fleteNoEntregaLabel(resultado: CierreResultado): string {
   if (resultado === "devolucion_a_origen_por_rechazo") return "Flete por devolución a origen";
   return `Flete por ${nombreDeResultado(resultado).toLowerCase()}`;
 }
-/** Su IVA, en la forma de `IVA_FLETE_RECHAZO_LABEL`. */
-export function ivaFleteNoEntregaLabel(resultado: CierreResultado): string {
+/** Su impuesto, en la forma de `impuestoFleteRechazoLabel`. SLT-244 (R6): con el del país. */
+export function impuestoFleteNoEntregaLabel(resultado: CierreResultado, impuesto: string): string {
   const nombre = fleteNoEntregaLabel(resultado);
-  return `IVA del ${nombre.charAt(0).toLowerCase()}${nombre.slice(1)}`;
+  return `${impuesto} del ${nombre.charAt(0).toLowerCase()}${nombre.slice(1)}`;
 }
-/** R65, la fila de una gestión. En el viejo, el rótulo de siempre. */
+/** Su IVA, en la forma de `IVA_FLETE_RECHAZO_LABEL` (el rótulo de la plataforma). */
+export function ivaFleteNoEntregaLabel(resultado: CierreResultado): string {
+  return impuestoFleteNoEntregaLabel(resultado, IMPUESTO_ROTULO);
+}
+/** R65, la fila de una gestión. En el viejo, el rótulo de siempre. SLT-244 (R6): con el impuesto del país. */
+export function fleteDevConImpuestoDeGestion(
+  g: Pick<CierreDetalleGestion, "resultado" | "ingresoEmpresa">,
+  impuesto: string,
+): string {
+  return g.ingresoEmpresa?.tarifaModelo === "nuevo"
+    ? `${fleteNoEntregaLabel(g.resultado)} + ${impuesto}`
+    : fleteDevConImpuestoLabel(impuesto);
+}
+/** `fleteDevConImpuestoDeGestion` con el rótulo de la plataforma, para el código sin montar. */
 export function fleteDevConIvaDeGestion(
   g: Pick<CierreDetalleGestion, "resultado" | "ingresoEmpresa">,
 ): string {
-  return g.ingresoEmpresa?.tarifaModelo === "nuevo"
-    ? `${fleteNoEntregaLabel(g.resultado)} + IVA`
-    : FLETE_DEV_CON_IVA_LABEL;
+  return fleteDevConImpuestoDeGestion(g, IMPUESTO_ROTULO);
 }
 /**
  * R65, los totales: los paneles no reciben el modelo, y lo dicen sus gestiones. Basta con una: un cierre

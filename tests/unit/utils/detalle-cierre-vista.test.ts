@@ -35,6 +35,11 @@ import type {
   CierrePasadoDTO,
   CierreRechazoDeTienda,
 } from "@/lib/interfaces/services/ICierreDiaService";
+import { MONEDA_PLATAFORMA } from "@/lib/config/moneda";
+import { IMPUESTO_ROTULO } from "@/lib/constants/impuesto-rotulo";
+
+/** SLT-244 (R9): la moneda y el impuesto de la plataforma; con ellos los textos son los de siempre. */
+const PAIS_PLATAFORMA = { moneda: MONEDA_PLATAFORMA, impuesto: IMPUESTO_ROTULO };
 
 // SLT-95 «Rediseño del detalle de cierre (mensajero y bodega)», S1 (T1.1) — la lógica pura del
 // detalle único. Los números son los de `design.md > Números escritos a mano` y TODOS los
@@ -118,7 +123,7 @@ const valores = (c: { label: string; valor: string | null }[]) => c.map((x) => [
 describe("cifrasDe (R6, R8)", () => {
   // SLT-154 (R471, R477): la satélite ya no ve estas cuatro (ver «SLT-154» abajo); la central, sí.
   it("central: cuatro cifras, en orden, cada una del campo exacto", () => {
-    expect(valores(cifrasDe("mensajero", "central", MENSAJERO))).toEqual([
+    expect(valores(cifrasDe("mensajero", "central", MENSAJERO, PAIS_PLATAFORMA))).toEqual([
       ["Recaudado", "100000.00"],
       ["Se le paga hoy a la tienda", "92090.00"],
       ["Pago al mensajero", "3000.00"],
@@ -127,7 +132,7 @@ describe("cifrasDe (R6, R8)", () => {
   });
 
   it("el mensajero ve tres: Recaudado, Gestiones y Tu ganancia", () => {
-    const cifras = cifrasDe("mensajero", "mensajero", { ...MENSAJERO, empresa: null });
+    const cifras = cifrasDe("mensajero", "mensajero", { ...MENSAJERO, empresa: null }, PAIS_PLATAFORMA);
     expect(valores(cifras)).toEqual([
       ["Recaudado", "100000.00"],
       ["Gestiones", "19"],
@@ -137,7 +142,7 @@ describe("cifrasDe (R6, R8)", () => {
   });
 
   it("bodega: la cifra 2 es «Debe llegar a la central» y la 3 «Pago a mensajeros»", () => {
-    expect(valores(cifrasDe("bodega", "central", BODEGA))).toEqual([
+    expect(valores(cifrasDe("bodega", "central", BODEGA, PAIS_PLATAFORMA))).toEqual([
       ["Recaudado", "100000.00"],
       ["Debe llegar a la central", "96500.00"],
       ["Pago a mensajeros", "3000.00"],
@@ -146,13 +151,13 @@ describe("cifrasDe (R6, R8)", () => {
   });
 
   it("las líneas de contexto salen de conteos y strings del servidor (R8)", () => {
-    expect(cifrasDe("mensajero", "central", MENSAJERO).map((c) => c.contexto)).toEqual([
+    expect(cifrasDe("mensajero", "central", MENSAJERO, PAIS_PLATAFORMA).map((c) => c.contexto)).toEqual([
       "",
       "2 tiendas",
       "19 gestiones · 1 ajustada",
       "sin IVA, ya restados mensajero y bodega",
     ]);
-    expect(cifrasDe("bodega", "central", BODEGA).map((c) => c.contexto)).toEqual([
+    expect(cifrasDe("bodega", "central", BODEGA, PAIS_PLATAFORMA).map((c) => c.contexto)).toEqual([
       "",
       "Aún no se marca recibido",
       "2 mensajeros · 2 ajustes",
@@ -168,20 +173,20 @@ describe("cifrasDe (R6, R8)", () => {
         ...MENSAJERO,
         empresa: { ...MENSAJERO.empresa!, pagoTienda },
         conteos: { ...MENSAJERO.conteos, tiendas },
-      })[1];
+      }, PAIS_PLATAFORMA)[1];
     const una = conPago("-13205.05", 1);
     expect([una.valor, una.sufijo, una.contexto]).toEqual(["-13205.05", "(la tienda debe)", "1 tienda"]);
     const dos = conPago("-13205.05", 2);
     expect([dos.sufijo, dos.contexto]).toEqual(["(las tiendas deben)", "2 tiendas"]);
     expect(conPago("92090.00", 2).sufijo).toBeUndefined();
     expect(conPago("0.00", 1).sufijo).toBeUndefined();
-    expect(cifrasDe("mensajero", "central", MENSAJERO).map((c) => c.contexto).join(" ")).not.toMatch(/gana/);
+    expect(cifrasDe("mensajero", "central", MENSAJERO, PAIS_PLATAFORMA).map((c) => c.contexto).join(" ")).not.toMatch(/gana/);
   });
 
   it("CONTRAPRUEBA: con otro `netoEmpresa` en el doble, la cifra 4 cambia con él", () => {
     const otro = { ...MENSAJERO, empresa: { ...MENSAJERO.empresa!, netoEmpresa: "-250.00" } };
-    expect(cifrasDe("mensajero", "central", otro)[3].valor).toBe("-250.00");
-    expect(cifrasDe("bodega", "central", { ...BODEGA, netoEmpresa: "-250.00" })[3].valor).toBe("-250.00");
+    expect(cifrasDe("mensajero", "central", otro, PAIS_PLATAFORMA)[3].valor).toBe("-250.00");
+    expect(cifrasDe("bodega", "central", { ...BODEGA, netoEmpresa: "-250.00" }, PAIS_PLATAFORMA)[3].valor).toBe("-250.00");
   });
 });
 
@@ -366,7 +371,7 @@ describe("lineasDinero (R14, R15, R16)", () => {
     c.lineas.map((l) => [l.label, l.monto, l.signo, l.tipo]);
 
   it("mensajero: reparto, lo que se factura y lo que le queda, con su signo (SLT-169 R624, R626)", () => {
-    const d = lineasDinero("mensajero", MENSAJERO)!;
+    const d = lineasDinero("mensajero", MENSAJERO, PAIS_PLATAFORMA)!;
     // R624: las dos partes suman lo recaudado (92.090 + 7.910 = 100.000).
     expect(d.reparto.map((p) => [p.label, p.monto, p.porcentaje])).toEqual([
       ["Se le paga hoy a la tienda", "92090.00", null],
@@ -393,26 +398,26 @@ describe("lineasDinero (R14, R15, R16)", () => {
 
   it("el modelo nuevo rotula la no entrega y la bodega como hoy", () => {
     const nuevo = { ...MENSAJERO, empresa: { ...MENSAJERO.empresa!, modeloNuevo: true } };
-    const d = lineasDinero("mensajero", nuevo)!;
+    const d = lineasDinero("mensajero", nuevo, PAIS_PLATAFORMA)!;
     expect(d.cuentas[0].lineas[2].label).toBe("Flete de gestiones no entregadas + IVA");
     expect(d.cuentas[1].lineas[3].label).toBe("Ingreso de bodega");
   });
 
   it("«Por tienda» solo con dos o más tiendas", () => {
-    expect(lineasDinero("mensajero", MENSAJERO)!.porTienda?.map((t) => t.tiendaNombre)).toEqual([
+    expect(lineasDinero("mensajero", MENSAJERO, PAIS_PLATAFORMA)!.porTienda?.map((t) => t.tiendaNombre)).toEqual([
       "Tienda Norte",
       "Tienda Sur",
     ]);
     const una = { ...MENSAJERO, empresa: { ...MENSAJERO.empresa!, partesPorTienda: MENSAJERO.empresa!.partesPorTienda.slice(0, 1) } };
-    expect(lineasDinero("mensajero", una)!.porTienda).toBeNull();
+    expect(lineasDinero("mensajero", una, PAIS_PLATAFORMA)!.porTienda).toBeNull();
   });
 
   it("sin el dinero de la empresa (audiencia mensajero) no hay «Dinero» que pintar", () => {
-    expect(lineasDinero("mensajero", { ...MENSAJERO, empresa: null })).toBeNull();
+    expect(lineasDinero("mensajero", { ...MENSAJERO, empresa: null }, PAIS_PLATAFORMA)).toBeNull();
   });
 
   it("bodega: lo que va a la central, lo que se factura y lo que le queda, con − mensajeros y − satélite", () => {
-    const d = lineasDinero("bodega", BODEGA);
+    const d = lineasDinero("bodega", BODEGA, PAIS_PLATAFORMA);
     expect(d.reparto.map((p) => [p.label, p.monto])).toEqual([
       ["Debe llegar a la central", "96500.00"],
       ["Pago a mensajeros", "3000.00"],
@@ -560,7 +565,7 @@ describe("SLT-100 — modoAdminDe (R79)", () => {
 });
 
 describe("SLT-100 — la nota del origen del ingreso de bodega (R81, D25)", () => {
-  const lineaBodega = (v: DetalleMensajeroVista) => lineasDinero("mensajero", v)!.cuentas[1].lineas[3];
+  const lineaBodega = (v: DetalleMensajeroVista) => lineasDinero("mensajero", v, PAIS_PLATAFORMA)!.cuentas[1].lineas[3];
 
   it("modelo viejo con desglose: la nota va bajo «− pago a la bodega», con los rótulos de hoy", () => {
     const linea = lineaBodega({ ...MENSAJERO, desgloseIngresoBodega: { sla: "2700.00", manual: "0.00" } });
@@ -1091,10 +1096,10 @@ describe("SLT-109 — el cierre de la página", () => {
   });
 
   it("R252: el pie de un rechazado sin envío dice dónde se envía; con envío, el de siempre", () => {
-    expect(pieTextoDe("mensajero", "mensajero", "rechazado", MENSAJERO, new Set<AccionId>(["cerrar"]))).toBe(
+    expect(pieTextoDe("mensajero", "mensajero", "rechazado", MENSAJERO, PAIS_PLATAFORMA, new Set<AccionId>(["cerrar"]))).toBe(
       "Lo envías desde esta página cuando sea el siguiente por enviar.",
     );
-    expect(pieTextoDe("mensajero", "mensajero", "rechazado", MENSAJERO, new Set<AccionId>(["solicitarRechazado"]))).toBe(
+    expect(pieTextoDe("mensajero", "mensajero", "rechazado", MENSAJERO, PAIS_PLATAFORMA, new Set<AccionId>(["solicitarRechazado"]))).toBe(
       "Se envía con las gestiones que tenga al enviarlo.",
     );
   });
@@ -1221,7 +1226,7 @@ describe("SLT-154 — la satélite ve solo lo suyo (R468-R473, R477, R478)", () 
 
   describe("S4 — el cierre de bodega", () => {
     it("R468 — cuatro tarjetas en orden, «Debe llegar a la central» resaltada y sin «Le queda a la empresa»", () => {
-      const cifras = cifrasDe("bodega", "satelite", S4);
+      const cifras = cifrasDe("bodega", "satelite", S4, PAIS_PLATAFORMA);
       expect(tarjetas(cifras)).toEqual([
         ["recaudado", "Recaudado", "9000.00"],
         ["pago", "Pago a mensajeros", "1500.00"],
@@ -1236,19 +1241,19 @@ describe("SLT-154 — la satélite ve solo lo suyo (R468-R473, R477, R478)", () 
     });
 
     it("R468 — con «La central debe» 800, una quinta tarjeta en tono de aviso", () => {
-      const cifras = cifrasDe("bodega", "satelite", { ...S4, centralDebe: "800.00" });
+      const cifras = cifrasDe("bodega", "satelite", { ...S4, centralDebe: "800.00" }, PAIS_PLATAFORMA);
       expect(cifras).toHaveLength(5);
       expect(tarjetas(cifras)[4]).toEqual(["centralDebe", "La central debe", "800.00"]);
       expect(cifras[4].aviso).toBe(true);
     });
 
     it("R478 — sin «La central debe» del servidor, no hay su tarjeta (ni «₡0»)", () => {
-      const cifras = cifrasDe("bodega", "satelite", { ...S4, centralDebe: null });
+      const cifras = cifrasDe("bodega", "satelite", { ...S4, centralDebe: null }, PAIS_PLATAFORMA);
       expect(cifras.map((c) => c.id)).toEqual(["recaudado", "pago", "ganaBodega", "paraCentral"]);
     });
 
     it("R469 — «Lo que va a la central»: la barra [debe llegar, pago, bodega] y solo esa cuenta", () => {
-      const dinero = lineasDinero("bodega", S4);
+      const dinero = lineasDinero("bodega", S4, PAIS_PLATAFORMA);
       expect(dinero.reparto).toEqual([
         { label: "Debe llegar a la central", monto: "7000.00", porcentaje: 78 },
         { label: "Pago a mensajeros", monto: "1500.00", porcentaje: 17 },
@@ -1279,7 +1284,7 @@ describe("SLT-154 — la satélite ve solo lo suyo (R468-R473, R477, R478)", () 
 
   describe("S6 — el cierre del mensajero", () => {
     it("R471 — recaudado, «Pago al mensajero», «Gana la bodega satélite» y «Debe llegar a la central» resaltada", () => {
-      const cifras = cifrasDe("mensajero", "satelite", S6);
+      const cifras = cifrasDe("mensajero", "satelite", S6, PAIS_PLATAFORMA);
       expect(tarjetas(cifras)).toEqual([
         ["recaudado", "Recaudado", "9000.00"],
         ["pago", "Pago al mensajero", "1500.00"],
@@ -1293,7 +1298,7 @@ describe("SLT-154 — la satélite ve solo lo suyo (R468-R473, R477, R478)", () 
 
     it("R471 — aunque llegara el dinero de la empresa, la satélite no ve sus tarjetas", () => {
       const conEmpresa = { ...S6, empresa: MENSAJERO.empresa };
-      expect(cifrasDe("mensajero", "satelite", conEmpresa).map((c) => c.id)).toEqual([
+      expect(cifrasDe("mensajero", "satelite", conEmpresa, PAIS_PLATAFORMA).map((c) => c.id)).toEqual([
         "recaudado",
         "pago",
         "ganaBodega",
@@ -1302,7 +1307,7 @@ describe("SLT-154 — la satélite ve solo lo suyo (R468-R473, R477, R478)", () 
     });
 
     it("R478 — sin `haciaLaCentral`, solo recaudado y pago (falla cerrado)", () => {
-      const cifras = cifrasDe("mensajero", "satelite", { ...S6, haciaLaCentral: null });
+      const cifras = cifrasDe("mensajero", "satelite", { ...S6, haciaLaCentral: null }, PAIS_PLATAFORMA);
       expect(tarjetas(cifras)).toEqual([
         ["recaudado", "Recaudado", "9000.00"],
         ["pago", "Pago al mensajero", "1500.00"],
@@ -1310,7 +1315,7 @@ describe("SLT-154 — la satélite ve solo lo suyo (R468-R473, R477, R478)", () 
     });
 
     it("R472 — la barra [debe llegar, pago al mensajero, bodega] con los % del servidor y la cuenta de la central", () => {
-      const dinero = lineasDinero("mensajero", S6);
+      const dinero = lineasDinero("mensajero", S6, PAIS_PLATAFORMA);
       expect(dinero?.reparto).toEqual([
         { label: "Debe llegar a la central", monto: "7000.00", porcentaje: 78 },
         { label: "Pago al mensajero", monto: "1500.00", porcentaje: 17 },
@@ -1328,7 +1333,7 @@ describe("SLT-154 — la satélite ve solo lo suyo (R468-R473, R477, R478)", () 
     });
 
     it("R472, R478 — sin empresa ni `haciaLaCentral`, no hay dinero que pintar", () => {
-      expect(lineasDinero("mensajero", { ...S6, haciaLaCentral: null })).toBeNull();
+      expect(lineasDinero("mensajero", { ...S6, haciaLaCentral: null }, PAIS_PLATAFORMA)).toBeNull();
     });
 
     it("R473 — pestañas: Gestiones primero, «Lo que va a la central», Rechazados por la tienda (0)", () => {
@@ -1453,9 +1458,9 @@ describe("SLT-154 — la satélite ve solo lo suyo (R468-R473, R477, R478)", () 
 
   describe("la central (R477) y los datos que no llegan (R478)", () => {
     it("R477 — bodega · central: Dinero primero, «Le queda a la empresa» y las tres cuentas", () => {
-      expect(cifrasDe("bodega", "central", BODEGA).map((c) => c.label)).toContain("Le queda a la empresa");
+      expect(cifrasDe("bodega", "central", BODEGA, PAIS_PLATAFORMA).map((c) => c.label)).toContain("Le queda a la empresa");
       expect(pestanasDe("bodega", "central", "decidir", { gestiones: 31, mensajeros: 2 })[0].label).toBe("Dinero");
-      expect(lineasDinero("bodega", BODEGA).cuentas.map((c) => c.titulo)).toEqual([
+      expect(lineasDinero("bodega", BODEGA, PAIS_PLATAFORMA).cuentas.map((c) => c.titulo)).toEqual([
         "Lo que va a la central",
         "Lo que se le factura a la tienda",
         "De lo facturado, le queda a la empresa",
@@ -1463,7 +1468,7 @@ describe("SLT-154 — la satélite ve solo lo suyo (R468-R473, R477, R478)", () 
     });
 
     it("R477 — mensajero · central: «Se le paga hoy a la tienda» y «Le queda a la empresa»; Dinero primero", () => {
-      expect(cifrasDe("mensajero", "central", MENSAJERO).map((c) => c.label)).toEqual([
+      expect(cifrasDe("mensajero", "central", MENSAJERO, PAIS_PLATAFORMA).map((c) => c.label)).toEqual([
         "Recaudado",
         "Se le paga hoy a la tienda",
         "Pago al mensajero",
@@ -1474,16 +1479,16 @@ describe("SLT-154 — la satélite ve solo lo suyo (R468-R473, R477, R478)", () 
 
     it("R478 — con `netoEmpresa: null` y audiencia central, sin «De lo facturado, le queda a la empresa» ni su tarjeta", () => {
       const sinNeto = { ...BODEGA, netoEmpresa: null };
-      expect(lineasDinero("bodega", sinNeto).cuentas.map((c) => c.titulo)).toEqual([
+      expect(lineasDinero("bodega", sinNeto, PAIS_PLATAFORMA).cuentas.map((c) => c.titulo)).toEqual([
         "Lo que va a la central",
         "Lo que se le factura a la tienda",
       ]);
-      expect(cifrasDe("bodega", "central", sinNeto).map((c) => c.id)).toEqual(["recaudado", "paraCentral", "pago"]);
+      expect(cifrasDe("bodega", "central", sinNeto, PAIS_PLATAFORMA).map((c) => c.id)).toEqual(["recaudado", "paraCentral", "pago"]);
     });
 
     it("R478 — sin `cobradoSobreRecaudado`, sin «Lo que se le factura a la tienda» (la otra cuenta, sí)", () => {
       const sinCobrado = { ...BODEGA, cobradoSobreRecaudado: null };
-      expect(lineasDinero("bodega", sinCobrado).cuentas.map((c) => c.titulo)).toEqual([
+      expect(lineasDinero("bodega", sinCobrado, PAIS_PLATAFORMA).cuentas.map((c) => c.titulo)).toEqual([
         "Lo que va a la central",
         "De lo facturado, le queda a la empresa",
       ]);
@@ -1491,13 +1496,13 @@ describe("SLT-154 — la satélite ve solo lo suyo (R468-R473, R477, R478)", () 
 
     it("R478 — sin `totalesIngreso`, ninguna de las dos cuentas de la empresa ni «Por tienda»", () => {
       const sinEmpresa = { ...BODEGA, totalesIngreso: null, partesPorTienda: null };
-      const dinero = lineasDinero("bodega", sinEmpresa);
+      const dinero = lineasDinero("bodega", sinEmpresa, PAIS_PLATAFORMA);
       expect(dinero.cuentas.map((c) => c.titulo)).toEqual(["Lo que va a la central"]);
       expect(dinero.porTienda).toBeNull();
     });
 
     it("R478 — mensajero · central sin `empresa`: sin sus dos tarjetas (ni «—» en su lugar)", () => {
-      expect(cifrasDe("mensajero", "central", { ...MENSAJERO, empresa: null }).map((c) => c.id)).toEqual([
+      expect(cifrasDe("mensajero", "central", { ...MENSAJERO, empresa: null }, PAIS_PLATAFORMA).map((c) => c.id)).toEqual([
         "recaudado",
         "pago",
       ]);

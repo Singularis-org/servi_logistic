@@ -8,6 +8,7 @@
 
 import type { CierreGestionDescargaDTO, RechazoTiendaDescargaDTO } from "@/lib/interfaces/services/ICierresAdminService";
 import type { DescargaColumna, DescargaHoja } from "@/lib/types/descarga";
+import type { FormatoMoneda } from "@/lib/config/moneda";
 
 import {
   filaDescargaGestionFundida,
@@ -16,7 +17,7 @@ import {
 import {
   COLUMNAS_RECHAZOS_TIENDA,
   columnasGestionesModeloNuevoPara,
-  filaGestionModeloNuevo,
+  filaGestionModeloNuevoEn,
   filaRechazoTienda,
 } from "./cierres-gestiones-modelo-nuevo-descarga-columnas";
 
@@ -31,6 +32,8 @@ export interface LibroGestionesEntrada {
   /** Las columnas MARCADAS en el selector: solo valen para «Gestiones modelo anterior» (PA6). */
   columnasAnterior: DescargaColumna[];
   audiencia: AudienciaDescargaGestionesFundida;
+  /** SLT-244 (R7, R8): la moneda del país, para el texto de las tarifas. Obligatoria. */
+  moneda: FormatoMoneda;
 }
 
 /**
@@ -43,15 +46,17 @@ export function libroGestiones({
   rechazos,
   columnasAnterior,
   audiencia,
+  moneda,
 }: LibroGestionesEntrada): [DescargaHoja, ...DescargaHoja[]] | null {
   const nuevas = items.filter((item) => item.cierreModelo === "nuevo");
   if (nuevas.length === 0) return null;
+  const filaGestion = filaGestionModeloNuevoEn(moneda);
   const anteriores = items.filter((item) => item.cierreModelo !== "nuevo");
   const hojas: [DescargaHoja, ...DescargaHoja[]] = [
     {
       titulo: HOJA_GESTIONES,
       columnas: columnasGestionesModeloNuevoPara(audiencia),
-      filas: nuevas.map((item) => filaGestionModeloNuevo(item, audiencia)),
+      filas: nuevas.map((item) => filaGestion(item, audiencia)),
     },
     {
       titulo: HOJA_RECHAZOS_TIENDA,

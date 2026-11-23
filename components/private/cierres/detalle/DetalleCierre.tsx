@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef, type ReactNode, type RefObject } from "react";
+import { useEffect, useId, useMemo, useRef, type ReactNode, type RefObject } from "react";
 import { ArrowLeft, TriangleAlert } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { useImpuestoDelPais, useMonedaDelPais } from "@/hooks/use-moneda-del-pais";
 import { cn } from "@/lib/utils";
 import type { CierreTotales } from "@/lib/interfaces/services/ICierreDiaService";
 import { EstadoCierreBadge } from "@/app/(app)/cierres-admin/_components/cierre-detalle-shared";
@@ -39,6 +40,7 @@ import {
   type DetalleMensajeroVista,
   type Modo,
   type ParCabecera,
+  type PaisDelCierre,
   type Pestana,
   type PestanaId,
 } from "./detalle-cierre-vista";
@@ -120,11 +122,12 @@ interface Modelo {
   gestiones: number | null;
 }
 
-function modeloDe(props: DetalleCierreProps): Modelo {
+/** SLT-244 (R3, R6): `pais` (moneda e impuesto del país) llega de los hooks de `Cuerpo`. */
+function modeloDe(props: DetalleCierreProps, pais: PaisDelCierre): Modelo {
   if (props.tipo === "bodega") {
     const d = props.detalle;
     const conciliacion = estadoConciliacionBodega(d);
-    const dinero = lineasDinero("bodega", d);
+    const dinero = lineasDinero("bodega", d, pais);
     return {
       prefijo: L.DETALLE_CIERRE_BODEGA_PREFIJO,
       titulo: L.tituloCierreBodega(d.zonaNombre),
@@ -136,7 +139,7 @@ function modeloDe(props: DetalleCierreProps): Modelo {
       ),
       retenidas: 0,
       avisos: avisosDe("bodega", props.audiencia, props.modo, d),
-      cifras: cifrasDe("bodega", props.audiencia, d),
+      cifras: cifrasDe("bodega", props.audiencia, d, pais),
       totales: d.totales,
       pestanas: pestanasDe("bodega", props.audiencia, props.modo, {
         gestiones: d.conteos.gestiones,
@@ -150,12 +153,12 @@ function modeloDe(props: DetalleCierreProps): Modelo {
         conciliacion: props.pestanas.conciliacion,
       },
       paquetesVuelven: 0,
-      pieTexto: pieTextoDe("bodega", props.audiencia, props.modo, d),
+      pieTexto: pieTextoDe("bodega", props.audiencia, props.modo, d, pais),
       gestiones: null,
     };
   }
   const d = props.detalle;
-  const dinero = props.audiencia === "mensajero" ? null : lineasDinero("mensajero", d);
+  const dinero = props.audiencia === "mensajero" ? null : lineasDinero("mensajero", d, pais);
   return {
     prefijo: L.DETALLE_CIERRE_PREFIJO,
     titulo: props.audiencia === "mensajero" ? L.TU_CIERRE_TITULO : L.tituloCierreMensajero(d.mensajeroNombre),
@@ -168,7 +171,7 @@ function modeloDe(props: DetalleCierreProps): Modelo {
       ),
     retenidas: d.reprogramadasRetenidasHoy,
     avisos: avisosDe("mensajero", props.audiencia, props.modo, d),
-    cifras: cifrasDe("mensajero", props.audiencia, d),
+    cifras: cifrasDe("mensajero", props.audiencia, d, pais),
     totales: d.totales,
     pestanas: pestanasDe("mensajero", props.audiencia, props.modo, {
       gestiones: d.conteos.gestiones,
@@ -183,7 +186,7 @@ function modeloDe(props: DetalleCierreProps): Modelo {
       corregir: props.pestanas.corregir,
     },
     paquetesVuelven: d.conteos.paquetesVuelven,
-    pieTexto: pieTextoDe("mensajero", props.audiencia, props.modo, d, disponiblesDe(props)),
+    pieTexto: pieTextoDe("mensajero", props.audiencia, props.modo, d, pais, disponiblesDe(props)),
     gestiones: d.conteos.gestiones,
   };
 }
@@ -364,7 +367,10 @@ function Cuerpo({
   tituloId,
   esMovil,
 }: Readonly<{ props: DetalleCierreProps; tituloId: string; esMovil: boolean }>) {
-  const m = modeloDe(props);
+  const moneda = useMonedaDelPais();
+  const impuesto = useImpuestoDelPais();
+  const pais = useMemo<PaisDelCierre>(() => ({ moneda, impuesto }), [moneda, impuesto]);
+  const m = modeloDe(props, pais);
   const motivoId = useId();
   const pieRef = useRef<HTMLElement>(null);
   const enPagina = props.marco === "pagina";

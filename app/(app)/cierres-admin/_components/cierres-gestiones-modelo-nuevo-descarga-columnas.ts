@@ -13,7 +13,7 @@
 import type { CierreGestionDescargaDTO, RechazoTiendaDescargaDTO } from "@/lib/interfaces/services/ICierresAdminService";
 import type { ConceptoTarifaDTO, PagoPorTarifaDTO } from "@/lib/interfaces/services/ICierreDiaService";
 import type { DescargaColumna, DescargaFila } from "@/lib/types/descarga";
-import { money } from "@/lib/config/moneda";
+import { formatearMontoEn, SIN_MONTO_RAYA, type FormatoMoneda } from "@/lib/config/moneda";
 import { MONTO_FIJO, origenDe, porcentajeDe } from "@/components/private/cierres/fila/fila-gestion-labels";
 import { textoSenales, type AudienciaFila } from "@/components/private/cierres/fila/fila-gestion-vista";
 
@@ -114,22 +114,29 @@ function audienciaSenales(audiencia: AudienciaDescargaGestionesFundida): Audienc
   return audiencia === "admin" ? "central" : "satelite";
 }
 
-/** «Monto fijo <importe> · grupo «San José centro» de la zona Centro»: las piezas de «Ver cómo se calculó». */
-function textoTarifa(t: ConceptoTarifaDTO | PagoPorTarifaDTO): string {
+/**
+ * «Monto fijo <importe> · grupo «San José centro» de la zona Centro»: las piezas de «Ver cómo se
+ * calculó», con el importe y el porcentaje en la moneda del país (SLT-244 R7).
+ */
+function textoTarifa(t: ConceptoTarifaDTO | PagoPorTarifaDTO, moneda: FormatoMoneda): string {
   // El texto se arma con los strings tal cual. La plantilla (`${…}`) no cambia un string; está para
   // que la sonda de la guardia de datos sensibles (un Proxy) llegue al texto como su marcador.
   const valor = `${t.valor}`;
   const base = t.base === null ? null : `${t.base}`;
-  const rotulo = t.modo === "monto" ? `${MONTO_FIJO} ${money(valor)}` : porcentajeDe(valor, base);
+  const rotulo =
+    t.modo === "monto"
+      ? `${MONTO_FIJO} ${formatearMontoEn(moneda, valor, SIN_MONTO_RAYA)}`
+      : porcentajeDe(valor, base, moneda);
   return `${rotulo}${SEPARADOR_TARIFA}${origenDe(t.nivel, t)}`;
 }
 
 function textoTarifaDeConcepto(
   conceptos: readonly ConceptoTarifaDTO[] | undefined,
   concepto: ConceptoTarifaDTO["concepto"],
+  moneda: FormatoMoneda,
 ): string | null {
   const encontrado = conceptos?.find((c) => c.concepto === concepto);
-  return encontrado === undefined ? null : textoTarifa(encontrado);
+  return encontrado === undefined ? null : textoTarifa(encontrado, moneda);
 }
 
 /** El ajuste del pago CON su signo: el monto del servidor, con `-` delante si resta. */
@@ -139,10 +146,24 @@ function ajusteFirmado(pago: PagoPorTarifaDTO | null | undefined): string | null
   return ajuste.signo === "resta" ? `-${ajuste.monto}` : ajuste.monto;
 }
 
-/** Proyecta UNA gestión de un cierre del modelo nuevo a UNA fila de «Gestiones». `null` → vacía. */
-export function filaGestionModeloNuevo(
+/**
+ * Factoría (SLT-244 R7): la proyección de UNA gestión de un cierre del modelo nuevo a UNA fila de
+ * «Gestiones», con la moneda del país en el texto de las tarifas. `null` → vacía.
+ *
+ * Es una factoría y no un tercer argumento porque la guardia de datos sensibles llama a cada
+ * función exportada con una sola sonda: la primera llamada la recibe como moneda y la segunda como
+ * DTO (design §7).
+ */
+export function filaGestionModeloNuevoEn(
+  moneda: FormatoMoneda,
+): (dto: CierreGestionDescargaDTO, audiencia: AudienciaDescargaGestionesFundida) => DescargaFila {
+  return (dto, audiencia) => filaGestionModeloNuevoConMoneda(dto, audiencia, moneda);
+}
+
+function filaGestionModeloNuevoConMoneda(
   dto: CierreGestionDescargaDTO,
   audiencia: AudienciaDescargaGestionesFundida,
+  moneda: FormatoMoneda,
 ): DescargaFila {
   const ingreso = dto.ingresoEmpresa;
   const medios = montoPorMetodo(dto.pagos);
@@ -163,7 +184,7 @@ export function filaGestionModeloNuevo(
     [CLAVE_MEDIO_PAGO.SINPE]: medios.SINPE,
     [CLAVE_MEDIO_PAGO.transferencia]: medios.transferencia,
     pagoPorTarifa: pago?.importe ?? null,
-    tarifaPago: pago === null ? null : textoTarifa(pago),
+    tarifaPago: pago === null ? null : textoTarifa(pago, moneda),
     ajuste: ajusteFirmado(pago),
     pagoMensajero: dto.pagoMensajero,
     motivoAjuste: ultimoAjuste?.motivo ?? null,
@@ -186,13 +207,13 @@ export function filaGestionModeloNuevo(
   // anula para la satélite; aquí además no viaja la clave).
   if (audiencia === "admin") {
     fila.flete = ingreso?.flete ?? null;
-    fila.tarifaFlete = textoTarifaDeConcepto(ingreso?.conceptosTarifa, "flete");
+    fila.tarifaFlete = textoTarifaDeConcepto(ingreso?.conceptosTarifa, "flete", moneda);
     fila.ivaFlete = ingreso?.ivaFlete ?? null;
     fila.comisionCod = ingreso?.comisionCod ?? null;
-    fila.tarifaComision = textoTarifaDeConcepto(ingreso?.conceptosTarifa, "comisionCod");
+    fila.tarifaComision = textoTarifaDeConcepto(ingreso?.conceptosTarifa, "comisionCod", moneda);
     fila.ivaComisionCod = ingreso?.ivaComisionCod ?? null;
     fila.fleteDevolucion = ingreso?.fleteDevolucion ?? null;
-    fila.tarifaFleteDevolucion = textoTarifaDeConcepto(ingreso?.conceptosTarifa, "fleteDevolucion");
+    fila.tarifaFleteDevolucion = textoTarifaDeConcepto(ingreso?.conceptosTarifa, "fleteDevolucion", moneda);
     fila.ivaFleteDevolucion = ingreso?.ivaFleteDevolucion ?? null;
     fila.cobroTienda = ingreso?.total ?? null;
     fila.ivaIncluido = ingreso?.ivaIncluido ?? null;

@@ -2,7 +2,8 @@
 
 import type { ReactNode } from "react";
 
-import { money } from "@/lib/config/moneda";
+import { useMonedaDelPais } from "@/hooks/use-moneda-del-pais";
+import { formatearMontoEn, SIN_MONTO_RAYA } from "@/lib/config/moneda";
 import { esMontoNegativo } from "@/app/(app)/cierres-admin/_components/cierre-detalle-shared";
 import { cn } from "@/lib/utils";
 
@@ -12,8 +13,8 @@ import type { LineaCuenta } from "./detalle-cierre-vista";
 // cascada (D16, R15): una partida por línea, «−» o «+» DELANTE del rótulo de lo que se resta o se
 // suma, subtotal con raya punteada y total en negrita con raya continua.
 //
-// No calcula nada (R71): cada importe es el STRING del servidor pasado por `money()`. El operador
-// vive en el rótulo y no pegado al importe, así que cada línea
+// No calcula nada (R71): cada importe es el STRING del servidor pasado por `formatearMontoEn` con
+// la moneda del país (SLT-244). El operador vive en el rótulo y no pegado al importe, así que cada línea
 // lleva `data-signo` y `data-tipo`: es lo que lee `DineroIdentidadesEnPantalla.test.tsx` para
 // comprobar que la cuenta que se ve cierra al céntimo.
 //
@@ -64,6 +65,7 @@ export function Cuenta({
   subtitulo,
   pie,
 }: Readonly<CuentaProps>) {
+  const moneda = useMonedaDelPais();
   // SLT-104: 15 px, como todos los títulos de cuenta del canvas (`Main.dc.html`, `Fila2.dc.html`).
   const titular = <h3 className="text-[15px] font-semibold">{titulo}</h3>;
   return (
@@ -118,15 +120,15 @@ export function Cuenta({
                   l.tipo === "total" && esMontoNegativo(l.monto) && "text-danger-strong",
                 )}
               >
-                {/* SLT-104 (R43): una línea sin importe dice «—», nunca `money("")` ni ₡0. */}
-                {l.sinImporte ? SIN_IMPORTE : money(l.monto)}
+                {/* SLT-104 (R43): una línea sin importe dice «—», nunca un importe vacío formateado ni un cero. */}
+                {l.sinImporte ? SIN_IMPORTE : formatearMontoEn(moneda, l.monto, SIN_MONTO_RAYA)}
               </span>
             </div>
           ))}
           {aparte ? (
             <div data-aparte className="flex items-start justify-between gap-3 text-[13px] text-muted-foreground">
               <span>{aparte.label}</span>
-              <span className="shrink-0 tabular-nums">{money(aparte.monto)}</span>
+              <span className="shrink-0 tabular-nums">{formatearMontoEn(moneda, aparte.monto, SIN_MONTO_RAYA)}</span>
             </div>
           ) : null}
           {notas && notas.length > 0 ? (

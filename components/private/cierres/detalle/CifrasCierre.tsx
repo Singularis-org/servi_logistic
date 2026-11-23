@@ -2,7 +2,8 @@
 
 import { useId } from "react";
 
-import { money } from "@/lib/config/moneda";
+import { useMonedaDelPais } from "@/hooks/use-moneda-del-pais";
+import { formatearMontoEn, SIN_MONTO_RAYA } from "@/lib/config/moneda";
 import type { CierreTotales } from "@/lib/interfaces/services/ICierreDiaService";
 import { esMontoNegativo } from "@/app/(app)/cierres-admin/_components/cierre-detalle-shared";
 import { cn } from "@/lib/utils";
@@ -12,7 +13,7 @@ import { metodosVisibles, type Cifra } from "./detalle-cierre-vista";
 
 // SLT-95 «Rediseño del detalle de cierre (mensajero y bodega)», S1 (T2.2) — las cifras de arriba
 // del detalle (R6-R8): cuatro con la central y la satélite, tres con el mensajero. Qué cifra va y de
-// qué campo sale lo decide `cifrasDe`; aquí solo se pinta, con `money()` y con su signo.
+// qué campo sale lo decide `cifrasDe`; aquí solo se pinta, con `formatearMontoEn` (moneda del país) y con su signo.
 
 export interface CifrasCierreProps {
   cifras: readonly Cifra[];
@@ -39,6 +40,7 @@ function tonoCaja(c: Cifra): string {
 }
 
 function CajaCifra({ c, totales }: Readonly<{ c: Cifra; totales?: CierreTotales }>) {
+  const moneda = useMonedaDelPais();
   const id = useId();
   const negativo = c.esMonto && esMontoNegativo(c.valor);
   return (
@@ -62,7 +64,7 @@ function CajaCifra({ c, totales }: Readonly<{ c: Cifra; totales?: CierreTotales 
           negativo && "text-danger-strong",
         )}
       >
-        {c.esMonto ? money(c.valor) : c.valor}
+        {c.esMonto ? formatearMontoEn(moneda, c.valor, SIN_MONTO_RAYA) : c.valor}
       </span>
       {/* SLT-169 (R625): «(la tienda debe)» junto al importe; lo decide `cifrasDe`, aquí solo se pinta. */}
       {c.sufijo ? <span className="text-sm font-semibold text-danger-strong">{c.sufijo}</span> : null}
@@ -71,7 +73,7 @@ function CajaCifra({ c, totales }: Readonly<{ c: Cifra; totales?: CierreTotales 
           {metodosVisibles(totales).map((m) => (
             <div key={m.metodo} className="flex justify-between gap-2">
               <dt>{m.label}</dt>
-              <dd className="tabular-nums">{money(m.monto)}</dd>
+              <dd className="tabular-nums">{formatearMontoEn(moneda, m.monto, SIN_MONTO_RAYA)}</dd>
             </div>
           ))}
         </dl>

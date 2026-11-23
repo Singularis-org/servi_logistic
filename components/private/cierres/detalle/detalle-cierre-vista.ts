@@ -30,12 +30,12 @@ import {
   PARA_LA_CENTRAL_LABEL,
   RECIBIDO_LABEL,
   estadoConciliacionDe,
+  fleteDevConImpuestoLabel,
+  fleteNoEntregadasConImpuestoLabel,
   hayGestionEnModeloNuevo,
   type EstadoConciliacion,
 } from "@/app/(app)/cierres-admin/_components/cierre-labels";
 import {
-  FLETE_DEV_CON_IVA_LABEL,
-  FLETE_NO_ENTREGADAS_CON_IVA_LABEL,
   INGRESO_BODEGA_RECHAZOS_MANUAL_LABEL,
   INGRESO_BODEGA_RECHAZOS_SLA_LABEL,
   ORDEN_RESULTADOS,
@@ -43,7 +43,7 @@ import {
   esMontoNegativo,
   rotuloIngresoBodega,
 } from "@/app/(app)/cierres-admin/_components/cierre-detalle-shared";
-import { money } from "@/lib/config/moneda";
+import { formatearMontoEn, SIN_MONTO_RAYA, type FormatoMoneda } from "@/lib/config/moneda";
 import { hrefDetalleCierre } from "@/lib/utils/cierre-enlace";
 import { lineasCascadaCentral } from "@/app/(app)/cierres-admin/_components/cascadas-bodega";
 import { marcaDeVariasTiendas } from "@/app/(app)/cierres-admin/_components/cierre-labels";
@@ -57,6 +57,12 @@ import * as L from "./detalle-cierre-labels";
 import { folioCierre } from "@/lib/utils/folio-cierre";
 
 // ═══ Props del componente (design.md > 1. Detalle del cierre) ═══════════════════════════════════
+
+/** SLT-244 (design §4.1): la moneda y el nombre del impuesto del país de la empresa, para los textos del cierre. */
+export interface PaisDelCierre {
+  moneda: FormatoMoneda;
+  impuesto: string;
+}
 
 export type TipoDetalle = "mensajero" | "bodega";
 export type Audiencia = "central" | "satelite" | "mensajero";
@@ -348,16 +354,23 @@ function cifra(
   return { id, label, valor, contexto, esMonto: true, conMetodos: false, destacada: false, ...extra };
 }
 
-export function cifrasDe(tipo: "mensajero", audiencia: Audiencia, detalle: DetalleMensajeroVista): Cifra[];
-export function cifrasDe(tipo: "bodega", audiencia: Audiencia, detalle: DetalleBodegaVista): Cifra[];
+// SLT-244 (R6, R8): `pais` es obligatorio; las notas «sin <impuesto>, …» llevan el impuesto del país.
+export function cifrasDe(
+  tipo: "mensajero",
+  audiencia: Audiencia,
+  detalle: DetalleMensajeroVista,
+  pais: PaisDelCierre,
+): Cifra[];
+export function cifrasDe(tipo: "bodega", audiencia: Audiencia, detalle: DetalleBodegaVista, pais: PaisDelCierre): Cifra[];
 export function cifrasDe(
   tipo: TipoDetalle,
   audiencia: Audiencia,
   detalle: DetalleMensajeroVista | DetalleBodegaVista,
+  pais: PaisDelCierre,
 ): Cifra[] {
   if (tipo === "bodega") {
     const b = detalle as DetalleBodegaVista;
-    return audiencia === "satelite" ? cifrasBodegaSatelite(b) : cifrasBodega(b);
+    return audiencia === "satelite" ? cifrasBodegaSatelite(b) : cifrasBodega(b, pais.impuesto);
   }
   const d = detalle as DetalleMensajeroVista;
   const recaudado = cifra("recaudado", L.RECAUDADO_LABEL, d.totales.general, "", { conMetodos: true });
@@ -385,7 +398,7 @@ export function cifrasDe(
     recaudado,
     cifraParaTienda(e.pagoTienda, d.conteos.tiendas),
     pago,
-    cifra("leQueda", L.LE_QUEDA_A_LA_EMPRESA_LABEL, e.netoEmpresa, L.NOTA_LE_QUEDA_MENSAJERO, {
+    cifra("leQueda", L.LE_QUEDA_A_LA_EMPRESA_LABEL, e.netoEmpresa, L.notaLeQuedaMensajero(pais.impuesto), {
       destacada: true,
     }),
   ];
@@ -442,11 +455,11 @@ function cifrasBodegaSatelite(d: DetalleBodegaVista): Cifra[] {
   });
 }
 
-function cifrasBodega(d: DetalleBodegaVista): Cifra[] {
+function cifrasBodega(d: DetalleBodegaVista, impuesto: string): Cifra[] {
   const leQueda =
     d.netoEmpresa === null
       ? []
-      : [cifra("leQueda", L.LE_QUEDA_A_LA_EMPRESA_LABEL, d.netoEmpresa, L.NOTA_LE_QUEDA_BODEGA, { destacada: true })];
+      : [cifra("leQueda", L.LE_QUEDA_A_LA_EMPRESA_LABEL, d.netoEmpresa, L.notaLeQuedaBodega(impuesto), { destacada: true })];
   return [
     cifra("recaudado", L.RECAUDADO_LABEL, d.totales.general, "", { conMetodos: true }),
     cifra(
@@ -655,21 +668,30 @@ export function accionesDe(tipo: TipoDetalle, audiencia: Audiencia, modo: Modo, 
 
 /**
  * La línea de contexto del pie. `disponibles` (opcional) son las acciones que ofrece quien monta: un
- * rechazado sin `solicitarRechazado` dice dónde se envía (SLT-109, R252).
+ * rechazado sin `solicitarRechazado` dice dónde se envía (SLT-109, R252). SLT-244 (R3): `pais` da la
+ * moneda de los importes del pie; va antes del opcional.
  */
 export function pieTextoDe(
   tipo: "mensajero",
   audiencia: Audiencia,
   modo: Modo,
   detalle: DetalleMensajeroVista,
+  pais: PaisDelCierre,
   disponibles?: ReadonlySet<AccionId>,
 ): string;
-export function pieTextoDe(tipo: "bodega", audiencia: Audiencia, modo: Modo, detalle: DetalleBodegaVista): string;
+export function pieTextoDe(
+  tipo: "bodega",
+  audiencia: Audiencia,
+  modo: Modo,
+  detalle: DetalleBodegaVista,
+  pais: PaisDelCierre,
+): string;
 export function pieTextoDe(
   tipo: TipoDetalle,
   audiencia: Audiencia,
   modo: Modo,
   detalle: DetalleMensajeroVista | DetalleBodegaVista,
+  pais: PaisDelCierre,
   disponibles?: ReadonlySet<AccionId>,
 ): string {
   if (tipo === "bodega") {
@@ -680,7 +702,7 @@ export function pieTextoDe(
       : audiencia === "satelite"
         ? L.PIE_BODEGA_SATELITE_PENDIENTE
         : L.PIE_BODEGA_CENTRAL_PENDIENTE;
-    return L.pieBodega(d.paraLaCentral, coletilla);
+    return L.pieBodega(d.paraLaCentral, coletilla, pais.moneda);
   }
   const d = detalle as DetalleMensajeroVista;
   if (audiencia === "mensajero") {
@@ -697,7 +719,7 @@ export function pieTextoDe(
   if (modo === "decidir" && d.conteos.paquetesVuelven > 0) {
     return L.pieAprobarConPaquetes(d.conteos.paquetesVuelven, d.conteos.incidentesSinIndemnizar);
   }
-  return L.pieResumenMensajero(d.totales.general, d.conteos.gestiones);
+  return L.pieResumenMensajero(d.totales.general, d.conteos.gestiones, pais.moneda);
 }
 
 // ═══ Dinero (R14, R15, R16) ═══════════════════════════════════════════════════════════════════
@@ -751,13 +773,21 @@ const partida = (label: string, monto: string, signo: SignoLinea = "neutro"): Li
 });
 
 /** SLT-169 (R626): sin el subtotal «Sale de lo recaudado»; todo lo facturado se resta del pago a la tienda. */
-function cuentaFactura(t: DineroEmpresaMensajero["totalesIngreso"], modeloNuevo: boolean): CuentaVista {
+function cuentaFactura(
+  t: DineroEmpresaMensajero["totalesIngreso"],
+  modeloNuevo: boolean,
+  impuesto: string,
+): CuentaVista {
   return {
     titulo: L.CUENTA_FACTURA_TITULO,
     lineas: [
-      partida(L.FLETE_POR_ENTREGADO_LABEL, t.fleteConIva),
-      partida(L.COMISION_COD_LABEL, t.comisionConIva),
-      partida(modeloNuevo ? FLETE_NO_ENTREGADAS_CON_IVA_LABEL : FLETE_DEV_CON_IVA_LABEL, t.fleteDevolucionConIva, "suma"),
+      partida(L.fletePorEntregadoConImpuesto(impuesto), t.fleteConIva),
+      partida(L.comisionCodConImpuesto(impuesto), t.comisionConIva),
+      partida(
+        modeloNuevo ? fleteNoEntregadasConImpuestoLabel(impuesto) : fleteDevConImpuestoLabel(impuesto),
+        t.fleteDevolucionConIva,
+        "suma",
+      ),
       { label: L.TOTAL_FACTURADO_LABEL, monto: t.total, signo: "neutro", tipo: "total" },
     ],
   };
@@ -769,6 +799,7 @@ function cuentaQueda(
   pago: [string, string],
   bodega: [string, string],
   neto: string,
+  impuesto: string,
   notasBodega?: readonly string[],
 ): CuentaVista {
   const lineaBodega = partida(bodega[0], bodega[1], "resta");
@@ -776,7 +807,7 @@ function cuentaQueda(
     titulo: L.CUENTA_QUEDA_TITULO,
     lineas: [
       partida(L.TOTAL_FACTURADO_LABEL, total),
-      partida(L.IVA_NO_ES_DE_LA_EMPRESA, iva, "resta"),
+      partida(L.impuestoNoEsDeLaEmpresa(impuesto), iva, "resta"),
       partida(pago[0], pago[1], "resta"),
       notasBodega && notasBodega.length > 0 ? { ...lineaBodega, notas: notasBodega } : lineaBodega,
       { label: L.LE_QUEDA_A_LA_EMPRESA_LABEL, monto: neto, signo: "neutro", tipo: "total" },
@@ -786,10 +817,13 @@ function cuentaQueda(
 
 /**
  * SLT-100 (R81, D25) — la nota del origen del ingreso de bodega, con los rótulos de hoy
- * (`INGRESO_BODEGA_RECHAZOS_*_LABEL`). `money()` es formato, no aritmética (R71).
+ * (`INGRESO_BODEGA_RECHAZOS_*_LABEL`). `formatearMontoEn` es formato, no aritmética (R71). SLT-244 (R3):
+ * en la moneda del país.
  */
-export function notaOrigenIngresoBodega(d: { sla: string; manual: string }): string {
-  return `${INGRESO_BODEGA_RECHAZOS_SLA_LABEL} ${money(d.sla)} · ${INGRESO_BODEGA_RECHAZOS_MANUAL_LABEL} ${money(d.manual)}`;
+export function notaOrigenIngresoBodega(d: { sla: string; manual: string }, moneda: FormatoMoneda): string {
+  const sla = formatearMontoEn(moneda, d.sla, SIN_MONTO_RAYA);
+  const manual = formatearMontoEn(moneda, d.manual, SIN_MONTO_RAYA);
+  return `${INGRESO_BODEGA_RECHAZOS_SLA_LABEL} ${sla} · ${INGRESO_BODEGA_RECHAZOS_MANUAL_LABEL} ${manual}`;
 }
 
 /**
@@ -845,11 +879,13 @@ function repartoCentral(n: NivelCentral, rotuloPago: string): ParteReparto[] {
   );
 }
 
-export function lineasDinero(tipo: "mensajero", detalle: DetalleMensajeroVista): DineroVista | null;
-export function lineasDinero(tipo: "bodega", detalle: DetalleBodegaVista): DineroVista;
+// SLT-244 (R3, R6, R8): `pais` es obligatorio; da el impuesto de los rótulos y la moneda de la nota.
+export function lineasDinero(tipo: "mensajero", detalle: DetalleMensajeroVista, pais: PaisDelCierre): DineroVista | null;
+export function lineasDinero(tipo: "bodega", detalle: DetalleBodegaVista, pais: PaisDelCierre): DineroVista;
 export function lineasDinero(
   tipo: TipoDetalle,
   detalle: DetalleMensajeroVista | DetalleBodegaVista,
+  pais: PaisDelCierre,
 ): DineroVista | null {
   if (tipo === "bodega") {
     const d = detalle as DetalleBodegaVista;
@@ -866,7 +902,7 @@ export function lineasDinero(
     const t = d.totalesIngreso;
     const cuentas: CuentaVista[] = [cuentaCentral(nivel, L.PAGO_A_MENSAJEROS_LABEL)];
     if (t !== null && d.cobradoSobreRecaudado !== null) {
-      cuentas.push(cuentaFactura(t, d.modeloNuevo));
+      cuentas.push(cuentaFactura(t, d.modeloNuevo, pais.impuesto));
     }
     if (t !== null && d.ivaFacturado !== null && d.netoEmpresa !== null) {
       cuentas.push(
@@ -876,6 +912,7 @@ export function lineasDinero(
           [L.PAGO_A_MENSAJEROS_LABEL, d.totalPagoMensajero],
           [GANA_BODEGA_SATELITE_LABEL, d.totalIngresoBodegaRechazos],
           d.netoEmpresa,
+          pais.impuesto,
         ),
       );
     }
@@ -904,15 +941,16 @@ export function lineasDinero(
       e.porcentajesReparto,
     ),
     cuentas: [
-      cuentaFactura(e.totalesIngreso, e.modeloNuevo),
+      cuentaFactura(e.totalesIngreso, e.modeloNuevo, pais.impuesto),
       cuentaQueda(
         e.totalesIngreso.total,
         e.ivaFacturado,
         [PAGO_MENSAJERO_LABEL, d.totalPagoMensajero],
         [rotuloIngresoBodega(e.modeloNuevo), e.totalIngresoBodegaRechazos],
         e.netoEmpresa,
+        pais.impuesto,
         // R81: la misma regla con la que la pintaba el modal (`CierreFacturaDetalle`).
-        !e.modeloNuevo && d.desgloseIngresoBodega ? [notaOrigenIngresoBodega(d.desgloseIngresoBodega)] : undefined,
+        !e.modeloNuevo && d.desgloseIngresoBodega ? [notaOrigenIngresoBodega(d.desgloseIngresoBodega, pais.moneda)] : undefined,
       ),
     ],
     porTienda: marcaDeVariasTiendas(e.partesPorTienda) === null ? null : e.partesPorTienda,

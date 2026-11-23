@@ -8,7 +8,7 @@ import { describe, it, expect } from "vitest";
 
 import {
   columnasGestionesModeloNuevoPara,
-  filaGestionModeloNuevo,
+  filaGestionModeloNuevoEn,
 } from "@/app/(app)/cierres-admin/_components/cierres-gestiones-modelo-nuevo-descarga-columnas";
 import { libroGestiones } from "@/app/(app)/cierres-admin/_components/cierres-gestiones-modelo-nuevo-descarga";
 import type { IngresoEmpresaDTO } from "@/lib/interfaces/services/ICierreDiaService";
@@ -17,6 +17,7 @@ import type {
   RechazoTiendaDescargaDTO,
 } from "@/lib/interfaces/services/ICierresAdminService";
 import type { DescargaColumna } from "@/lib/types/descarga";
+import { MONEDA_PLATAFORMA } from "@/lib/config/moneda";
 
 // --- Dobles -----------------------------------------------------------------------------------
 
@@ -276,7 +277,7 @@ describe("SLT-113 — encabezados (R373)", () => {
   });
 
   it("«Rechazados por la tienda»: Folio · Nº Guía · Destinatario · Motivo · Tienda · Fecha del rechazo", () => {
-    const hojas = libroGestiones({ items: [A], rechazos: [], columnasAnterior: COLUMNAS_ANTERIOR, audiencia: "admin" });
+    const hojas = libroGestiones({ items: [A], rechazos: [], columnasAnterior: COLUMNAS_ANTERIOR, audiencia: "admin", moneda: MONEDA_PLATAFORMA });
     expect(hojas?.[1].columnas.map((c) => c.encabezado)).toEqual([
       "Folio", "Nº Guía", "Destinatario", "Motivo", "Tienda", "Fecha del rechazo",
     ]);
@@ -285,7 +286,7 @@ describe("SLT-113 — encabezados (R373)", () => {
 
 /** Fila de «Gestiones» → array en el orden de las columnas (lo que se ve en el archivo). */
 function celdas(dto: CierreGestionDescargaDTO, audiencia: "admin" | "satelite") {
-  const fila = filaGestionModeloNuevo(dto, audiencia);
+  const fila = filaGestionModeloNuevoEn(MONEDA_PLATAFORMA)(dto, audiencia);
   return columnasGestionesModeloNuevoPara(audiencia).map((c) => fila[c.clave] ?? null);
 }
 
@@ -395,7 +396,7 @@ describe("SLT-113 — celdas de «Gestiones» (R374, R375)", () => {
         ivaFulfillment: "583914.70",
       }),
     });
-    const fila = filaGestionModeloNuevo(senuelo, "satelite");
+    const fila = filaGestionModeloNuevoEn(MONEDA_PLATAFORMA)(senuelo, "satelite");
     expect(Object.keys(fila).sort()).toEqual(
       [
         "folio", "mensajero", "fechaGestion", "numGuia", "numRemision", "destinatario", "tienda",
@@ -437,7 +438,7 @@ describe("SLT-113 — celdas de «Gestiones» (R374, R375)", () => {
       ingresoEmpresa: ingreso({ ...A.ingresoEmpresa!, total: "9999.99", ivaIncluido: "1.01" }),
       pagoMensajero: "1234.56",
     });
-    const fila = filaGestionModeloNuevo(trampa, "admin");
+    const fila = filaGestionModeloNuevoEn(MONEDA_PLATAFORMA)(trampa, "admin");
     expect([fila.cobroTienda, fila.ivaIncluido, fila.pagoMensajero, fila.ajuste]).toEqual([
       "9999.99", "1.01", "1234.56", "-700.00",
     ]);
@@ -446,16 +447,16 @@ describe("SLT-113 — celdas de «Gestiones» (R374, R375)", () => {
 
 describe("SLT-113 — libroGestiones (R370, R371, R372)", () => {
   it("todo viejo → null (el archivo de hoy)", () => {
-    expect(libroGestiones({ items: [C, D], rechazos: [R1], columnasAnterior: COLUMNAS_ANTERIOR, audiencia: "admin" })).toBeNull();
+    expect(libroGestiones({ items: [C, D], rechazos: [R1], columnasAnterior: COLUMNAS_ANTERIOR, audiencia: "admin", moneda: MONEDA_PLATAFORMA })).toBeNull();
   });
 
   it("sin cierreModelo (doble de hoy) → null", () => {
     const sinModelo = gestion({ numGuia: 900 });
-    expect(libroGestiones({ items: [sinModelo], rechazos: undefined, columnasAnterior: COLUMNAS_ANTERIOR, audiencia: "admin" })).toBeNull();
+    expect(libroGestiones({ items: [sinModelo], rechazos: undefined, columnasAnterior: COLUMNAS_ANTERIOR, audiencia: "admin", moneda: MONEDA_PLATAFORMA })).toBeNull();
   });
 
   it("solo nuevo → dos hojas: «Gestiones» y «Rechazados por la tienda» con R1", () => {
-    const hojas = libroGestiones({ items: [A, B], rechazos: [R1], columnasAnterior: COLUMNAS_ANTERIOR, audiencia: "admin" });
+    const hojas = libroGestiones({ items: [A, B], rechazos: [R1], columnasAnterior: COLUMNAS_ANTERIOR, audiencia: "admin", moneda: MONEDA_PLATAFORMA });
     expect(hojas?.map((h) => h.titulo)).toEqual(["Gestiones", "Rechazados por la tienda"]);
     expect(hojas?.[0].filas.map((f) => f.numGuia)).toEqual([501, 502]);
     expect(hojas?.[1].filas).toEqual([
@@ -464,13 +465,13 @@ describe("SLT-113 — libroGestiones (R370, R371, R372)", () => {
   });
 
   it("sin rechazos → «Rechazados por la tienda» con solo encabezados", () => {
-    const hojas = libroGestiones({ items: [A], rechazos: undefined, columnasAnterior: COLUMNAS_ANTERIOR, audiencia: "admin" });
+    const hojas = libroGestiones({ items: [A], rechazos: undefined, columnasAnterior: COLUMNAS_ANTERIOR, audiencia: "admin", moneda: MONEDA_PLATAFORMA });
     expect(hojas?.[1].titulo).toBe("Rechazados por la tienda");
     expect(hojas?.[1].filas).toEqual([]);
   });
 
   it("mixto → tres hojas en orden; ninguna gestión repetida; todas las de un cierre en la misma hoja", () => {
-    const hojas = libroGestiones({ items: [A, C, B, D], rechazos: [R1], columnasAnterior: COLUMNAS_ANTERIOR, audiencia: "admin" });
+    const hojas = libroGestiones({ items: [A, C, B, D], rechazos: [R1], columnasAnterior: COLUMNAS_ANTERIOR, audiencia: "admin", moneda: MONEDA_PLATAFORMA });
     expect(hojas?.map((h) => h.titulo)).toEqual(["Gestiones", "Rechazados por la tienda", "Gestiones modelo anterior"]);
     expect(hojas?.[0].filas.map((f) => [f.folio, f.numGuia])).toEqual([["ABCD1234", 501], ["ABCD1234", 502]]);
     expect(hojas?.[2].filas.map((f) => f.numGuia)).toEqual([503, 504]);
@@ -482,13 +483,13 @@ describe("SLT-113 — libroGestiones (R370, R371, R372)", () => {
       numGuia: 505,
       ingresoEmpresa: ingreso({ ...A.ingresoEmpresa!, tarifaModelo: "viejo" }),
     });
-    const hojas = libroGestiones({ items: [A, filaViejaEnCierreNuevo, C], rechazos: [], columnasAnterior: COLUMNAS_ANTERIOR, audiencia: "admin" });
+    const hojas = libroGestiones({ items: [A, filaViejaEnCierreNuevo, C], rechazos: [], columnasAnterior: COLUMNAS_ANTERIOR, audiencia: "admin", moneda: MONEDA_PLATAFORMA });
     expect(hojas?.[0].filas.map((f) => [f.folio, f.numGuia])).toEqual([["ABCD1234", 501], ["ABCD1234", 505]]);
     expect(hojas?.[2].filas.map((f) => f.numGuia)).toEqual([503]);
   });
 
   it("«Gestiones modelo anterior» = la hoja fundida de hoy con las columnas recibidas (fila literal)", () => {
-    const hojas = libroGestiones({ items: [A, C], rechazos: [], columnasAnterior: COLUMNAS_ANTERIOR, audiencia: "admin" });
+    const hojas = libroGestiones({ items: [A, C], rechazos: [], columnasAnterior: COLUMNAS_ANTERIOR, audiencia: "admin", moneda: MONEDA_PLATAFORMA });
     expect(hojas?.[2].columnas).toEqual([
       { clave: "mensajero", encabezado: "Mensajero" },
       { clave: "numGuia", encabezado: "Nº Guía" },

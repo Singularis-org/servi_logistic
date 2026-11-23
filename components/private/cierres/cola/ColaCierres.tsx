@@ -26,7 +26,8 @@ import { DataTable, type Column } from "@/components/shared/DataTable";
 import { BARRA_FIJA } from "@/components/shared/BuscadorFiltros";
 import { DESPLEGABLE_TACTIL } from "@/components/shared/texto-entero";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { money } from "@/lib/config/moneda";
+import { useMonedaDelPais } from "@/hooks/use-moneda-del-pais";
+import { formatearMontoEn, SIN_MONTO_RAYA, type FormatoMoneda } from "@/lib/config/moneda";
 import type { CierreAdminResumen } from "@/lib/interfaces/services/ICierresAdminService";
 import type {
   CierreBodegaResumen,
@@ -276,6 +277,7 @@ export function ColaCierres(props: Readonly<ColaCierresTodasProps>) {
   // SLT-156 (R535): «Cierres solicitados» del mensajero, en el teléfono, con dos columnas y desplegable
   // sobre la MISMA tabla. Las colas de la central y la satélite no cambian.
   const esMovil = useIsMobile();
+  const moneda = useMonedaDelPais();
   const comun: TablaComun = {
     region: props.region,
     cargando: props.cargando,
@@ -341,7 +343,7 @@ export function ColaCierres(props: Readonly<ColaCierresTodasProps>) {
                 <TablaCola
                   {...comun}
                   filas={props.filas}
-                  columns={esMovil ? columnasTablaPropiaMovil() : columnasTablaPropia(props.acciones)}
+                  columns={esMovil ? columnasTablaPropiaMovil(moneda) : columnasTablaPropia(props.acciones, moneda)}
                   rowKey="cierreId"
                   renderExpanded={esMovil ? (c: CierrePasadoDTO) => detallePropioMovil(c, props.acciones) : undefined}
                   expandAriaLabel={esMovil ? masDatosPropio : undefined}
@@ -458,6 +460,7 @@ function PanelSolicitados({
   cargando,
   error,
 }: Readonly<PanelSolicitadosProps>) {
+  const moneda = useMonedaDelPais();
   return (
     <div className="flex flex-col gap-4">
       <CifrasCierre cifras={tarjetas} ariaLabel={L.CIFRAS_SOLICITADOS_LABEL} />
@@ -470,7 +473,7 @@ function PanelSolicitados({
           filas={filas}
           columns={columnasTabla(
             columnasCola("bodega", "satelite", "solicitados"),
-            (id, c: CierreBodegaResumen) => celdaSolicitado(id, c, acciones),
+            (id, c: CierreBodegaResumen) => celdaSolicitado(id, c, acciones, moneda),
           )}
           rowKey="cierreBodegaId"
         />
@@ -484,8 +487,9 @@ function celdaSolicitado(
   id: ColumnaColaId,
   c: CierreBodegaResumen,
   acciones: AccionesColaSolicitados,
+  moneda: FormatoMoneda,
 ): ReactNode {
-  if (id === "recaudado") return <span className="tabular-nums">{money(c.totales.general)}</span>;
+  if (id === "recaudado") return <span className="tabular-nums">{formatearMontoEn(moneda, c.totales.general, SIN_MONTO_RAYA)}</span>;
   if (id === "acciones") {
     return (
       <span className="flex justify-end gap-1.5">
@@ -501,11 +505,11 @@ function celdaSolicitado(
       </span>
     );
   }
-  return celdaBodega(id, c);
+  return celdaBodega(id, c, moneda);
 }
 
 /**
- * La tabla de «A consolidar» (R192): pinta los strings del servidor sin derivar nada; `money()` es
+ * La tabla de «A consolidar» (R192): pinta los strings del servidor sin derivar nada; `formatearMontoEn` es
  * el único que toca un importe (R71) y «A la central» es el `paraLaCentral` de la fila (R67).
  */
 function TablaColaConsolidar({
@@ -518,6 +522,7 @@ function TablaColaConsolidar({
 }: Readonly<
   TablaComun & { filas: readonly CierreConsolidableCola[]; acciones: AccionesColaConsolidar }
 >) {
+  const moneda = useMonedaDelPais();
   function celda(id: ColumnaColaId, c: CierreConsolidableCola): ReactNode {
     switch (id) {
       case "folio":
@@ -527,11 +532,11 @@ function TablaColaConsolidar({
       case "aprobado":
         return <span className="text-muted-foreground">{aprobadoCola(c)}</span>;
       case "recaudado":
-        return <span className="tabular-nums">{money(c.totales.general)}</span>;
+        return <span className="tabular-nums">{formatearMontoEn(moneda, c.totales.general, SIN_MONTO_RAYA)}</span>;
       case "pago":
-        return <span className="tabular-nums">{money(c.totalPagoMensajero)}</span>;
+        return <span className="tabular-nums">{formatearMontoEn(moneda, c.totalPagoMensajero, SIN_MONTO_RAYA)}</span>;
       case "ganaBodega":
-        return <span className="tabular-nums">{money(c.totalIngresoBodegaRechazos)}</span>;
+        return <span className="tabular-nums">{formatearMontoEn(moneda, c.totalIngresoBodegaRechazos, SIN_MONTO_RAYA)}</span>;
       case "aLaCentral":
         return (
           <span
@@ -540,7 +545,7 @@ function TablaColaConsolidar({
               esMontoNegativo(c.paraLaCentral) && "text-danger-strong",
             )}
           >
-            {money(c.paraLaCentral)}
+            {formatearMontoEn(moneda, c.paraLaCentral, SIN_MONTO_RAYA)}
           </span>
         );
       case "senales": {
@@ -593,6 +598,7 @@ function TablaColaMensajero({
     acciones: AccionesCola;
   }
 >) {
+  const moneda = useMonedaDelPais();
   function celda(id: ColumnaColaId, c: CierreAdminResumen): ReactNode {
     switch (id) {
       case "folio":
@@ -604,9 +610,9 @@ function TablaColaMensajero({
       case "estado":
         return <EstadoCierreBadge estado={c.estado} />;
       case "recaudado":
-        return <span className="tabular-nums">{money(c.totales.general)}</span>;
+        return <span className="tabular-nums">{formatearMontoEn(moneda, c.totales.general, SIN_MONTO_RAYA)}</span>;
       case "pago":
-        return <span className="tabular-nums">{money(c.totalPagoMensajero)}</span>;
+        return <span className="tabular-nums">{formatearMontoEn(moneda, c.totalPagoMensajero, SIN_MONTO_RAYA)}</span>;
       case "pagoEntregado":
         return <PagoEntregadoCelda pendiente={c.pendientePagoMensajero} />;
       case "senales":
@@ -631,7 +637,7 @@ function TablaColaMensajero({
 
 /**
  * La tabla de la cola de bodega de la central (SLT-127: R44, R129, R130, R134). Pinta lo que manda
- * el servidor sin derivar importes: `money()` es el único que toca un string de dinero (R71).
+ * el servidor sin derivar importes: `formatearMontoEn` es el único que toca un string de dinero (R71).
  */
 function TablaColaBodega({
   region,
@@ -643,9 +649,10 @@ function TablaColaBodega({
 }: Readonly<
   TablaComun & { filas: readonly CierreBodegaResumen[]; acciones: AccionesColaBodega }
 >) {
+  const moneda = useMonedaDelPais();
   function celda(id: ColumnaColaId, c: CierreBodegaResumen): ReactNode {
     if (id === "acciones") return <AccionBodegaCelda cierre={c} abrir={acciones.abrir} />;
-    return celdaBodega(id, c);
+    return celdaBodega(id, c, moneda);
   }
 
   return (
@@ -659,9 +666,9 @@ function TablaColaBodega({
 
 /**
  * Las celdas de una fila de bodega que comparten la central (SLT-127) y «Solicitados» de la satélite
- * (SLT-107, R288). Pintan los strings del servidor; `money()` es el único que toca un importe (R71).
+ * (SLT-107, R288). Pintan los strings del servidor; `formatearMontoEn` es el único que toca un importe (R71).
  */
-function celdaBodega(id: ColumnaColaId, c: CierreBodegaResumen): ReactNode {
+function celdaBodega(id: ColumnaColaId, c: CierreBodegaResumen, moneda: FormatoMoneda): ReactNode {
   switch (id) {
     case "folio":
       return <span className="font-mono text-[13px]">{folioBodegaCola(c)}</span>;
@@ -674,13 +681,13 @@ function celdaBodega(id: ColumnaColaId, c: CierreBodegaResumen): ReactNode {
     case "cierres":
       return <span className="tabular-nums">{c.cantidadCierres}</span>;
     case "debeLlegar":
-      return <span className="font-semibold tabular-nums">{money(c.paraLaCentral)}</span>;
+      return <span className="font-semibold tabular-nums">{formatearMontoEn(moneda, c.paraLaCentral, SIN_MONTO_RAYA)}</span>;
     case "recibido": {
       const r = recibidoCola(c);
       return r.tipo === "nulo" ? (
         <span className="text-muted-foreground">—</span>
       ) : (
-        <span className="tabular-nums">{money(r.monto)}</span>
+        <span className="tabular-nums">{formatearMontoEn(moneda, r.monto, SIN_MONTO_RAYA)}</span>
       );
     }
     case "falta":
@@ -692,7 +699,7 @@ function celdaBodega(id: ColumnaColaId, c: CierreBodegaResumen): ReactNode {
               : "tabular-nums text-muted-foreground"
           }
         >
-          {money(c.faltaPorRecibir)}
+          {formatearMontoEn(moneda, c.faltaPorRecibir, SIN_MONTO_RAYA)}
         </span>
       );
     case "conciliacion": {
@@ -737,6 +744,7 @@ function AccionBodegaCelda({
 }
 
 function PagoEntregadoCelda({ pendiente }: Readonly<{ pendiente: string | null }>) {
+  const moneda = useMonedaDelPais();
   const pago = pagoEntregadoDe(pendiente);
   if (pago.tipo === "nulo") return <span className="pl-4 text-muted-foreground">—</span>;
   if (pago.tipo === "liquidado") {
@@ -745,7 +753,7 @@ function PagoEntregadoCelda({ pendiente }: Readonly<{ pendiente: string | null }
   return (
     <span className="pl-4 tabular-nums">
       {L.PENDIENTE_PREFIJO}
-      {money(pago.monto)}
+      {formatearMontoEn(moneda, pago.monto, SIN_MONTO_RAYA)}
     </span>
   );
 }

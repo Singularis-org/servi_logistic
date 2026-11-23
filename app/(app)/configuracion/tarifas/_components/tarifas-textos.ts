@@ -1,6 +1,6 @@
 import type { GestionResultado, TarifaActor, TarifaConcepto } from "@prisma/client";
 
-import { formatearMontoEn, MONEDA_PLATAFORMA, SIN_MONTO_RAYA, type FormatoMoneda } from "@/lib/config/moneda";
+import { formatearMontoEn, SIN_MONTO_RAYA, type FormatoMoneda } from "@/lib/config/moneda";
 import { CATALOGO_CONCEPTOS, type EntradaCatalogo } from "@/lib/tarifas/catalogo";
 import type { ConceptoEsencial } from "@/lib/tarifas/faltantes";
 import type { Referencia } from "@/lib/tarifas/referencia-vigente";
@@ -123,15 +123,6 @@ export function enumerar(partes: readonly string[]): string {
 export function porcentajeParaVer(valor: string, moneda: FormatoMoneda): string {
   const sinCeros = valor.includes(".") ? valor.replace(/\.?0+$/, "") : valor;
   return sinCeros.replace(".", moneda.separadorDecimal);
-}
-
-/**
- * SLT-241 — `porcentajeParaVer` con la moneda de la plataforma, para los textos que todavía no pasan a la
- * moneda del país (la fila de gestión de cierres). Tiene nombre propio para que el llamante diga POR QUÉ no
- * usa la del país, como `MONEDA_DE_LOS_PLANES`.
- */
-export function porcentajeParaVerEnLaPlataforma(valor: string): string {
-  return porcentajeParaVer(valor, MONEDA_PLATAFORMA);
 }
 
 /** R1 (SLT-241): un importe de la pantalla, con la moneda del país y la raya larga de siempre sin importe. */

@@ -5,14 +5,15 @@
 // un `<DataTable>` propio: la tabla la pinta `TablaCola` dentro de `ColaCierres.tsx`, para que la
 // cola siga siendo UNA instancia de `<DataTable>` en el censo (`censo-tablas.ts`). La lógica y los
 // textos viven en `cola-propia-vista.ts`; aquí ningún importe se convierte a número: los pinta
-// `money()` tal cual llegan del servidor (R71).
+// `formatearMontoEn` tal cual llegan del servidor (R71), con la moneda del país que le pasa la cola
+// (SLT-244).
 
 import type { ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
 import type { Column } from "@/components/shared/DataTable";
 import { COLUMNA_FIJA, TACTIL_MOVIL, TEXTO_ENTERO } from "@/components/shared/texto-entero";
-import { money } from "@/lib/config/moneda";
+import { formatearMontoEn, SIN_MONTO_RAYA, type FormatoMoneda } from "@/lib/config/moneda";
 import { cn } from "@/lib/utils";
 import type { CierrePasadoDTO } from "@/lib/interfaces/services/ICierreDiaService";
 import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
@@ -69,6 +70,7 @@ function celdaPropia(
   id: ColumnaPropiaId,
   c: CierrePasadoDTO,
   acciones: AccionesColaPropia,
+  moneda: FormatoMoneda,
 ): ReactNode {
   switch (id) {
     case "folio":
@@ -80,9 +82,9 @@ function celdaPropia(
     case "estado":
       return <EstadoCierreBadge estado={c.estado} />;
     case "recaudado":
-      return <span className="tabular-nums">{money(c.totales.general)}</span>;
+      return <span className="tabular-nums">{formatearMontoEn(moneda, c.totales.general, SIN_MONTO_RAYA)}</span>;
     case "ganancia":
-      return <span className="tabular-nums">{money(c.totalPagoMensajero)}</span>;
+      return <span className="tabular-nums">{formatearMontoEn(moneda, c.totalPagoMensajero, SIN_MONTO_RAYA)}</span>;
     case "pago":
       return <span className="text-[13px]">{textoPagoPropio(pagoPropioDe(c))}</span>;
     case "acciones":
@@ -91,13 +93,16 @@ function celdaPropia(
 }
 
 /** Las ocho columnas de la cola propia (R60, R156); la de acciones con cabecera solo para lector. */
-export function columnasTablaPropia(acciones: AccionesColaPropia): Column<CierrePasadoDTO>[] {
+export function columnasTablaPropia(
+  acciones: AccionesColaPropia,
+  moneda: FormatoMoneda,
+): Column<CierrePasadoDTO>[] {
   return columnasColaPropia().map((col) => ({
     id: col.id,
     value: col.label,
     align: col.align,
     renderHeader: col.soloLector ? () => <span className="sr-only">{col.label}</span> : undefined,
-    render: (c: CierrePasadoDTO) => celdaPropia(col.id, c, acciones),
+    render: (c: CierrePasadoDTO) => celdaPropia(col.id, c, acciones, moneda),
   }));
 }
 
@@ -107,7 +112,7 @@ export function columnasTablaPropia(acciones: AccionesColaPropia): Column<Cierre
  * folio en mono arriba, «Solicitado {fecha y hora}» con el estado y «Destino: …»; «Ganancia» con su
  * rótulo y el importe en su columna fija. «Ver» va en `detallePropioMovil`, no en la fila.
  */
-export function columnasTablaPropiaMovil(): Column<CierrePasadoDTO>[] {
+export function columnasTablaPropiaMovil(moneda: FormatoMoneda): Column<CierrePasadoDTO>[] {
   const rotulos = rotulosPropios();
   return columnasColaPropiaMovil().map((col) => ({
     id: col.id,
@@ -126,7 +131,7 @@ export function columnasTablaPropiaMovil(): Column<CierrePasadoDTO>[] {
       ) : (
         <div className="flex flex-col items-end gap-1">
           <span className="text-xs text-muted-foreground">{rotulos.ganancia}</span>
-          <span className={cn("text-right font-semibold", COLUMNA_FIJA)}>{money(c.totalPagoMensajero)}</span>
+          <span className={cn("text-right font-semibold", COLUMNA_FIJA)}>{formatearMontoEn(moneda, c.totalPagoMensajero, SIN_MONTO_RAYA)}</span>
         </div>
       ),
   }));
