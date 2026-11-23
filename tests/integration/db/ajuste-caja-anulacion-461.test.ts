@@ -51,6 +51,9 @@ vi.mock("@/lib/modulos/exigir-modulo", async () => (await import("@/tests/fabric
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 
 const AHORA = new Date("2026-09-25T21:15:33.123Z");
+// SLT-239: la Parte 1 lee la caja de TODA la base antes y despues; en READ COMMITTED se colaba lo que
+// otro archivo commiteaba entre medias (CI: `expected 2 to be 1` y la caja desviada en 1 500 000).
+const FOTO_UNICA = { aislamiento: "RepeatableRead" } as const;
 const suma = (xs: string[]) => xs.reduce((a, x) => a.add(new Prisma.Decimal(x)), new Prisma.Decimal(0)).toFixed(2);
 
 describeSiHayBase("461/R69–R71 — anular una correccion de caja (Postgres real)", () => {
@@ -106,7 +109,7 @@ describeSiHayBase("461/R69–R71 — anular una correccion de caja (Postgres rea
       const filaDespues = libroDespues.data.movimientos.find((x) => x.id === registro.movimiento.id);
       const filaContra = libroDespues.data.movimientos.find((x) => x.id === contra[0]?.id);
       return { r, antes, conCorreccion, despues, constancia, contra, historial, original, filaAntes, filaDespues, filaContra, actor: p.admin.usuarioId };
-    });
+    }, FOTO_UNICA);
 
     expect(m.r).toEqual({ status: "ok" });
 
@@ -171,7 +174,7 @@ describeSiHayBase("461/R69–R71 — anular una correccion de caja (Postgres rea
       const despues = (await leerCajaEntera(s, p.maestro)).resumen;
       const contra = await tx.walletMovimiento.findMany({ where: { origenTipo: "manual", origenId: registro.movimiento.id } });
       return { r, antes, conCorreccion, despues, contra };
-    });
+    }, FOTO_UNICA);
     expect(m.r).toEqual({ status: "ok" });
     expect(m.contra).toHaveLength(1);
     expect(m.contra[0]).toMatchObject({ tipo: "ingreso", categoria: "ingreso_ajuste" });
@@ -200,16 +203,21 @@ describeSiHayBase("461/R69–R71 — anular una correccion de caja (Postgres rea
       const reversoFila = await tx.walletMovimiento.findFirstOrThrow({ where: { origenTipo: "gasto", origenId: sueldo.movimiento.id } });
 
       const svc = servicioDe(tx);
-      const filasAntes = await tx.walletMovimiento.count();
+      // SLT-239: las filas de la empresa del escenario, no las de toda la tabla.
+      const ctx = contextoActual();
+      const organizacionId = ctx?.tipo === "empresa" ? ctx.organizacionId : null;
+      if (organizacionId === null) throw new Error("sin empresa en contexto");
+      const filasDelEscenario = () => tx.walletMovimiento.count({ where: { organizacionId } });
+      const filasAntes = await filasDelEscenario();
       const primera = await svc.anular({ movimientoId: correccion.movimiento.id, motivo: "uno" }, p.maestro);
-      const filasTrasPrimera = await tx.walletMovimiento.count();
+      const filasTrasPrimera = await filasDelEscenario();
       const segunda = await svc.anular({ movimientoId: correccion.movimiento.id, motivo: "dos" }, p.maestro);
       const contraId = (await tx.walletMovimiento.findFirstOrThrow({ where: { origenTipo: "manual", origenId: correccion.movimiento.id } })).id;
       const elContra = await svc.anular({ movimientoId: contraId, motivo: "x" }, p.maestro);
       const elSueldo = await svc.anular({ movimientoId: sueldo.movimiento.id, motivo: "x" }, p.maestro);
       const elReverso = await svc.anular({ movimientoId: reversoFila.id, motivo: "x" }, p.maestro);
       const inexistente = await svc.anular({ movimientoId: randomUUID(), motivo: "x" }, p.maestro);
-      const filasFinal = await tx.walletMovimiento.count();
+      const filasFinal = await filasDelEscenario();
       const constancias = await tx.ajusteCajaAnulacion.count({ where: { anuladoPor: p.maestro.usuarioId } });
 
       // Sin acceso total: nada se lee ni se escribe (una segunda correccion, intacta).
@@ -221,7 +229,7 @@ describeSiHayBase("461/R69–R71 — anular una correccion de caja (Postgres rea
       const tienda = await svc.anular({ movimientoId: otra.movimiento.id, motivo: "x" }, { usuarioId: p.tiendaId, rol: "adminTienda" });
       const constanciaDeOtra = await tx.ajusteCajaAnulacion.count({ where: { movimientoId: otra.movimiento.id } });
       return { primera, segunda, elContra, elSueldo, elReverso, inexistente, tienda, filasAntes, filasTrasPrimera, filasFinal, constancias, constanciaDeOtra };
-    });
+    }, FOTO_UNICA);
     expect(m.primera).toEqual({ status: "ok" });
     expect(m.segunda).toEqual({ status: "ya_anulado" });
     expect(m.elContra).toEqual({ status: "no_encontrado" });
