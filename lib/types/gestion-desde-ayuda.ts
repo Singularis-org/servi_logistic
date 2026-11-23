@@ -51,24 +51,26 @@ export type ResultadoDesdeAyuda = (typeof RESULTADOS_DESDE_AYUDA)[number];
  * clicks sin ningun respaldo sobre una orden que la tienda no vio serian demasiado baratos para lo
  * que cuestan.
  */
-export const gestionarDesdeAyudaSchema = z.discriminatedUnion("resultado", [
-  z.object({
-    ordenId: z.string().min(1),
-    resultado: z.literal("reprogramado"),
-    // R14: no anterior a mañana en el calendario de CR, revalidado AQUI y no solo en la ventana.
-    fechaReprogramacion: fechaFuturaSchema,
-    motivo: motivoSchema,
-    evidencias: evidenciasSchema, // D2: tambien al reprogramar
-  }),
-  z.object({
-    ordenId: z.string().min(1),
-    resultado: z.literal("devolucion_a_origen_por_rechazo"),
-    motivo: motivoSchema,
-    evidencias: evidenciasSchema,
-  }),
-]);
+export function gestionarDesdeAyudaSchema(zona: string) {
+  return z.discriminatedUnion("resultado", [
+    z.object({
+      ordenId: z.string().min(1),
+      resultado: z.literal("reprogramado"),
+      // R14: no anterior a mañana en el calendario de CR, revalidado AQUI y no solo en la ventana.
+      fechaReprogramacion: fechaFuturaSchema(zona),
+      motivo: motivoSchema,
+      evidencias: evidenciasSchema, // D2: tambien al reprogramar
+    }),
+    z.object({
+      ordenId: z.string().min(1),
+      resultado: z.literal("devolucion_a_origen_por_rechazo"),
+      motivo: motivoSchema,
+      evidencias: evidenciasSchema,
+    }),
+  ]);
+}
 
-export type GestionarDesdeAyudaActionInput = z.infer<typeof gestionarDesdeAyudaSchema>;
+export type GestionarDesdeAyudaActionInput = z.infer<ReturnType<typeof gestionarDesdeAyudaSchema>>;
 
 /**
  * Resultado de la Server Action (design §11).

@@ -21,6 +21,7 @@ import { BulkOrdenService } from "@/lib/services/BulkOrdenService";
 import { ManifiestoService } from "@/lib/services/ManifiestoService";
 import { OrdenHistorialService } from "@/lib/services/OrdenHistorialService";
 import { EtiquetaGuiaService } from "@/lib/services/EtiquetaGuiaService";
+import { construirReglasPaisEmpresa } from "@/lib/services/ReglasPaisEmpresaService";
 import {
   EtiquetasLotePdfService,
   EtiquetasLoteExcedeTopeError,
@@ -33,7 +34,6 @@ import { OrdenDiaRepartoCambioRepository } from "@/lib/repositories/OrdenDiaRepa
 import { OrdenTraspasoRepository } from "@/lib/repositories/OrdenTraspasoRepository";
 import { ZonaRepository } from "@/lib/repositories/ZonaRepository";
 import { TarifaVigenteRepository } from "@/lib/repositories/TarifaVigenteRepository";
-import { CupoPlanRepository } from "@/lib/repositories/CupoPlanRepository";
 import { CatalogoGeograficoRepository } from "@/lib/repositories/CatalogoGeograficoRepository";
 import { SupabaseFileStorage } from "@/lib/storage/SupabaseFileStorage";
 import { SupabaseSignedUrlProvider } from "@/lib/storage/SupabaseSignedUrlProvider";
@@ -149,9 +149,7 @@ function buildBulkService(): IBulkOrdenService {
     // Feature 146/R22: COMPOSITION ROOT del aviso "carga masiva terminada". Esta via SI tiene
     // fin de lote real (una peticion = un lote), asi que es la unica que lo cablea server-side.
     notificarCargaMasivaTerminadaReal,
-    // SL-24 (R21, R23): la lectura previa del cupo del plan. Si no cabe, el servicio lanza
-    // `TopeDelPlanAlcanzado` y `withErrorHandler` lo saca como 409.
-    new CupoPlanRepository(prisma),
+    // SLT-86 (R8): ya no se lee el cupo de órdenes del plan antes de cargar; no hay tope de órdenes.
     // SLT-45 (design §2.3): el catalogo de la empresa, para la forma del pais (R5).
     new CatalogoGeograficoRepository(prisma),
   );
@@ -165,11 +163,13 @@ function buildDescargaService(): IEtiquetasDescargaService {
   const prisma = getPrismaClient();
   const bucket = etiquetasConfig.ETIQUETAS_BUCKET;
   const pdfService = new EtiquetasLotePdfService(
-    new EtiquetaGuiaService(new OrdenRepository(prisma)),
+    new EtiquetaGuiaService(new OrdenRepository(prisma), construirReglasPaisEmpresa(prisma)),
     new SupabaseFileStorage(undefined, bucket),
     new SupabaseSignedUrlProvider(undefined, bucket),
     etiquetasConfig.SIGNED_URL_TTL_SECONDS,
     etiquetasConfig.MAX_ETIQUETAS_POR_PDF,
+    undefined, // el `build` de produccion, el de por defecto
+    construirReglasPaisEmpresa(prisma), // SL-21 R14/R21: la moneda del pais de la empresa
   );
   return new EtiquetasDescargaService(pdfService, new OrdenRepository(prisma));
 }
@@ -189,6 +189,9 @@ function buildManifiestoService(): IManifiestoService {
       new OrdenDiaRepartoCambioRepository(prisma),
       new OrdenTraspasoRepository(prisma),
     ),
+    undefined, // el parametro opcional previo, con su valor por defecto
+    // SLT-42 (R22): la zona horaria del pais de la empresa.
+    construirReglasPaisEmpresa(prisma),
   );
 }
 

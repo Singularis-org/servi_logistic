@@ -11,10 +11,10 @@ import {
   HAY_BASE_DE_DATOS,
   crearPrismaDeTest,
   enTransaccionRevertida,
-  fksDeOrden,
   serializarEscriturasReales,
   type FksDeOrden,
 } from "./_postgres-real";
+import { crearFksDeOrden } from "./_fixtures/orden-minima";
 
 /**
  * FEATURE 294 — UNA REMISION DE ORDEN BORRADA DEJA DE BLOQUEAR LA CARGA. CONTRA POSTGRES.
@@ -61,23 +61,17 @@ const jobsNoOp = {
 
 describeSiHayBase("294 — el unico PARCIAL de num_remision, contra Postgres real", () => {
   let prisma: PrismaClient;
+  // SLT-180 (R1042): zona y tienda modelo se SIEMBRAN en la tx de cada caso (`conTienda`); ya no
+  // se lee «la primera orden» de la base.
   let fks: FksDeOrden;
   /** Estado INICIAL legal (ESTADOS_CREACION): `appendCambioEstado` valida `null -> destino`. */
   let estatusInicialId: string;
 
   beforeAll(async () => {
     prisma = crearPrismaDeTest();
-    const encontradas = await fksDeOrden(prisma);
-    if (encontradas === null) {
-      throw new Error(
-        "hay DATABASE_URL pero la tabla `orden` esta vacia: sin FKs no se puede sembrar el " +
-          "caso. Corre `pnpm run db:seed` (y las semillas de zonas) antes de esta suite.",
-      );
-    }
-    fks = encontradas;
-    // El `estatusId` que devuelve `fksDeOrden` es el de una orden CUALQUIERA (puede ser
-    // `entregada`), y la insercion en lote registra historial `null -> estado`: con un estado
-    // que no es de creacion, la guardia de transiciones aborta. Se resuelve el value correcto.
+    // La insercion en lote registra historial `null -> estado`: con un estado que no es de
+    // creacion, la guardia de transiciones aborta. Se resuelve el value correcto (no se usa el
+    // `estatusId` de las FKs sembradas).
     const inicial = await prisma.orderStatus.findFirst({
       where: { value: ESTADOS_CREACION[0] },
       select: { id: true },
@@ -112,8 +106,18 @@ describeSiHayBase("294 — el unico PARCIAL de num_remision, contra Postgres rea
   ): Promise<T> {
     return enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
-      // Las FKs del usuario (rol, tipo de identificacion) se toman de la TIENDA que ya existe
-      // en la base: interesa que sean reales, no cuales son.
+      // SLT-180 (R1044): zona y tienda modelo propias + control positivo que nombra la fila.
+      fks = await crearFksDeOrden(tx);
+      expect(
+        await tx.usuario.count({ where: { id: fks.tiendaId } }),
+        "SLT-180: la tienda modelo sembrada no esta en la base",
+      ).toBe(1);
+      expect(
+        await tx.zona.count({ where: { id: fks.zonaId } }),
+        "SLT-180: la zona sembrada no esta en la base",
+      ).toBe(1);
+      // Las FKs del usuario (rol, tipo de identificacion) se toman de la TIENDA modelo sembrada:
+      // interesa que sean reales, no cuales son.
       const plantilla = await tx.usuario.findUniqueOrThrow({
         where: { id: fks.tiendaId },
         select: { rolId: true, tipoIdentificacionId: true },

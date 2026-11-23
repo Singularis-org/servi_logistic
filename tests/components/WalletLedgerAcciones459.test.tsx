@@ -71,7 +71,6 @@ function fila(over: Partial<WalletMovimientoDTO>): WalletMovimientoDTO {
     origenTipo: "pago_por_cuenta_tienda",
     origenId: PAGO_ID,
     descripcion: "Tienda Norte · A Facebook · Pauta · SINPE · REF-1",
-    registradoPor: null,
     fechaMovimiento: "2026-09-20T12:00:00.000Z",
     dueno: "terceros",
     documento: null,

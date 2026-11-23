@@ -115,6 +115,14 @@ const INCENTIVO: RamaDeCuenta = {
   union: Prisma.sql`d."id" = w."origen_id" AND d."categoria" = 'incentivo'`,
   columna: Prisma.sql`d."mensajero_id"`,
 };
+// SLT-94 (R31/R36): `origen_id` es el id del movimiento de fulfillment; la tienda es la CONGELADA en
+// el movimiento (a la que se cobro o devolvio), no la actual de la orden.
+const FULFILLMENT: RamaDeCuenta = {
+  cuenta: "tienda",
+  tablas: Prisma.sql`"orden_fulfillment_movimiento" d`,
+  union: Prisma.sql`d."id" = w."origen_id"`,
+  columna: Prisma.sql`d."tienda_id"`,
+};
 const ABONO: RamaDeCuenta = {
   cuenta: "tienda",
   tablas: Prisma.sql`"abono_tienda" d`,
@@ -145,6 +153,7 @@ const A_QUIEN_POR_ORIGEN: Record<WalletOrigenTipo, readonly RamaDeCuenta[] | "an
   // SLT-73: la diferencia de la satélite no es de ninguna tienda ni de ningún mensajero (es de la
   // bodega satélite, que no es una cuenta de «A quién»). Sin ramas: el filtro por cuenta no la trae.
   conciliacion_bodega_ajuste: [],
+  orden_fulfillment: [FULFILLMENT], // SLT-94
 };
 
 const ORIGENES = Object.keys(A_QUIEN_POR_ORIGEN) as WalletOrigenTipo[];

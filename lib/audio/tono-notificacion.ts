@@ -64,14 +64,19 @@ function obtenerContexto(): AudioContext | null {
 }
 
 /** Programa una nota: oscilador sinusoidal con rampa de atenuacion hasta el silencio (R3). */
-function programarNota(ctx: AudioContext, frecuencia: number, inicio: number): void {
+function programarNota(
+  ctx: AudioContext,
+  frecuencia: number,
+  inicio: number,
+  duracion: number = DURACION_NOTA_S,
+): void {
   const oscilador = ctx.createOscillator();
   const ganancia = ctx.createGain();
 
   oscilador.type = "sine";
   oscilador.frequency.value = frecuencia;
 
-  const fin = inicio + DURACION_NOTA_S;
+  const fin = inicio + duracion;
   ganancia.gain.setValueAtTime(GANANCIA_PICO, inicio);
   ganancia.gain.exponentialRampToValueAtTime(GANANCIA_SILENCIO, fin);
 
@@ -105,14 +110,46 @@ export function prepararAudio(): void {
  * tras el reanudado; si no lo logra, no suena y no lanza (R6).
  */
 export function reproducirTono(): void {
+  emitirNotas(NOTAS_HZ, DURACION_NOTA_S);
+}
+
+/**
+ * SLT-158 (R577) — los dos tonos de una lectura de escaneo (pistola, cámara o tecleo).
+ * DISTINTOS entre sí y distintos del aviso de notificaciones, para que quien escanea de pie
+ * sepa sin mirar si la lectura entró:
+ * - acierto: una nota corta y aguda (E6);
+ * - error: dos notas graves y descendentes (A3 -> F3), más largas.
+ * El aviso de notificaciones (`reproducirTono`) no cambia.
+ */
+const NOTAS_LECTURA_HZ = {
+  acierto: [1318.51],
+  error: [220, 174.61],
+} as const;
+
+/** Duración de cada nota de lectura. El error dura más: se nota aunque haya ruido. */
+const DURACION_NOTA_LECTURA_S = { acierto: 0.08, error: 0.14 } as const;
+
+export type TonoLectura = keyof typeof NOTAS_LECTURA_HZ;
+
+/**
+ * Emite el tono de una lectura. NO lee la preferencia de sonido: el generador no sabe de
+ * preferencias (ver `preferencia-sonido.ts`); quien llama la consulta antes. Mismo fallo
+ * silencioso que `reproducirTono` (R4, R6).
+ */
+export function reproducirTonoLectura(tono: TonoLectura): void {
+  emitirNotas(NOTAS_LECTURA_HZ[tono], DURACION_NOTA_LECTURA_S[tono]);
+}
+
+/** Programa `notas` seguidas, cada una de `duracion` segundos, reanudando si hace falta. */
+function emitirNotas(notas: readonly number[], duracion: number): void {
   const ctx = obtenerContexto();
   if (!ctx) return;
 
   const emitir = () => {
     try {
       const ahora = ctx.currentTime;
-      NOTAS_HZ.forEach((frecuencia, i) => {
-        programarNota(ctx, frecuencia, ahora + i * DURACION_NOTA_S);
+      notas.forEach((frecuencia, i) => {
+        programarNota(ctx, frecuencia, ahora + i * duracion, duracion);
       });
     } catch {
       // El contexto pudo cerrarse entre la comprobacion y el uso. Fallo silencioso (R4).

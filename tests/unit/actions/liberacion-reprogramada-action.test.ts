@@ -10,6 +10,7 @@ import {
   llamadasIntentos,
   type IntentosSvcDoble,
 } from "@/tests/fixtures/intentos-entrega";
+import { reglasPaisFijas, ventanaDelDiaCR } from "@/tests/fabricas/reglas-pais";
 
 // Feature 46 (T15, R15/R16) — loader del aviso derivado "Liberadas hoy". Verifica el
 // filtro por rol (destinatario de la bodega responsable) con inyección de deps, patrón
@@ -52,6 +53,7 @@ describe("listarLiberadasHoy — filtro por rol (R16)", () => {
       repo,
       zonaRepo,
       historial: intentos,
+      reglasPais: reglasPaisFijas(),
       getActor: async () => MAESTRO,
       hoyCR: HOY,
     });
@@ -60,7 +62,7 @@ describe("listarLiberadasHoy — filtro por rol (R16)", () => {
     expect(zonaRepo.findCentralZonaId).toHaveBeenCalled();
     expect(repo.findLiberadasHoy).toHaveBeenCalledWith(
       { zonaId: "zona-central", estatusValue: "en_bodega_central" },
-      HOY,
+      ventanaDelDiaCR(HOY),
     );
     if (r.status === "ok") expect(r.liberadas).toHaveLength(1);
   });
@@ -72,6 +74,7 @@ describe("listarLiberadasHoy — filtro por rol (R16)", () => {
       repo,
       ordenRepo,
       historial: intentos,
+      reglasPais: reglasPaisFijas(),
       getActor: async () => ADMIN_SAT,
       hoyCR: HOY,
     });
@@ -80,7 +83,7 @@ describe("listarLiberadasHoy — filtro por rol (R16)", () => {
     expect(ordenRepo.findUsuarioZonaId).toHaveBeenCalledWith("u-sat");
     expect(repo.findLiberadasHoy).toHaveBeenCalledWith(
       { zonaId: "zona-sat", estatusValue: "en_bodega_satelite" },
-      HOY,
+      ventanaDelDiaCR(HOY),
     );
     if (r.status === "ok") expect(r.liberadas).toHaveLength(2);
   });
@@ -89,6 +92,7 @@ describe("listarLiberadasHoy — filtro por rol (R16)", () => {
     const repo = buildRepo();
     const r = await listarLiberadasHoy({
       repo,
+      reglasPais: reglasPaisFijas(),
       getActor: async () => ADMIN_TIENDA,
       hoyCR: HOY,
     });
@@ -99,7 +103,7 @@ describe("listarLiberadasHoy — filtro por rol (R16)", () => {
 
   it("sin actor => unauthenticated, sin tocar el repo", async () => {
     const repo = buildRepo();
-    const r = await listarLiberadasHoy({ repo, getActor: async () => null, hoyCR: HOY });
+    const r = await listarLiberadasHoy({ repo, reglasPais: reglasPaisFijas(), getActor: async () => null, hoyCR: HOY });
 
     expect(r.status).toBe("unauthenticated");
     expect(repo.findLiberadasHoy).not.toHaveBeenCalled();
@@ -111,6 +115,7 @@ describe("listarLiberadasHoy — filtro por rol (R16)", () => {
     const r = await listarLiberadasHoy({
       repo,
       zonaRepo,
+      reglasPais: reglasPaisFijas(),
       getActor: async () => MAESTRO,
       hoyCR: HOY,
     });
@@ -126,6 +131,7 @@ describe("listarLiberadasHoy — filtro por rol (R16)", () => {
     const r = await listarLiberadasHoy({
       repo,
       ordenRepo,
+      reglasPais: reglasPaisFijas(),
       getActor: async () => ADMIN_SAT,
       hoyCR: HOY,
     });
@@ -146,6 +152,7 @@ describe("listarLiberadasHoy — intentos de entrega en lote (160/R11-R15/R27)",
       repo,
       zonaRepo: { findCentralZonaId: vi.fn(async () => "zona-central") },
       historial: doble,
+      reglasPais: reglasPaisFijas(),
       getActor: async () => MAESTRO,
       hoyCR: HOY,
     });
@@ -163,6 +170,7 @@ describe("listarLiberadasHoy — intentos de entrega en lote (160/R11-R15/R27)",
       repo,
       ordenRepo: { findUsuarioZonaId: vi.fn(async () => "zona-sat") },
       historial: doble,
+      reglasPais: reglasPaisFijas(),
       getActor: async () => ADMIN_SAT,
       hoyCR: HOY,
     });
@@ -172,7 +180,7 @@ describe("listarLiberadasHoy — intentos de entrega en lote (160/R11-R15/R27)",
     // El filtro (zona + estatus) lo impuso el borde con el rol del actor, no el cliente.
     expect(repo.findLiberadasHoy).toHaveBeenCalledWith(
       { zonaId: "zona-sat", estatusValue: "en_bodega_satelite" },
-      HOY,
+      ventanaDelDiaCR(HOY),
     );
   });
 
@@ -182,6 +190,7 @@ describe("listarLiberadasHoy — intentos de entrega en lote (160/R11-R15/R27)",
       repo: buildRepo(),
       zonaRepo: { findCentralZonaId: vi.fn(async () => null) },
       historial: sinZona,
+      reglasPais: reglasPaisFijas(),
       getActor: async () => MAESTRO,
       hoyCR: HOY,
     });
@@ -191,6 +200,7 @@ describe("listarLiberadasHoy — intentos de entrega en lote (160/R11-R15/R27)",
     const r = await listarLiberadasHoy({
       repo: buildRepo(),
       historial: rolAjeno,
+      reglasPais: reglasPaisFijas(),
       getActor: async () => ADMIN_TIENDA,
       hoyCR: HOY,
     });

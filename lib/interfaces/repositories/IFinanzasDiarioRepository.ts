@@ -31,5 +31,10 @@ export interface IFinanzasDiarioRepository {
    *
    * Devuelve SOLO las ternas con movimiento; los dias vacios no producen filas.
    */
-  sumarPorDia(desde: Date, hasta: Date): Promise<readonly AgregadoDiarioCajaRow[]>;
+  sumarPorDia(
+    desde: Date,
+    hasta: Date,
+    /** SLT-42 (R22, R23): la zona IANA del pais de la empresa con la que se agrupa por dia. */
+    zona: string,
+  ): Promise<readonly AgregadoDiarioCajaRow[]>;
 }

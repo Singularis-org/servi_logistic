@@ -12,6 +12,7 @@ import { TODOS_LOS_CENTINELAS, ordenDeListado } from "@/tests/fixtures/orden-det
 
 import { HistorialDoble, OrdenesDoble, RepositorioDoble } from "./_doble-tablero-dia";
 
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 // FEATURE 260 (B5) — R4, R5, R6, R7, R9, R10, R11, R12, R13, R40, R46.
 //
 // LA COMPOSICION DEL DETALLE, que es donde vive el reparto de decisiones de esta feature:
@@ -61,7 +62,7 @@ function montar(
   );
   const ordenes = new OrdenesDoble(new Map(items.map((item) => [item.id, item])));
   const historial = new HistorialDoble(intentos);
-  return { service: new TableroDiaService(repo, ordenes, historial), repo, ordenes, historial };
+  return { service: new TableroDiaService(repo, ordenes, historial, undefined, reglasPaisFijas()), repo, ordenes, historial };
 }
 
 async function detalleDe(

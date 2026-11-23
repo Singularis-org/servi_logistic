@@ -21,10 +21,12 @@ import {
 } from "@/lib/types/analitica-financiera";
 import {
   crearPrismaDeTest,
-  enTransaccionRevertida,
+  enTransaccionRevertida as enTransaccionRevertidaSinContexto,
   HAY_BASE_DE_DATOS,
 } from "../db/_postgres-real";
+import { crearUsuarioDePrueba } from "../db/_fixtures/orden-minima";
 
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 // SL-23 (design §10): la puerta de módulo con todo encendido; aquí no se prueba el módulo apagado.
 vi.mock("@/lib/modulos/exigir-modulo", async () => (await import("@/tests/fabricas/modulos")).puertasAbiertas());
 
@@ -85,7 +87,7 @@ const TIENDA: Actor = { usuarioId: "u-tienda", rol: "adminTienda", zonaId: null 
 
 type Tx = Parameters<Parameters<PrismaClient["$transaction"]>[0]>[0];
 
-/** Ids reales de la base: solo se usan para satisfacer las FKs de las cinco tablas. */
+/** Ids sembrados en la tx del caso: solo se usan para satisfacer las FKs de las cinco tablas. */
 interface Contexto {
   readonly tiendaId: string;
   readonly mensajeroId: string;
@@ -105,8 +107,25 @@ function servicioSobre(tx: Tx) {
     new RecaudoAnaliticaRepository(tx),
     new CuentasPorPagarAnaliticaRepository(tx),
     new ConciliacionCierresAnaliticaRepository(tx),
-    { logError: () => {} },
+    { logError: () => {} }, undefined, reglasPaisFijas(),
   );
+}
+
+/**
+ * SLT-185 (R1141): la zona del pais se inyecta en la action. Sin `reglasPais`, `zonaDelBordeConActor`
+ * la lee de la empresa en curso con el cliente global, y este test (tx revertida, sin sesion) no tiene
+ * empresa en contexto: `EmpresaNoResuelta: Pais.zonaHoraria`. La zona por pais la miden `hora-por-pais-*`.
+ * `zonasPedidas` es el control positivo (R1146) de que la action la pide a ESTAS reglas.
+ */
+let zonasPedidas = 0;
+function reglasPaisContadas(): AnaliticaFinancieraActionDeps["reglasPais"] {
+  const reglas = reglasPaisFijas();
+  return {
+    zonaHoraria: () => {
+      zonasPedidas += 1;
+      return reglas.zonaHoraria();
+    },
+  };
 }
 
 function depsDe(tx: Tx, actor: Actor, logger?: ErrorLogger): AnaliticaFinancieraActionDeps {
@@ -114,6 +133,7 @@ function depsDe(tx: Tx, actor: Actor, logger?: ErrorLogger): AnaliticaFinanciera
     service: servicioSobre(tx),
     getActor: async () => actor,
     logger: logger ?? { logError: () => {} },
+    reglasPais: reglasPaisContadas(),
   };
 }
 
@@ -257,12 +277,39 @@ async function sembrarCierreDia(
 beforeAll(async () => {
   if (!HAY_BASE_DE_DATOS) return;
   prisma = crearPrismaDeTest();
-  const usuarios = await prisma.usuario.findMany({ take: 2, select: { id: true } });
-  const zona = await prisma.zona.findFirst({ select: { id: true } });
-  if (usuarios.length >= 2 && zona) {
-    contexto = { tiendaId: usuarios[0].id, mensajeroId: usuarios[1].id, zonaId: zona.id };
-  }
 });
+
+/**
+ * SLT-182: la tienda, el mensajero y la zona del contexto se SIEMBRAN en la tx revertida de CADA
+ * caso; antes se leian «los dos primeros usuarios» y «la primera zona» de la base, y la base recien
+ * migrada no tiene ninguno. Lanza si la siembra no llega a la base (control positivo, R1084).
+ */
+async function sembrarContexto(tx: Tx): Promise<Contexto> {
+  const tienda = await crearUsuarioDePrueba(tx, "adminTienda");
+  const mensajero = await crearUsuarioDePrueba(tx, "mensajero");
+  const zona = await tx.zona.create({
+    data: { nombre: `Zona SLT-182 ${tienda.id}`, sinpeNumero: "80000000", sinpeNombre: "Titular de Prueba" },
+    select: { id: true },
+  });
+  const usuarios = await tx.usuario.count({ where: { id: { in: [tienda.id, mensajero.id] } } });
+  const zonas = await tx.zona.count({ where: { id: zona.id } });
+  if (usuarios !== 2 || zonas !== 1) {
+    throw new Error(`SLT-182: la siembra del contexto no esta en la base (usuarios ${usuarios}/2, zona ${zonas}/1)`);
+  }
+  return { tiendaId: tienda.id, mensajeroId: mensajero.id, zonaId: zona.id };
+}
+
+/** `enTransaccionRevertida` con el contexto del caso sembrado DENTRO de la tx (y retirado al salir). */
+function enTransaccionRevertida<T>(cliente: PrismaClient, fn: (tx: Tx) => Promise<T>): Promise<T> {
+  return enTransaccionRevertidaSinContexto(cliente, async (tx) => {
+    contexto = await sembrarContexto(tx);
+    try {
+      return await fn(tx);
+    } finally {
+      contexto = null;
+    }
+  });
+}
 
 afterAll(async () => {
   if (prisma) await prisma.$disconnect();
@@ -278,9 +325,11 @@ function ctx(): Contexto {
 }
 
 describe.skipIf(!HAY_BASE_DE_DATOS)("F.1-F.6 · la 127 contra Postgres, sin mocks de Prisma", () => {
-  it("la base de test trae el contexto minimo (dos usuarios y una zona)", () => {
-    expect(contexto).not.toBeNull();
-    expect(ctx().tiendaId).not.toBe(ctx().mensajeroId);
+  it("la base de test trae el contexto minimo (dos usuarios y una zona)", async () => {
+    await enTransaccionRevertida(prisma, async () => {
+      expect(contexto).not.toBeNull();
+      expect(ctx().tiendaId).not.toBe(ctx().mensajeroId);
+    });
   });
 
   /* ---------------------------------------------------------------------- */
@@ -290,10 +339,12 @@ describe.skipIf(!HAY_BASE_DE_DATOS)("F.1-F.6 · la 127 contra Postgres, sin mock
   it("F.1 · un maestro recibe `ok` en las DIEZ metricas, contra la base real", async () => {
     await enTransaccionRevertida(prisma, async (tx) => {
       const estados: Record<string, string> = {};
+      zonasPedidas = 0;
       for (const metricaId of IDS_FINANCIERAS_SERVIDAS) {
         estados[metricaId] = (await consultarDia(tx, metricaId, DIA_A)).status;
       }
       expect(estados).toEqual(Object.fromEntries(IDS_FINANCIERAS_SERVIDAS.map((m) => [m, "ok"])));
+      expect(zonasPedidas, "SLT-185: una zona por consulta, de las reglas inyectadas").toBe(10);
       // 8 de la 127 + `dinero_en_caja` y `ganancia_empresa` (173, P4): las dos tambien
       // responden contra Postgres de verdad, no solo contra dobles.
       expect(Object.keys(estados)).toHaveLength(10);

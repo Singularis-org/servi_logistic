@@ -427,6 +427,9 @@ describe("SL-20/R47 — disponibilidad de un país por el borde, con el servicio
       renombrarTipo: vi.fn(),
       agregarNivel: vi.fn(),
       reordenarTipos: vi.fn(),
+      tipoDocumentoDelPais: vi.fn(),
+      tieneTipoDocumentoActivo: vi.fn(),
+      zonasConEmpresas: vi.fn(),
     } satisfies Record<keyof IPaisRepository, Espia>;
   }
 
@@ -473,6 +476,9 @@ describe("SL-20/R23, R41 — alta de país del catálogo por el borde, con el se
       renombrarTipo: vi.fn(),
       agregarNivel: vi.fn(),
       reordenarTipos: vi.fn(),
+      tipoDocumentoDelPais: vi.fn(),
+      tieneTipoDocumentoActivo: vi.fn(),
+      zonasConEmpresas: vi.fn(),
     } satisfies Record<keyof IPaisRepository, Espia>;
   }
 
@@ -528,6 +534,9 @@ describe("SLT-46 R25, R48, R49 — renombrar un tipo y agregar un nivel por el b
       renombrarTipo: vi.fn(async () => "renombrado" as const),
       agregarNivel: vi.fn(async () => TIPO),
       reordenarTipos: vi.fn(),
+      tipoDocumentoDelPais: vi.fn(),
+      tieneTipoDocumentoActivo: vi.fn(),
+      zonasConEmpresas: vi.fn(),
       ...o,
     } satisfies Record<keyof IPaisRepository, Espia>;
   }
@@ -778,6 +787,9 @@ describe("SLT-46 R61 — el cambio concurrente sale del borde como `conflict` co
       renombrarTipo: vi.fn(),
       agregarNivel: vi.fn(),
       reordenarTipos: vi.fn(),
+      tipoDocumentoDelPais: vi.fn(),
+      tieneTipoDocumentoActivo: vi.fn(),
+      zonasConEmpresas: vi.fn(),
       ...o,
     } satisfies Record<keyof IPaisRepository, Espia>;
   }

@@ -7,6 +7,7 @@ import { condicionesDeConsulta as condicionesDeConsultaCon } from "@/lib/reposit
 import { delegadosDelCatalogo, lugaresDe } from "./_catalogo-facetas";
 import { ConteoProductosRepository } from "@/lib/repositories/ConteoProductosRepository";
 
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 // SLT-71 (design §11.1): `lugares` es obligatorio. La entrada de los casos son los lugares de su filtro,
 // resueltos sobre el catalogo de prueba (`p1` → `c1` → `d1`); las aserciones no cambian por esto.
 const condicionesDeConsulta = (c: ConsultaProductos) => condicionesDeConsultaCon(c, lugaresDe(c.filtro));
@@ -23,7 +24,7 @@ const condicionesDeConsulta = (c: ConsultaProductos) => condicionesDeConsultaCon
 const AHORA = new Date("2026-09-01T12:00:00.000Z");
 
 function consultaDe(raw: object, rol = "maestro", usuarioId = "u1"): ConsultaProductos {
-  const preparada = prepararConsultaProductos(raw, { usuarioId, rol } as never, AHORA);
+  const preparada = prepararConsultaProductos(raw, { usuarioId, rol } as never, ZONA_DE_CR, AHORA);
   if (preparada.status !== "ok") throw new Error(`filtro de prueba invalido: ${preparada.status}`);
   return preparada.consulta;
 }

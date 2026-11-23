@@ -22,10 +22,10 @@ const EMPRESAS: EmpresaListada[] = [
     slug: "empresa-ficticia-b",
     creadaEn: new Date("2026-10-21T10:00:00Z"),
     maestros: [{ nombre: "Maestro B", email: "maestro-b@example.test" }],
-    cobroPorOrden: null,
     // SL-45 (R28): el Record del listado exige la deuda; aquí, al día.
     deudaPlataforma: { deuda: "0.00", estado: "al_dia", importe: "0.00" },
     pagadoPlataforma: "0.00",
+    pagosPorConfirmar: 0,
     // SL-20 (R9): el país de la empresa.
     pais: { id: "CR", nombre: "Costa Rica" },
     // SLT-66 R31, R32: el tipo del listado exige el cobro vigente y el plan; aquí, sin configurar y sin plan.
@@ -38,10 +38,10 @@ const EMPRESAS: EmpresaListada[] = [
     slug: "empresa-ficticia-a",
     creadaEn: new Date("2026-10-20T10:00:00Z"),
     maestros: [],
-    cobroPorOrden: null,
     // SL-45 (R28): el Record del listado exige la deuda; aquí, al día.
     deudaPlataforma: { deuda: "0.00", estado: "al_dia", importe: "0.00" },
     pagadoPlataforma: "0.00",
+    pagosPorConfirmar: 0,
     // SL-20 (R9): el país de la empresa.
     pais: { id: "CR", nombre: "Costa Rica" },
     // SLT-66 R31, R32: el tipo del listado exige el cobro vigente y el plan; aquí, sin configurar y sin plan.

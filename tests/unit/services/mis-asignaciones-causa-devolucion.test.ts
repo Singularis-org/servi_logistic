@@ -14,6 +14,7 @@ import type { GestionarInput } from "@/lib/interfaces/services/IMisAsignacionesS
 import { CAUSA_DEVOLUCION_SEED } from "@/lib/types/causa-devolucion";
 import { fakeIntentosEnLote } from "@/tests/fixtures/intentos-entrega";
 import { SIN_BLOQUEO } from "@/lib/utils/bloqueo-cierre";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // Feature 73 (R11/R12/R13) — el SERVICE propaga la causa a los datos de la gestion, en su
 // campo propio y SIN tocar el texto libre. Dobles del repo/storage (nada de DB real): lo que
@@ -107,6 +108,7 @@ function newService(repo: IGestionOrdenRepository) {
     rutaRepo,
     metaRepo,
     fakeIntentosEnLote(), // feature 160: derivador de intentos EN LOTE (no ejercitado aqui)
+    reglasPaisFijas(),
   );
 }
 

@@ -29,7 +29,7 @@ function sinVacios<T extends Record<string, unknown>>(input: T): T {
 }
 
 /** Lo que el borde RECIBE (dias `YYYY-MM-DD`), no lo que el schema produce. */
-export type ConceptosFiltroInput = z.input<typeof conceptosConMovimientosSchema>;
+export type ConceptosFiltroInput = z.input<ReturnType<typeof conceptosConMovimientosSchema>>;
 
 export function useConceptosConMovimientos(
   input: ConceptosFiltroInput,

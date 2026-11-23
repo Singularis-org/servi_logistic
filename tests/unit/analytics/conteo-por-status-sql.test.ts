@@ -13,6 +13,7 @@ import { lugaresDe } from "./_catalogo-facetas";
 // resueltos sobre el catalogo de prueba (`p1` → `c1` → `d1`); las aserciones no cambian por esto.
 const condicionesDeConsulta = (c: ConsultaConteoEntregas) => condicionesDeConsultaCon(c, lugaresDe(c.filtro));
 
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 // El `where` del desglose por status va en SQL, así que se comprueba sobre los fragmentos que
 // `condicionesDeConsulta` produce: su texto y sus PARÁMETROS. Sin base de datos.
 //
@@ -27,7 +28,7 @@ const condicionesDeConsulta = (c: ConsultaConteoEntregas) => condicionesDeConsul
 const AHORA = new Date("2026-08-17T12:00:00.000Z");
 
 function consultaDe(raw: object, rol = "maestro", extra: object = {}): ConsultaConteoEntregas {
-  const preparada = prepararConteoEntregas(raw, { usuarioId: "u1", rol, ...extra } as never, AHORA);
+  const preparada = prepararConteoEntregas(raw, { usuarioId: "u1", rol, ...extra } as never, ZONA_DE_CR, AHORA);
   if (preparada.status !== "ok") throw new Error(`filtro de prueba inválido: ${preparada.status}`);
   return preparada.consulta;
 }

@@ -8,6 +8,7 @@ import type {
   CierreBodegaResumenLite,
   ICierreBodegaService,
 } from "@/lib/interfaces/services/ICierreBodegaService";
+import type { ICierresBodegaSateliteDescargaService } from "@/lib/interfaces/services/ICierresBodegaSateliteDescargaService";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import { marcaRecibida } from "@/tests/fixtures/marca-conciliacion";
 
@@ -59,9 +60,12 @@ function fakeService(resultado: unknown) {
   const listarConsolidablesCompletoSvc = vi.fn().mockResolvedValue(resultado);
   return {
     cierreBodegaService: {
-      listarCierresBodegaSolicitadosCompleto: listarCierresBodegaSolicitadosCompletoSvc,
       listarConsolidablesCompleto: listarConsolidablesCompletoSvc,
     } as unknown as ICierreBodegaService,
+    // SLT-176 (R698): el conjunto «seis» lo sirve el servicio de solo lectura de la satélite.
+    cierresBodegaSateliteDescargaService: {
+      listarCierresBodegaSolicitadosCompleto: listarCierresBodegaSolicitadosCompletoSvc,
+    } as unknown as ICierresBodegaSateliteDescargaService,
     seis: listarCierresBodegaSolicitadosCompletoSvc,
     siete: listarConsolidablesCompletoSvc,
   };
@@ -102,6 +106,7 @@ describe("bordes de los conjuntos de la consolidación (feature 184, T B.1)", ()
         const f = fakeService({ status: "ok", items: [borde.fila], total: 1 });
         const r = await borde.llamar(input, {
           cierreBodegaService: f.cierreBodegaService,
+          cierresBodegaSateliteDescargaService: f.cierresBodegaSateliteDescargaService,
           getActor: async () => SAT,
         });
 
@@ -127,6 +132,7 @@ describe("bordes de los conjuntos de la consolidación (feature 184, T B.1)", ()
         const f = fakeService({ status: "ok", items: [borde.fila], total: 1 });
         const r = await borde.llamar(input, {
           cierreBodegaService: f.cierreBodegaService,
+          cierresBodegaSateliteDescargaService: f.cierresBodegaSateliteDescargaService,
           getActor: async () => SAT,
         });
 
@@ -144,6 +150,7 @@ describe("bordes de los conjuntos de la consolidación (feature 184, T B.1)", ()
       const f = fakeService({ status: "ok", items: [borde.fila], total: 1 });
       const r = await borde.llamar({}, {
         cierreBodegaService: f.cierreBodegaService,
+        cierresBodegaSateliteDescargaService: f.cierresBodegaSateliteDescargaService,
         getActor: async () => null,
       });
 
@@ -161,6 +168,7 @@ describe("bordes de los conjuntos de la consolidación (feature 184, T B.1)", ()
       const f = fakeService({ status: "ok", items: [], total: 0 });
       const r = await borde.llamar({ zonaId: "z-b" }, {
         cierreBodegaService: f.cierreBodegaService,
+        cierresBodegaSateliteDescargaService: f.cierresBodegaSateliteDescargaService,
         getActor: async () => null,
       });
 
@@ -174,6 +182,7 @@ describe("bordes de los conjuntos de la consolidación (feature 184, T B.1)", ()
       const f = fakeService({ status: "forbidden" });
       const r = await borde.llamar({}, {
         cierreBodegaService: f.cierreBodegaService,
+        cierresBodegaSateliteDescargaService: f.cierresBodegaSateliteDescargaService,
         getActor: async () => ({ usuarioId: "u-maestro", rol: "maestro" }),
       });
 
@@ -188,6 +197,7 @@ describe("bordes de los conjuntos de la consolidación (feature 184, T B.1)", ()
       const f = fakeService({ status: "limite_excedido", total: 5432, limite: 5000 });
       const r = await borde.llamar({}, {
         cierreBodegaService: f.cierreBodegaService,
+        cierresBodegaSateliteDescargaService: f.cierresBodegaSateliteDescargaService,
         getActor: async () => SAT,
       });
 

@@ -24,6 +24,8 @@ import type {
   ICohorteCargaRepository,
 } from "@/lib/interfaces/repositories/ICohorteCargaRepository";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 // Ficha 411 / T5.1 y T1.3 — el SERVICIO de la cohorte y su clave de cache, con dobles.
 //
 // Lo que este archivo mide vive todo fuera del SQL: la agregacion, los derivados, el sello y la
@@ -36,7 +38,7 @@ function consultaDe(raw: object = {}, rol = "maestro", extra: object = {}): Cons
   const preparada = prepararConteoEntregas(
     { ...RANGO, ...raw },
     { usuarioId: "u1", rol, ...extra } as never,
-    AHORA,
+    ZONA_DE_CR, AHORA,
   );
   if (preparada.status !== "ok") throw new Error(`filtro de prueba invalido: ${preparada.status}`);
   return preparada.consulta;
@@ -289,7 +291,7 @@ describe("R28 · la clave lleva prefijo PROPIO y el alcance dentro", () => {
     const productos = prepararConsultaProductos(
       { ...RANGO, tienda_id: ["t1"] },
       { usuarioId: "u1", rol: "maestro" } as never,
-      AHORA,
+      ZONA_DE_CR, AHORA,
     );
     if (productos.status !== "ok") throw new Error("filtro de productos invalido");
 
@@ -298,7 +300,7 @@ describe("R28 · la clave lleva prefijo PROPIO y el alcance dentro", () => {
       claveDeConteoEntregas(consulta),
       claveDeConteoPorStatus(consulta),
       claveDeConteoCargadasPorDia(consulta),
-      claveDeConteoHoyGestion(consulta, resolverRango({ preset: "dia" }, AHORA)),
+      claveDeConteoHoyGestion(consulta, resolverRango({ preset: "dia" }, ZONA_CR, AHORA)),
       claveDeConteoDevoluciones(consulta),
       claveDeCicloVida(consulta),
       claveDeConteoProductos(productos.consulta),

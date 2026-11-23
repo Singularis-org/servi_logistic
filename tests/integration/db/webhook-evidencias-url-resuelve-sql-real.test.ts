@@ -20,10 +20,10 @@ import {
   HAY_BASE_DE_DATOS,
   crearPrismaDeTest,
   enTransaccionRevertida,
-  fksDeOrden,
   serializarEscriturasReales,
   type FksDeOrden,
 } from "./_postgres-real";
+import { crearFksDeOrden } from "./_fixtures/orden-minima";
 
 /**
  * ⏳ 2026-09-10 — FEATURE 406 (T10, R3): EL `WHERE` DONDE VIVE.
@@ -84,19 +84,12 @@ const jobsNoOp = {
 
 describeSiHayBase("406/R3 — el identificador del enlace resuelve contra el SQL REAL", () => {
   let prisma: PrismaClient;
+  /** SLT-181 — las FKs del caso, sembradas en su tx por `conTienda` (nada de «la primera orden»). */
   let fks: FksDeOrden;
   let estatusInicialId: string;
 
   beforeAll(async () => {
     prisma = crearPrismaDeTest();
-    const encontradas = await fksDeOrden(prisma);
-    if (encontradas === null) {
-      throw new Error(
-        "hay DATABASE_URL pero la tabla `orden` esta vacia: sin FKs no se puede sembrar el caso. " +
-          "Corre `pnpm run db:seed` (y las semillas de zonas) antes de esta suite.",
-      );
-    }
-    fks = encontradas;
     const inicial = await prisma.orderStatus.findFirst({
       where: { value: ESTADOS_CREACION[0] },
       select: { id: true },
@@ -125,6 +118,13 @@ describeSiHayBase("406/R3 — el identificador del enlace resuelve contra el SQL
   ): Promise<T> {
     return enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      // SLT-181 — tienda plantilla y zona nacen en ESTA tx. Control positivo: si la siembra no
+      // llega, el caso cae nombrando la fila.
+      fks = await crearFksDeOrden(tx);
+      expect(
+        await tx.zona.count({ where: { id: fks.zonaId } }),
+        "SLT-181: la zona sembrada no esta en la base",
+      ).toBe(1);
       const plantilla = await tx.usuario.findUniqueOrThrow({
         where: { id: fks.tiendaId },
         select: { rolId: true, tipoIdentificacionId: true },

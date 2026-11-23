@@ -10,8 +10,11 @@ import type { MensajeroDocumentoInput } from "@/lib/interfaces/repositories/IMen
 export interface IPostulacionRepository {
   /** R19: true si el email ya pertenece a un usuario. */
   emailExiste(email: string): Promise<boolean>;
-  /** R20: true si la cedula ya pertenece a un usuario. */
-  cedulaExiste(cedula: string): Promise<boolean>;
+  /**
+   * R20: true si la cedula ya pertenece a un usuario. SLT-42 (R13): de la misma empresa y con el
+   * mismo tipo, igual que el indice `usuario_cedula_key`; con otro tipo no choca.
+   */
+  cedulaExiste(cedula: string, tipoIdentificacionId: string): Promise<boolean>;
   /** R15: resuelve el id del rol por su valor (p. ej. "mensajero"); null si no existe. */
   findRolIdByValue(value: string): Promise<string | null>;
   /** R9: true si el tipo de identificacion existe en el catalogo. */

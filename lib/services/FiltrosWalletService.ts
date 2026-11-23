@@ -1,4 +1,3 @@
-import { horaCostaRica } from "@/lib/utils/hora-cr";
 import { esAccesoTotal } from "@/lib/auth/acceso-total";
 import { walletTiendaConfig } from "@/lib/config/wallet-tienda";
 import { walletMovimientoConfig } from "@/lib/config/wallet-movimiento";
@@ -23,7 +22,14 @@ import type {
   QuienesDelLibroCajaInput,
 } from "@/lib/types/wallet-filtros";
 import { WALLET_TIENDA_MOVIMIENTO_CATEGORIA_SEED } from "@/lib/types/wallet-tienda";
-import { esFechaCalendarioValida, inicioDelDiaCREnUtc, inicioDelDiaSiguienteCREnUtc } from "@/lib/utils/fecha-cr";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
+import { zonaPerezosa, type ZonaDeLaOperacion } from "@/lib/services/zona-de-la-empresa";
+import {
+  esFechaCalendarioValida,
+  horaDePared,
+  inicioDelDiaEnUtc,
+  inicioDelDiaSiguienteEnUtc,
+} from "@/lib/utils/calendario-zona";
 import { fechaDiaMovimientoCR } from "@/lib/utils/fecha-dia-iso";
 
 /** `/mi-wallet` es de la tienda de la sesion (`ROLES_MI_WALLET`); el alcance sale del actor. */
@@ -41,14 +47,16 @@ function enOrdenDelCatalogo(
 }
 
 /**
- * Lo que se busca en el selector de cierres: un dia (`YYYY-MM-DD`, su franja de Costa Rica) o un
- * texto (el nombre del mensajero). Vacio = sin busqueda.
+ * Lo que se busca en el selector de cierres: un dia (`YYYY-MM-DD`, su franja en la zona del pais de
+ * la empresa, SLT-42) o un texto (el nombre del mensajero). Vacio = sin busqueda. La zona solo se lee
+ * si se busca un dia.
  */
-function busquedaDe(texto: string | undefined): BusquedaDeCierre | undefined {
+async function busquedaDe(texto: string | undefined, zona: ZonaDeLaOperacion): Promise<BusquedaDeCierre | undefined> {
   const t = (texto ?? "").trim();
   if (t === "") return undefined;
   if (/^\d{4}-\d{2}-\d{2}$/.test(t) && esFechaCalendarioValida(t)) {
-    return { tipo: "dia", desde: inicioDelDiaCREnUtc(t), hasta: inicioDelDiaSiguienteCREnUtc(t) };
+    const z = await zona();
+    return { tipo: "dia", desde: inicioDelDiaEnUtc(t, z), hasta: inicioDelDiaSiguienteEnUtc(t, z) };
   }
   return { tipo: "mensajero", texto: t };
 }
@@ -63,6 +71,8 @@ export class FiltrosWalletService implements IFiltrosWalletService {
     private readonly repo: IFiltrosWalletRepository,
     /** Ficha 458-E (R59): el tope del selector «A quién» (configuracion; inyectable en los tests). */
     private readonly topes: { quienes: number } = { quienes: walletMovimientoConfig.MAX_QUIENES_FILTRO },
+    /** SLT-42 (R22, R28): la zona del pais de la empresa, para el dia y la hora de los cierres. */
+    private readonly reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">,
   ) {}
 
   async conceptosConMovimientos(
@@ -123,19 +133,22 @@ export class FiltrosWalletService implements IFiltrosWalletService {
     // `/mi-wallet` conserva su selector de la 335 (D2): este es solo de las superficies de acceso total.
     if (!esAccesoTotal(actor.rol)) return { status: "forbidden" };
     const limite = walletTiendaConfig.MAX_CIERRES_FILTRO;
-    const busqueda = busquedaDe(input.busqueda);
+    const zona = zonaPerezosa(this.reglasPais, "FiltrosWalletService.cierresDeLaCuenta");
+    const busqueda = await busquedaDe(input.busqueda, zona);
     // `limite + 1`: el sobrante dice `hayMas` sin un `count` aparte (precedente 335).
     const filas =
       input.cuenta === "tienda"
         ? await this.repo.cierresDeTienda(input.tiendaId, busqueda, limite + 1)
         : await this.repo.cierresDeMensajero(input.mensajeroId, busqueda, limite + 1);
+    // SLT-42 (R22): el dia y la hora de cada cierre, en la zona del pais; sin filas no se lee.
+    const z = filas.length === 0 ? null : await zona();
     return {
       status: "ok",
       hayMas: filas.length > limite,
       opciones: filas.slice(0, limite).map((f) => ({
         cierreId: f.cierreId,
-        dia: fechaDiaMovimientoCR(f.solicitadoAt),
-        hora: horaCostaRica(f.solicitadoAt),
+        dia: fechaDiaMovimientoCR(f.solicitadoAt, z as string),
+        hora: horaDePared(new Date(f.solicitadoAt), z as string),
         mensajero: f.mensajero,
         movimientos: f.movimientos,
       })),

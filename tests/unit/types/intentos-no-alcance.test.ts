@@ -33,19 +33,83 @@ describe("R29 — el conteo no es ordenable ni filtrable en el servidor", () => 
   });
 });
 
-describe("R31 — el contrato publico de integradores NO gana el campo (QA5)", () => {
-  it("la especificacion OpenAPI no menciona los intentos en ningun sitio", () => {
-    const serializada = JSON.stringify(openApiSpec).toLowerCase();
-    expect(serializada).not.toContain("intentos");
-    expect(serializada).not.toContain("intentosentrega");
+// R31 ENMENDADO — SLT-203 «API: publicar los intentos de entrega en la respuesta de la carga».
+// El 2026-11-18 Carlos decidio PUBLICAR `manifiesto.filas[].intentos` de `POST
+// /api/ordenes/api-key/carga` (la ruta ya lo devolvia). La enmienda es SOLO para ese campo: el
+// schema `ManifiestoFila` es el unico sitio del contrato que puede nombrarlo. El resto de DTO del
+// canal (`ApiOrden*`, listado, detalle, webhook...) sigue sin el conteo, como pedia QA5.
+
+/** Rutas JSON (`a.b.c`) del spec donde aparece la subcadena, en claves o en valores de texto. */
+function rutasQueMencionan(nodo: unknown, aguja: string, ruta = ""): string[] {
+  const out: string[] = [];
+  if (typeof nodo === "string") {
+    if (nodo.toLowerCase().includes(aguja)) out.push(ruta);
+  } else if (Array.isArray(nodo)) {
+    nodo.forEach((v, i) => out.push(...rutasQueMencionan(v, aguja, `${ruta}[${i}]`)));
+  } else if (nodo && typeof nodo === "object") {
+    for (const [k, v] of Object.entries(nodo)) {
+      const sub = ruta ? `${ruta}.${k}` : k;
+      if (k.toLowerCase().includes(aguja)) out.push(sub);
+      out.push(...rutasQueMencionan(v, aguja, sub));
+    }
+  }
+  return out;
+}
+
+/** Lo unico permitido: el schema `ManifiestoFila` y el ejemplo de la fila del manifiesto de la carga. */
+const PERMITIDO = [
+  /^components\.schemas\.ManifiestoFila\./,
+  /^paths\.\/api\/ordenes\/api-key\/carga\.post\.responses\.200\.content\.application\/json\.examples\.\w+\.value\.manifiesto\.filas\[\d+\]\.intentos$/,
+];
+const fueraDeLaEnmienda = (spec: unknown): string[] =>
+  rutasQueMencionan(spec, "intentos").filter((r) => !PERMITIDO.some((p) => p.test(r)));
+
+describe("R31 (enmendado por SLT-203) — el contrato solo nombra los intentos en `ManifiestoFila`", () => {
+  it("la especificacion OpenAPI no menciona los intentos fuera de `ManifiestoFila`", () => {
+    expect(fueraDeLaEnmienda(openApiSpec)).toEqual([]);
+    expect(JSON.stringify(openApiSpec).toLowerCase()).not.toContain("intentosentrega");
+  });
+
+  it("control: `ManifiestoFila` SI lo publica (si no, el filtro de arriba no prueba nada)", () => {
+    const menciones = rutasQueMencionan(openApiSpec, "intentos");
+    expect(menciones).toContain("components.schemas.ManifiestoFila.properties.intentos");
+    expect(menciones.length).toBeGreaterThan(0);
+  });
+
+  // `ApiOrdenListItemDTO`/`ApiOrdenDetalleDTO` se publican como `OrdenListItem`/`OrdenDetalle`;
+  // la mutacion recorre TODOS los schemas salvo `ManifiestoFila`, esos dos incluidos.
+  it("MUTACION: el campo en cualquier otro schema del canal pone esto rojo", () => {
+    const mutado = structuredClone(openApiSpec) as unknown as {
+      components: { schemas: Record<string, { properties?: Record<string, unknown> }> };
+    };
+    const otros = Object.keys(mutado.components.schemas).filter((n) => n !== "ManifiestoFila");
+    expect(otros, "SLT-203: control, los schemas de `ApiOrden*` estan").toEqual(
+      expect.arrayContaining(["OrdenListItem", "OrdenDetalle", "CargaOrden"]),
+    );
+    for (const nombre of otros) {
+      const copia = structuredClone(mutado);
+      copia.components.schemas[nombre].properties = {
+        ...copia.components.schemas[nombre].properties,
+        intentos: { type: "integer" },
+      };
+      expect(fueraDeLaEnmienda(copia), `SLT-203: ${nombre}`).toContain(
+        `components.schemas.${nombre}.properties.intentos`,
+      );
+    }
+    // Y en un sitio cualquiera fuera de los schemas (prosa de una operacion).
+    const prosa = structuredClone(mutado) as unknown as { info: { description: string } };
+    prosa.info.description += " intentos";
+    expect(fueraDeLaEnmienda(prosa)).toContain("info.description");
   });
 });
 
 describe("R16 — el campo es ADITIVO: los DTO excluidos no lo tienen", () => {
   // Guarda de tipos: si alguien agregara `intentosEntrega` a los DTO excluidos, estas
   // aserciones de tipo dejarian de compilar (el `never` deja de serlo).
+  // SLT-203: tambien `intentos` (el nombre que SI se publica en `ManifiestoFila`) queda vetado
+  // en estos DTO; la enmienda de 160/R31 no los alcanza.
   it("compila: `ApiOrdenListItemDTO`, `ApiOrdenDetalleDTO`, `EtiquetaGuiaDTO` y `OrdenDTO` no lo declaran", async () => {
-    type SinCampo<T> = "intentosEntrega" extends keyof T ? never : true;
+    type SinCampo<T> = "intentosEntrega" extends keyof T ? never : "intentos" extends keyof T ? never : true;
     const api = await import("@/lib/types/api-orden");
     const etiqueta = await import("@/lib/types/etiqueta-guia");
     const orden = await import("@/lib/types/orden");

@@ -90,7 +90,6 @@ function mov(n: number, over: Partial<WalletMovimientoDTO> = {}): WalletMovimien
     origenTipo: "gasto",
     origenId: null,
     descripcion: `Movimiento ${n}`,
-    registradoPor: "99999999-0000-4000-8000-000000000001",
     fechaMovimiento: `2026-09-2${n}T15:00:00.000Z`,
     dueno: "propio",
     documento: null,
@@ -134,7 +133,7 @@ const COMPOSICION = {
     ingreso_flete_devolucion: "0.00",
     ingreso_comision_cod: "0.00",
     ingreso_ajuste: "0.00",
-    ingreso_cobro_tienda: "5000.00",
+    ingreso_cobro_tienda: "5000.00", ingreso_fulfillment: "0.00", /* SLT-94 */
   },
   totalIngresos: "5000.00",
   egresos: {
@@ -142,7 +141,7 @@ const COMPOSICION = {
     egreso_ajuste: "0.00",
     egreso_reverso_cobro_tienda: "0.00",
     egreso_reverso_flete_devolucion: "0.00",
-    egreso_pago_plataforma: "0.00", // SL-45: la exige el `Record` total
+    egreso_pago_plataforma: "0.00", egreso_reverso_fulfillment: "0.00", /* SLT-94 */ // SL-45: la exige el `Record` total
   },
   otrosEgresos: "0.00",
   hayOtrosEgresos: false,
@@ -151,7 +150,7 @@ const COMPOSICION = {
     ingreso_iva_flete: "0.00",
     ingreso_iva_flete_devolucion: "0.00",
     ingreso_iva_comision_cod: "0.00",
-    egreso_reverso_iva_flete_devolucion: "0.00",
+    egreso_reverso_iva_flete_devolucion: "0.00", ingreso_iva_fulfillment: "0.00", egreso_reverso_iva_fulfillment: "0.00", /* SLT-94 */
   },
   totalIva: "0.00",
   totalEgresos: "0.00",
@@ -522,7 +521,12 @@ describe("467 R18/R20/R23 — «A quién» y Concepto", () => {
     expect(alto(aQuienBoton() as HTMLElement)).toBe(true);
     expect(alto(within(libro()).getByRole("combobox", { name: "Entra/Sale" }))).toBe(true);
     expect(alto(within(libro()).getByRole("combobox", { name: "Concepto" }))).toBe(true);
+    // SLT-160 (R771, DC2 de Carlos): con `escaneo` el buscador mide 44 px. SLT-202 «Escritorio igual a
+    // prod: tamaños de controles y un solo botón de recibir» (Carlos, 2026-11-18): solo en el móvil;
+    // en escritorio vuelve al `h-8` de los disparadores, alineado con ellos.
     expect(alto(buscador().parentElement as HTMLElement)).toBe(true);
+    expect(buscador().parentElement).toHaveClass("max-md:h-11");
+    expect(buscador().parentElement).not.toHaveClass("h-11");
   });
 });
 

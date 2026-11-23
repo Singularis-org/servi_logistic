@@ -3,16 +3,14 @@ import type { PrismaClient } from "@prisma/client";
 
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
 import { GeoRepository } from "@/lib/repositories/GeoRepository";
-import { crearOrganizacion, fijarEmpresa } from "@/tests/fabricas/organizaciones";
-import { crearFksDeOrden } from "./_fixtures/orden-minima";
 
 import {
   HAY_BASE_DE_DATOS,
   crearPrismaDeTest,
   enTransaccionRevertida,
   serializarEscriturasReales,
-  type TxDeTest,
 } from "./_postgres-real";
+import { crearFksDeOrden } from "./_fixtures/orden-minima";
 
 /**
  * FICHA 374 (R35) — **EL HISTORICO NO SE TOCA: LAS ORDENES DE UN NODO RETIRADO SIGUEN AHI Y SIGUEN
@@ -44,28 +42,12 @@ interface Sembrado {
 
 describeSiHayBase("374/R35 — el historico de un nodo retirado (Postgres real)", () => {
   let prisma: PrismaClient;
-  let estatusId: string;
-  let tiendaId: string;
-  let zonaId: string;
 
+  // SLT-184 (R1122): las FK de la orden historica (estatus, tienda, zona) ya no salen de «la
+  // primera orden» de la base: se SIEMBRAN en la tx de cada caso con `crearFksDeOrden`.
   beforeAll(() => {
     prisma = crearPrismaDeTest();
   });
-
-  /**
-   * SLT-46 (T5.5): las FK de la orden (estatus, tienda, zona) se crean DENTRO de la transaccion
-   * revertida de cada caso (`crearFksDeOrden`, SL-11), en vez de tomarlas de la primera `orden` de la
-   * base: una base sin sembrar dejaba la suite parada en el `beforeAll`. Solo cambia de donde salen;
-   * lo afirmado, igual.
-   */
-  async function sembrarFks(tx: TxDeTest): Promise<void> {
-    const org = await crearOrganizacion(tx);
-    await fijarEmpresa(tx, org.id);
-    const fks = await crearFksDeOrden(tx);
-    estatusId = fks.estatusId;
-    tiendaId = fks.tiendaId;
-    zonaId = fks.zonaId;
-  }
 
   async function conCorpus<T>(
     fn: (ctx: {
@@ -77,7 +59,10 @@ describeSiHayBase("374/R35 — el historico de un nodo retirado (Postgres real)"
   ): Promise<T> {
     return enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
-      await sembrarFks(tx);
+      const { estatusId, tiendaId, zonaId } = await crearFksDeOrden(tx);
+      // SLT-184 (R1124): control positivo de lo sembrado.
+      expect(await tx.usuario.count({ where: { id: tiendaId } }), "SLT-184: la tienda sembrada no esta en la base").toBe(1);
+      expect(await tx.zona.count({ where: { id: zonaId } }), "SLT-184: la zona sembrada no esta en la base").toBe(1);
 
       const provincia = (
         await tx.provincia.create({ data: { nombre: `Prov hist ${SUFIJO}` }, select: { id: true } })

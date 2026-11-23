@@ -2,6 +2,7 @@ import type { DescargaColumna, DescargaFila } from "@/lib/types/descarga";
 import type { SaldoSateliteDTO } from "@/lib/types/conciliacion-satelites";
 import { fechaDiaMovimientoCR } from "@/lib/utils/fecha-dia-iso";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 /** FICHA 464 (R1/R2) — ámbito del selector de columnas de la descarga del listado de bodegas. */
 export const AMBITO_DESCARGA_SALDOS_SATELITES = "wallet-satelites-saldos";
 
@@ -55,7 +56,8 @@ export function filaDescargaSaldoSatelite(saldo: SaldoSateliteDTO): DescargaFila
     totalConsolidado: saldo.totalConsolidado,
     recibido: saldo.totalRecibido,
     sinConciliar: saldo.consolidacionesSinConciliar,
-    masAntigua: saldo.fechaDeLaMasAntigua === null ? "" : fechaDiaMovimientoCR(saldo.fechaDeLaMasAntigua),
+    // SLT-81: la UI sigue en la zona de CR
+    masAntigua: saldo.fechaDeLaMasAntigua === null ? "" : fechaDiaMovimientoCR(saldo.fechaDeLaMasAntigua, ZONA_CR),
     // La ÚLTIMA que llegó, en dos columnas: cuándo y cuánto. Son las dos mitades de la celda que
     // la pantalla pinta en una, y van separadas porque una hoja de cálculo ordena por fecha y
     // suma importes — no sabe hacer ninguna de las dos cosas con «16 sep · ₡ 485.000».
@@ -63,7 +65,8 @@ export function filaDescargaSaldoSatelite(saldo: SaldoSateliteDTO): DescargaFila
     // ⚠️ `ultimaRecibidaMonto` es el de ESA consolidación, no el acumulado: `recibido` (arriba)
     // ya lleva la suma histórica, y tener las dos cifras con el mismo nombre en el mismo archivo
     // es lo que hace que nadie se fíe de ninguna.
-    ultimaRecibidaEl: saldo.ultimaRecibida === null ? "" : fechaDiaMovimientoCR(saldo.ultimaRecibida.fecha),
+    // SLT-81: la UI sigue en la zona de CR
+    ultimaRecibidaEl: saldo.ultimaRecibida === null ? "" : fechaDiaMovimientoCR(saldo.ultimaRecibida.fecha, ZONA_CR),
     ultimaRecibidaMonto: saldo.ultimaRecibida === null ? "" : saldo.ultimaRecibida.monto,
     sinConsolidar: saldo.aporteSinConsolidar, // STRING tal cual, con su signo
     cierresSinConsolidar: saldo.cierresSinConsolidar,

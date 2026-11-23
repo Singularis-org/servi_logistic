@@ -47,7 +47,7 @@ T9 (payloads reales desde la copia de producción) la hace una persona, no un ag
   ya usado por la misma key responde 500 INTERNAL, no el 409 de la feature 141/R24: con `@prisma/adapter-pg`
   el P2002 llega con `meta.target` «(not available)» y `esNombreDuplicado` (`lib/repositories/carga-lote.ts:32`)
   devuelve false. El paso de nombre repetido se quitó del payload `lote-con-nombre-e-individual` para no
-  congelar el 500. ¿Ficha propia? Decide el humano.
+  congelar el 500. **Cerrada 2026-11-06 (humano: «si»): ficha propia SLT-93**, pending, sin asignar.
 
 ## Tandas
 - 2026-11-05 · T1–T3 (T3.2 parcial) · `4107a48f`, `d5ae4cc8`, `adbb2a26`…`3f3428cb` · tsc 0; contrato v1 22/22;
@@ -64,6 +64,22 @@ T9 (payloads reales desde la copia de producción) la hace una persona, no un ag
   contrato v1 22/22; openapi-v1-congelado verde; 164 pasan; guardias 323 archivos, único rojo el del
   baseline. Script T8 probado solo contra `logistic_slt45`. Pendiente antes del PR: CHANGELOG con fecha
   `2026-11-xx` (se fija al mergear).
+- 2026-11-23 · F2.3 merge de `origin/geo_jerarquica` (7763f365: SLT-43/44/65/71 + dev) · 13 conflictos
+  resueltos con las dos intenciones. Del lado de dev: SLT-86 (sin cupo de órdenes: fuera el 4.º parámetro
+  de `BulkOrdenService`, fuera el caso «R17 al tope del plan»), SLT-94 (destino por «se recoge en
+  tienda», en el pipeline común v1/v2), SLT-42/SL-21 (reglas del país en etiquetas, manifiesto y
+  detalle), SLT-201 (500 genérico: también en las 5 operaciones de v2), SLT-202 (cabecera del listado).
+  Fixture `contrato-v1/openapi-v1.json` regrabado (humano, 2026-11-21): idéntico byte a byte al
+  grabado con el spec de 7763f365, toda diferencia viene de dev; `BASE` = 7763f365; las respuestas
+  grabadas de v1 siguen pasando 22/22 sin regrabar. Guía de la API: secciones 5.11–5.15 de v2 (SLT-80
+  R1316; humano, opción a), ejemplos en bloques `http` (el E2E de SLT-208 solo ejecuta los `curl` de v1).
+  tsc 0; eslint 0 errores; guardias + `tests/unit/{api,ayuda,asistente}` 425 archivos verdes; integración
+  en `servi_logistic_slt45_integ`: contrato v1 22/22, v2 13/13, planes, pago-plataforma, orden-nodo
+  verdes; `carga-nombre-duplicado-real` 1 rojo local por Postgres 16 (CI usa ≥17).
+  Merge `b8e8de4d`. CI `gate.yml` run 45183419205: gate-completo verde a la primera (vitest 3/3, e2e
+  aislamiento/dinero/reparto, estático): https://github.com/Singularis-org/servi_logistic/actions/runs/45183419205
+
+<!-- tamano-pr-aceptado: 2026-11-21 · pila geo, aceptado por el humano -->
 
 ## Modelos (overrides)
 

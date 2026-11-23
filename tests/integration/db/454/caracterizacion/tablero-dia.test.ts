@@ -5,6 +5,7 @@ import { ventanaDelDiaEnCursoCR } from "@/lib/utils/ventana-dia-cr";
 import { HAY_BASE_DE_DATOS } from "../../_postgres-real";
 import { conEscenario, prepararMundo, type Mundo } from "../_escenario";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 /**
  * FEATURE 454 — FASE 0 · C25 (R62). EL TABLERO DEL DIA, sobre el codigo de HOY.
  *
@@ -33,7 +34,7 @@ describeSiHayBase("454/C25 — tablero del dia (Postgres real)", () => {
       await e.sembrarOrden({ estatus: "mensajero_recogiendo_en_bodega", montoCobrar: 1000 });
 
       const filas = await new TableroDiaRepository(e.cliente).contarPorMensajero(
-        ventanaDelDiaEnCursoCR(new Date()),
+        ventanaDelDiaEnCursoCR(new Date(), ZONA_CR),
         { tipo: "global" },
       );
       const mia = filas.find((f) => f.mensajeroId === e.mensajeroId);

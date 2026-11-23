@@ -3,6 +3,7 @@ import { consultarAgregadoOperativo } from "@/lib/actions/analitica-operativa";
 import { ERROR_UNIDAD_NO_AGREGABLE } from "@/lib/types/analitica-operativa";
 import { AHORA, MAESTRO, consultaDe, cubo, rollupFalso, servicioCon } from "./_fake-operativa";
 
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 // Feature 176 / T4.7 — R12.
 //
 // EL MODO AGREGADO EXISTE PARA LO QUE NO ES SUMABLE. Servir aqui una metrica de `conteo`
@@ -18,7 +19,7 @@ function bordeCon(cubos = [cubo({ fecha: "2026-08-01", entregas: 3, devoluciones
   const rollup = rollupFalso(cubos);
   return {
     rollup,
-    opciones: {
+    opciones: { reglasPais: reglasPaisFijas(),
       service: servicioCon(rollup),
       logger: { logError: vi.fn() },
       now: () => AHORA,

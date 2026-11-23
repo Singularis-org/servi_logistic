@@ -66,9 +66,16 @@ export function crearPrismaDeTest(): PrismaClient {
  * migracion a `public` ni tocar `_prisma_migrations`. Quien la use es responsable de crear
  * el esquema, de aplicar ahi el DDL y de soltarlo (`DROP SCHEMA … CASCADE`) al terminar.
  */
-export function crearPrismaDeTestEnEsquema(esquema: string): PrismaClient {
+export function crearPrismaDeTestEnEsquema(
+  esquema: string,
+  opciones: { organizacionId?: string } = {},
+): PrismaClient {
+  // SLT-187: `organizacionId` fija `app.organizacion_id` en cada conexion del pool (lo que en
+  // produccion hace la sesion), para que el DEFAULT de `organizacion_id` de SL-17 tenga empresa.
+  const empresa =
+    opciones.organizacionId === undefined ? {} : { options: `-c app.organizacion_id=${opciones.organizacionId}` };
   return new PrismaClient({
-    adapter: new PrismaPg({ connectionString: urlDeBaseDeDatos(), max: 2 }, { schema: esquema }),
+    adapter: new PrismaPg({ connectionString: urlDeBaseDeDatos(), max: 2, ...empresa }, { schema: esquema }),
     omit: PRISMA_OMIT,
   }) as unknown as PrismaClient;
 }

@@ -6,7 +6,6 @@ import { conEmpresa } from "@/lib/db/contexto-empresa";
 import type { CreateOrdenData } from "@/lib/interfaces/repositories/IOrdenRepository";
 import { ORDEN_MODULOS } from "@/lib/modulos/catalogo";
 import { CatalogoGeograficoRepository } from "@/lib/repositories/CatalogoGeograficoRepository";
-import { CupoPlanRepository } from "@/lib/repositories/CupoPlanRepository";
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
 import { TarifaVigenteRepository } from "@/lib/repositories/TarifaVigenteRepository";
 import { BulkOrdenService } from "@/lib/services/BulkOrdenService";
@@ -225,7 +224,7 @@ describeSiHayBase("SLT-45 T3.3 — la orden guarda el nodo y las 3 FK (R25–R28
 
   it("R25/R27 — v1 (`cargarViaApi`), profundidad 3: provincia, canton y distrito de la terna; nodo = distrito", async () => {
     await conEmpresaSembrada(prisma, async (c) => {
-      const servicio = new BulkOrdenService(c.repo, new TarifaVigenteRepository(c.cli), undefined, new CupoPlanRepository(c.cli));
+      const servicio = new BulkOrdenService(c.repo, new TarifaVigenteRepository(c.cli));
       const r = await servicio.cargarViaApi(
         [
           {

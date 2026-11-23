@@ -1,5 +1,6 @@
-import { Prisma, type PrismaClient } from "@prisma/client";
+import { Prisma, type PrismaClient, type TarifaConcepto } from "@prisma/client";
 
+import { ESTADOS_USUARIO_NO_ASIGNABLES } from "@/lib/constants/estado-usuario-asignable";
 import { textoConstraintP2002 } from "@/lib/repositories/_shared/prisma-unique";
 import { WHERE_VEHICULO_ELEGIBLE } from "@/lib/repositories/_shared/vehiculo-activo";
 import { appendAccion, resolverActorCongelado } from "@/lib/repositories/registrar-accion";
@@ -55,6 +56,7 @@ async function etiquetaDelValor(tx: TxValor, id: string): Promise<string> {
       zona: { select: { nombre: true } },
       grupo: { select: { nombre: true } },
       tienda: { select: { nombre: true, primerApellido: true } },
+      mensajero: { select: { nombre: true, primerApellido: true } },
       vehiculo: { select: { name: true } },
     },
   });
@@ -62,6 +64,7 @@ async function etiquetaDelValor(tx: TxValor, id: string): Promise<string> {
     fila?.zona?.nombre,
     fila?.grupo?.nombre,
     fila?.tienda == null ? null : etiquetaDePersona(fila.tienda),
+    fila?.mensajero == null ? null : etiquetaDePersona(fila.mensajero),
     fila?.vehiculo?.name,
   ].filter((p): p is string => p != null && p !== "");
   return etiquetaDeEntidad("tarifa_valor", {
@@ -159,6 +162,38 @@ export class TarifaValorRepository implements ITarifaValorRepository {
   }
 
   /**
+   * SLT-55 R7, R8 — mismo patron que el vehiculo: un dado de baja, o quien ya no es mensajero, no admite
+   * un valor nuevo, pero reemplazar el suyo sigue siendo valido. `pendiente` es elegible: es quien se esta
+   * dando de alta. La empresa la filtra la extension: un mensajero de otra empresa no se encuentra.
+   */
+  async mensajeroEsElegibleONivelOcupado(nivel: {
+    concepto: TarifaConcepto;
+    mensajeroId: string;
+  }): Promise<boolean> {
+    const elegible = await this.prisma.usuario.findFirst({
+      where: {
+        id: nivel.mensajeroId,
+        rol: { value: "mensajero" },
+        estado: { notIn: [...ESTADOS_USUARIO_NO_ASIGNABLES] },
+      },
+      select: { id: true },
+    });
+    if (elegible !== null) return true;
+    const ocupado = await this.prisma.tarifaValor.findFirst({
+      where: {
+        concepto: nivel.concepto,
+        mensajeroId: nivel.mensajeroId,
+        zonaId: null,
+        grupoId: null,
+        tiendaId: null,
+        vehiculoId: null,
+      },
+      select: { id: true },
+    });
+    return ocupado !== null;
+  }
+
+  /**
    * R8 — upsert por la clave natural. No es `upsert` de Prisma: el unico es NULLS NOT DISTINCT y
    * Prisma no admite `null` en un `where` de unico compuesto. Se busca la fila del nivel exacto
    * (`null` en el `where` es `IS NULL`) y se actualiza o se crea, dentro de la transaccion.
@@ -179,7 +214,7 @@ export class TarifaValorRepository implements ITarifaValorRepository {
           zonaId: datos.zonaId,
           grupoId: datos.grupoId,
           tiendaId: datos.tiendaId,
-          mensajeroId: null,
+          mensajeroId: datos.mensajeroId,
           vehiculoId: datos.vehiculoId,
         };
         const anterior = await tx.tarifaValor.findFirst({

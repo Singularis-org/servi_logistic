@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import type { PrismaClient } from "@prisma/client";
 
 import { GeoRepository } from "@/lib/repositories/GeoRepository";
@@ -16,7 +16,7 @@ import {
   serializarEscriturasReales,
 } from "./_postgres-real";
 import { altaPorNivel } from "./_fixtures/alta-por-nivel-46";
-import { idDeRol, insertarUsuario } from "./_fixtures/superadmin-32";
+import { idDeRol, insertarUsuario, superadminDelCaso, tomarLockDeSuperadmin } from "./_fixtures/superadmin-32";
 import { crearOrganizacion } from "@/tests/fabricas/organizaciones";
 
 /**
@@ -75,25 +75,35 @@ describeSiHayBase("374 — el registro de acciones del catalogo geografico (Post
   let actorUsuarioId: string;
   let actorNombreEsperado: string;
 
-  beforeAll(() => {
+  // SLT-183: el actor es el SUPERADMIN (la geografia la gestiona la plataforma, `GESTION_ROLES`),
+  // SEMBRADO en la tx revertida de cada caso. Antes se leia «el primer usuario» de la base, y la
+  // recien migrada no tiene ninguno. El lock de superadmin (SL-32) serializa a los archivos que
+  // ocupan el unico hueco; va ANTES que el de la 227 (`serializarEscriturasReales`).
+  let soltarSuperadmin: () => Promise<void> = async () => {};
+
+  beforeAll(async () => {
     prisma = crearPrismaDeTest();
+    soltarSuperadmin = await tomarLockDeSuperadmin();
   });
 
-  /**
-   * SLT-46 (T5.4): el actor se crea DENTRO de la transaccion revertida de cada caso (fixture de
-   * `superadmin-32`), en vez de tomar el primer `usuario` de la base: una base sin sembrar dejaba la
-   * suite parada en el `beforeAll` (SL-31). Solo cambia de donde sale el actor; lo afirmado, igual.
-   */
+  afterAll(async () => {
+    await soltarSuperadmin();
+    await prisma?.$disconnect();
+  });
+
+  /** Toma el superadmin del caso (el de la base o uno sembrado en `tx`) y deja su id y su nombre para las aserciones. */
   async function sembrarActor(tx: Parameters<Parameters<PrismaClient["$transaction"]>[0]>[0]): Promise<void> {
-    const org = await crearOrganizacion(tx);
-    const u = await insertarUsuario(tx, await idDeRol(tx, "maestro"), org.id);
-    if (!u.desenlace.ok) throw new Error(`no se sembro el actor: ${JSON.stringify(u.desenlace)}`);
-    const usuario = await tx.usuario.findUniqueOrThrow({
-      where: { id: u.id },
-      select: { nombre: true, primerApellido: true },
+    const rolSuperadmin = await idDeRol(tx, "superadmin");
+    // El que ya tenga la base (no se toca) o uno sembrado en esta tx: aqui solo hace falta un actor.
+    const actor = await superadminDelCaso(tx, rolSuperadmin);
+    // Control positivo (R1104): la siembra llego a la base. LANZA, no `return`.
+    const sembrado = await tx.usuario.findUnique({
+      where: { id: actor.id },
+      select: { id: true, nombre: true, primerApellido: true },
     });
-    actorUsuarioId = u.id;
-    actorNombreEsperado = [usuario.nombre, usuario.primerApellido]
+    if (sembrado === null) throw new Error("SLT-183: el superadmin sembrado (actor) no esta en la base");
+    actorUsuarioId = sembrado.id;
+    actorNombreEsperado = [sembrado.nombre, sembrado.primerApellido]
       .filter((p) => p != null && p !== "")
       .join(" ");
   }

@@ -45,6 +45,11 @@ export const CATEGORIA_LABEL: Record<WalletMovimientoCategoria, string> = {
   // Ficha 458-B (design §2.3, D7): la anulación de un cobro por rechazo, flete e IVA por separado.
   egreso_reverso_flete_devolucion: "Flete por devolución a origen cobrado a la tienda anulado",
   egreso_reverso_iva_flete_devolucion: "IVA del flete por devolución a origen cobrado a la tienda anulado",
+  // SLT-94 (R36): el cobro de fulfillment por paquete al crear la orden y su devolución.
+  ingreso_fulfillment: "Fulfillment cobrado a la tienda",
+  ingreso_iva_fulfillment: "IVA del fulfillment cobrado a la tienda",
+  egreso_reverso_fulfillment: "Devolución de fulfillment a la tienda",
+  egreso_reverso_iva_fulfillment: "Devolución del IVA del fulfillment a la tienda",
   // El dinero de las tiendas que pasa por la caja.
   ingreso_cod_recaudado: "Contra-entrega cobrado a los clientes de la tienda",
   egreso_pago_tienda: `${EMPRESA.alInicio} le paga a una tienda`,
@@ -131,6 +136,8 @@ export const ORIGEN_LABEL: Record<WalletOrigenTipo, string> = {
   incentivo_mensajero: "Incentivo a un mensajero",
   // SLT-73 (design §1.2): la marca o la corrección de una conciliación que movió la diferencia.
   conciliacion_bodega_ajuste: "Diferencia de la satélite",
+  // SLT-94 (R36): el cobro de fulfillment y su devolución nombran la orden (`OrigenLegibleService`).
+  orden_fulfillment: "Orden",
 };
 
 /**
@@ -166,6 +173,7 @@ export const ORIGEN_TIENDA_LABEL: Record<WalletOrigenTipo, string> = {
   cobro_tienda_completado: `Cobro de ${EMPRESA.enFrase} a una tienda (línea de caja completada al corregir)`,
   incentivo_mensajero: "Incentivo a un mensajero",
   conciliacion_bodega_ajuste: "Diferencia de la satélite",
+  orden_fulfillment: "Orden", // SLT-94 (R36)
 };
 
 /**
@@ -196,6 +204,8 @@ export const ORIGEN_PAGO_LABEL: Record<WalletOrigenTipo, string> = {
   // SLT-68 (design §5): el egreso de caja del incentivo, su reverso y el `reverso_incentivo`.
   incentivo_mensajero: "Incentivo a un mensajero",
   conciliacion_bodega_ajuste: "Diferencia de la satélite",
+  // SLT-94: no escribe en este libro; el mapa es total.
+  orden_fulfillment: "Orden",
 };
 
 /**

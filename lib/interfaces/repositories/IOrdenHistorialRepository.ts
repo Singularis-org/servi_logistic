@@ -107,6 +107,8 @@ export interface IOrdenHistorialRepository {
    * (`gestion-pendiente.ts`, `ayuda-abierta.ts`); una orden inexistente responde en reposo.
    */
   findSenalesGestion(ordenId: string): Promise<SenalesGestionDTO>;
+  /** SLT-77 (design §2.1, R27): el tope de la empresa en contexto. Sin empresa, `EmpresaNoResuelta`. */
+  leerTopeIntentos(): Promise<number>;
   /**
    * Feature 215 (R1/R3/R5/R8/R29/R30/R31/R32) — cuenta los INTENTOS DE ENTREGA de `ordenId`.
    *

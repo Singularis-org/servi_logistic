@@ -15,11 +15,12 @@ import { PrevisualizarMovimientoService } from "@/lib/services/PrevisualizarMovi
 import type { ConceptoRegistro, EfectoMovimientoDTO } from "@/lib/types/efecto-movimiento";
 import { listarMovimientosSchema } from "@/lib/types/wallet";
 import { derivarCuentaPorPagar } from "@/lib/utils/cuenta-por-pagar";
-import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
+import { fechaCalendarioCR, ZONA_CR } from "@/lib/utils/fecha-cr";
 import { derivarSaldoTienda } from "@/lib/utils/saldo-tienda";
 
 import { HAY_BASE_DE_DATOS, crearPrismaDeTest } from "./_postgres-real";
 import { cargarCatalogo459, enTransaccionRevertida459, montarServicios459, sembrarEscenario459 } from "./_fixtures/caja-459";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 // FICHA 458-B / TB.12 (R44, R50) — «Así queda» PREDICE lo que queda: contra Postgres, para cada uno
@@ -65,11 +66,12 @@ describeSiHayBase("458-B/TB.12 — «Así queda» predice lo que queda (Postgres
           tiendaRepo,
           new UserRepository(c),
           mensajeroRepo,
+          reglasPaisFijas(),
         );
         const m: Actor = esc.maestro;
         const hoy = fechaCalendarioCR(new Date());
         const resumen = async () => {
-          const r = await s.wallet.verResumenCaja(listarMovimientosSchema.parse({}), m);
+          const r = await s.wallet.verResumenCaja(listarMovimientosSchema(ZONA_CR).parse({}), m);
           if (r.status !== "ok") throw new Error("resumen");
           return r.resumen;
         };
@@ -144,6 +146,8 @@ describeSiHayBase("458-B/TB.12 — «Así queda» predice lo que queda (Postgres
           mensajeroRepo,
           new CajaIncentivoMensajeroFeedService(new WalletMovimientoRepository(c)),
           (fn) => c.$transaction((t) => fn(t as never)),
+          undefined,
+          reglasPaisFijas(),
         );
         await paso("incentivo_a_mensajero", "17.00", { tipo: "mensajero", id: esc.mensajeroId }, () =>
           incentivos.registrar({ mensajeroId: esc.mensajeroId, monto: "17.00", motivo: "Buena semana", claveIdempotencia: k() }, m),

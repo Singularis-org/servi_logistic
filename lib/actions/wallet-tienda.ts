@@ -1,5 +1,8 @@
 "use server";
 
+import { construirReglasPaisEmpresa } from "@/lib/services/ReglasPaisEmpresaService";
+import { zonaDelBorde } from "@/lib/actions/_shared/zona-del-borde";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
 import { getPrismaClient } from "@/lib/db/prisma-client";
 import { CierreAporteRepository } from "@/lib/repositories/CierreAporteRepository";
 import { EstadoCuentaRepository } from "@/lib/repositories/EstadoCuentaRepository";
@@ -173,6 +176,7 @@ function buildCobroTiendaService(): ICobroTiendaService {
     (fn) => prisma.$transaction((tx) => fn(tx)),
     undefined, // el reloj por defecto
     buildComprobantes(prisma), // FICHA 458-B (R74): el comprobante del cobro
+    construirReglasPaisEmpresa(prisma), // SLT-42 (R22, R28): la zona horaria del pais de la empresa.
   );
 }
 
@@ -181,17 +185,22 @@ export interface WalletTiendaDeps {
   getActor?: () => Promise<Actor | null>;
   /** Ficha 458-A (TA.2): el origen legible de las filas; en produccion, el real sobre Prisma. */
   origenes?: IOrigenLegibleService;
+  /** SLT-42 (R22, R28): la zona del pais de la empresa; en produccion, la real (`zonaDelBorde`). */
+  reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">;
 }
 
 /** Ficha 458-A (TA.2) — composition root del origen legible (una consulta por tipo presente). */
 function buildOrigenes(): IOrigenLegibleService {
-  return new OrigenLegibleService(new OrigenLegibleRepository(getPrismaClient()));
+  // SLT-42 (R22, R28): con la zona horaria del pais de la empresa.
+  return new OrigenLegibleService(new OrigenLegibleRepository(getPrismaClient()), construirReglasPaisEmpresa(getPrismaClient()));
 }
 
 /** Las dependencias del cobro, inyectables en test igual que las del ledger. */
 export interface CobroTiendaDeps {
   service?: ICobroTiendaService;
   getActor?: () => Promise<Actor | null>;
+  /** SLT-42 (R22, R28): la zona del pais de la empresa; en produccion, la real (`zonaDelBorde`). */
+  reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">;
 }
 
 /**
@@ -364,7 +373,9 @@ export async function listarMovimientosDeTiendaAction(
   const r = await withErrorHandler(async () => {
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError(); // R29: antes del schema y del service
-    const data = listarMovimientosDeTiendaSchema.parse(input); // R25: ZodError -> VALIDATION_ERROR
+    // SLT-42 (R22, R28): «hoy» en la zona del pais de la empresa; sin zona, falla sin tocar nada.
+    const zona = await zonaDelBorde(deps.reglasPais);
+    const data = listarMovimientosDeTiendaSchema(zona).parse(input); // R25: ZodError -> VALIDATION_ERROR
     const service = deps.service ?? buildService();
     const r = await service.listarMovimientosDeTienda(data, actor);
     return origenEnPagina(deps.origenes ?? buildOrigenes(), "tienda", r, actor);
@@ -387,7 +398,9 @@ export async function listarMovimientosDeTiendaCompletoAction(
   const r = await withErrorHandler(async () => {
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError(); // R29: antes de tocar el service
-    const data = listarMovimientosDeTiendaCompletoSchema.parse(input); // R25
+    // SLT-42 (R22, R28): «hoy» en la zona del pais de la empresa; sin zona, falla sin tocar nada.
+    const zona = await zonaDelBorde(deps.reglasPais);
+    const data = listarMovimientosDeTiendaCompletoSchema(zona).parse(input); // R25
     const service = deps.service ?? buildService();
     const r = await service.listarMovimientosDeTiendaCompleto(data, actor);
     return origenEnItems(deps.origenes ?? buildOrigenes(), "tienda", r, actor);
@@ -484,7 +497,9 @@ export async function registrarCobroTiendaAction(
     // FICHA 458-B (R74): el objeto de hoy o un FormData con `comprobante` (molde 459); el `.strict()`
     // se conserva: el archivo se separa ANTES y cualquier otra clave no prevista sigue muriendo aqui.
     const { crudo, comprobante } = separarComprobante(input);
-    const data = registrarCobroTiendaSchema.parse(crudo); // R14/R15/R16: ZodError -> VALIDATION_ERROR
+    // SLT-42 (R22, R28): «hoy» en la zona del pais de la empresa; sin zona, falla sin tocar nada.
+    const zona = await zonaDelBorde(deps.reglasPais);
+    const data = registrarCobroTiendaSchema(zona).parse(crudo); // R14/R15/R16: ZodError -> VALIDATION_ERROR
     const archivo = await leerComprobanteOpcional(comprobante);
     const service = deps.service ?? buildCobroTiendaService();
     return archivo === null ? service.registrarCobro(data, actor) : service.registrarCobro(data, actor, archivo);

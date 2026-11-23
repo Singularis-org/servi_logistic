@@ -3,6 +3,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { HAY_BASE_DE_DATOS } from "./_postgres-real";
 import { conEscenario, prepararMundo, type Mundo } from "./454/_escenario";
 import { gestionDe } from "./_correccion-477";
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 
 /**
  * FICHA 477 (T3.4; R12, R13, R14) — VOLVER A GESTIONAR CON EL BLOQUEO PUESTO, contra Postgres y por
@@ -35,7 +36,7 @@ describeSiHayBase("477/T3.4 — volver a gestionar una orden en correccion (Post
       // Una orden en mano que NO esta en correccion (asignada despues).
       const otra = await e.sembrarOrden({ estatus: "en_reparto", montoCobrar: 2000 });
 
-      const bloqueo = await e.s.ordenRepo.findBloqueoDetalle(e.mensajeroId);
+      const bloqueo = await e.s.ordenRepo.findBloqueoDetalle(e.mensajeroId, ZONA_CR);
       // Antes de deshacer, la orden NO esta en correccion: tiene su gestion vigente en el cierre.
       const antesDeDeshacer = await e.s.misAsignaciones.escogerParaGestion(corr.ordenId, e.actorMensajero);
       const des = await e.s.cierreDia.deshacerGestion(g1, e.actorMensajero);

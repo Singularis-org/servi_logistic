@@ -96,6 +96,7 @@ export function RegistrarPagoMensajeroDialog({
       beneficiario={mensajeroNombre}
       disponible={pendiente}
       cancelLabel={trasAprobar ? PAGO_MENSAJERO_TEXTO.ahoraNo : undefined}
+      mensajeSinSaldo={PAGO_MENSAJERO_TEXTO.sinSaldo}
       onRegistrar={registrar}
       onRegistrado={trasRegistrar}
     />

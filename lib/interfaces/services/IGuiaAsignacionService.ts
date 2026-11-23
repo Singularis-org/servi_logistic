@@ -70,6 +70,16 @@ export interface RutearSateliteResultadoItem {
   estado: string; // siempre "en_ruta_bodega_satelite"
 }
 
+// SLT-197 (R971) — retiro de ordenes del estante de una satelite a la central.
+export interface RetirarSateliteInput {
+  ordenIds: string[];
+}
+
+export interface RetirarSateliteResultadoItem {
+  ordenId: string;
+  estado: string; // siempre "en_ruta_bodega_central"
+}
+
 // R29: motivo por orden cuando el lote se rechaza (orden inexistente, borrada,
 // estado de origen no permitido). El servicio ABORTA sin efectos (R25).
 export interface DetalleConflicto {
@@ -161,6 +171,14 @@ export type RutearSateliteServiceResult =
   | { status: "validation_error"; fieldErrors: Record<string, string[]> }
   | { status: "conflict"; detalle: DetalleConflicto[] };
 
+// SLT-197 (R971-R976): resultado del retiro. `conflict` cubre orden inexistente, borrada o fuera
+// de `en_bodega_satelite` (R973) y el cambio de estado entre validar y escribir (R974).
+export type RetirarSateliteServiceResult =
+  | { status: "ok"; resultados: RetirarSateliteResultadoItem[] }
+  | { status: "forbidden" }
+  | { status: "validation_error"; fieldErrors: Record<string, string[]> }
+  | { status: "conflict"; detalle: DetalleConflicto[] };
+
 export interface IGuiaAsignacionService {
   /**
    * Feature 156 (R1-R9) — NUMERAR ≠ ASIGNAR. Asigna `num_guia` (idempotente, R5) a
@@ -193,6 +211,15 @@ export interface IGuiaAsignacionService {
     input: RutearSateliteInput,
     actor: Actor,
   ): Promise<RutearSateliteServiceResult>;
+  /**
+   * SLT-197 (R971-R975, R985): retira un lote de ordenes de `en_bodega_satelite` a
+   * `en_ruta_bodega_central` (arista #73), todo o nada, sin mensajero y conservando su zona.
+   * Solo acceso total (maestro/admin). El lote puede mezclar bodegas satelite.
+   */
+  retirarABodegaCentral(
+    input: RetirarSateliteInput,
+    actor: Actor,
+  ): Promise<RetirarSateliteServiceResult>;
   /**
    * Feature 157 (R3-R9): asigna el mensajero que ira a la tienda a RECOLECTAR un lote de
    * ordenes en `por_recolectar_en_tienda` (origen unico). A diferencia de las otras tres

@@ -90,7 +90,7 @@ function fila(listado: EmpresaListada[], id: string): EmpresaListada {
 }
 
 interface Caso {
-  listado: Pick<EmpresaListada, "plan" | "cobroVigente" | "cobroPorOrden">;
+  listado: Pick<EmpresaListada, "plan" | "cobroVigente">;
   plan: PlanListado | null;
   cargo: { monto: string; fuente: string }[];
 }
@@ -108,9 +108,9 @@ describeSiHayBase("SLT-66 — el listado de «Empresas»: plan y cobro vigente (
   });
 
   /**
-   * Cuatro empresas: A con plan de 100 («plan»), B con ese mismo tipo de plan y una excepción de 80
-   * («empresa»), C con un plan sin costo por orden («global») y D sin plan («global»). Lee el listado y,
-   * después, crea una orden por empresa y lee su cargo.
+   * Cuatro empresas: A con plan de 100 («plan»), B con un plan de 80 en anual («plan»; SLT-126: antes era
+   * una excepción de 80 con fuente «empresa», que ya no existe), C con un plan sin costo por orden
+   * («global») y D sin plan («global»). Lee el listado y, después, crea una orden por empresa y lee su cargo.
    */
   async function cuatroEmpresas(tx: TxDeTest): Promise<Record<"A" | "B" | "C" | "D", Caso>> {
     const ids = {
@@ -121,18 +121,17 @@ describeSiHayBase("SLT-66 — el listado de «Empresas»: plan y cobro vigente (
     };
     const planes = {
       A: await conPlan(tx, ids.A, "100.00"),
-      B: await conPlan(tx, ids.B, "100.00", "anual"),
+      B: await conPlan(tx, ids.B, "80.00", "anual"),
       C: await conPlan(tx, ids.C, null),
       D: null,
     };
-    await tx.organizacion.update({ where: { id: ids.B }, data: { cobroPlataformaPorOrden: "80.00" } });
 
     const listado = await new EmpresasPlataformaRepository(clienteConTransaccionAnidada(tx)).listar();
     const resultado = {} as Record<"A" | "B" | "C" | "D", Caso>;
     for (const k of ["A", "B", "C", "D"] as const) {
       const f = fila(listado, ids[k]);
       resultado[k] = {
-        listado: { plan: f.plan, cobroVigente: f.cobroVigente, cobroPorOrden: f.cobroPorOrden },
+        listado: { plan: f.plan, cobroVigente: f.cobroVigente },
         plan: planes[k],
         cargo: await cargoDeUnaOrdenNueva(tx, ids[k]),
       };
@@ -144,7 +143,7 @@ describeSiHayBase("SLT-66 — el listado de «Empresas»: plan y cobro vigente (
     const r = await revertida(base, cuatroEmpresas);
     const esperado = {
       A: { monto: "100.00", fuente: "plan" },
-      B: { monto: "80.00", fuente: "empresa" },
+      B: { monto: "80.00", fuente: "plan" },
       C: { monto: GLOBAL, fuente: "global" },
       D: { monto: GLOBAL, fuente: "global" },
     } as const;
@@ -152,13 +151,6 @@ describeSiHayBase("SLT-66 — el listado de «Empresas»: plan y cobro vigente (
       expect(r[k].cargo, `cargo de ${k}`).toEqual([esperado[k]]);
       expect(r[k].listado.cobroVigente, `listado de ${k}`).toEqual({ modo: "fijo", ...esperado[k] }); // SLT-83: lleva su modo
     }
-  });
-
-  it("R31: la excepción sigue saliendo aparte en cobroPorOrden (la edición de la celda no cambia)", async () => {
-    const r = await revertida(base, cuatroEmpresas);
-    expect(r.B.listado.cobroPorOrden).toBe("80.00");
-    expect(r.A.listado.cobroPorOrden).toBeNull();
-    expect(r.D.listado.cobroPorOrden).toBeNull();
   });
 
   it("R32: plan trae id y nombre del plan asignado, o null sin plan; D9 (ajuste planes-custom): y su tipo de cobro", async () => {

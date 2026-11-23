@@ -13,7 +13,10 @@ import { DescargarDatasetButton } from "@/components/shared/DescargarDatasetButt
 import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
 import type { DescargaFilasResult } from "@/components/shared/DataTable";
 import { filasDesdeResultado } from "@/components/shared/descarga-resultado";
-import type { CierreGestionDescargaDTO } from "@/lib/interfaces/services/ICierresAdminService";
+import type {
+  CierreGestionDescargaDTO,
+  ConRechazosDeTiendaEnOk,
+} from "@/lib/interfaces/services/ICierresAdminService";
 import type { DescargaColumna } from "@/lib/types/descarga";
 import type { ListarCompletoResult } from "@/lib/types/descarga-listado";
 import type {
@@ -21,7 +24,11 @@ import type {
   FiltrosDescargaGestiones,
 } from "@/lib/types/filtros-cierres";
 
-import { filaDescargaGestionFundida } from "./cierres-gestiones-fundida-descarga-columnas";
+import {
+  filaDescargaGestionFundida,
+  type AudienciaDescargaGestionesFundida,
+} from "./cierres-gestiones-fundida-descarga-columnas";
+import { libroGestiones } from "./cierres-gestiones-modelo-nuevo-descarga";
 
 /**
  * Feature 230 (T4.1, design §7) — el DIÁLOGO de la descarga DETALLADA de cierres: elegir uno o
@@ -109,7 +116,7 @@ import { filaDescargaGestionFundida } from "./cierres-gestiones-fundida-descarga
  */
 export type AccionGestionesDescarga = (
   input: FiltrosDescargaGestiones,
-) => Promise<ListarCompletoResult<CierreGestionDescargaDTO>>;
+) => Promise<ConRechazosDeTiendaEnOk<ListarCompletoResult<CierreGestionDescargaDTO>>>; // SLT-113: `rechazosDeTienda?` en `ok`
 
 // --- Textos (separados de la lógica, i18n-ready) --------------------------
 
@@ -144,7 +151,7 @@ const HASTA_LABEL = "Hasta";
  * quien pulse «Hoy» y quiera volver a «todo» tendría que adivinar.
  */
 const RANGO_AYUDA =
-  "Recorta por la fecha de solicitud del cierre. Vacías no recortan nada: se lleva todo el historial de los mensajeros elegidos. Vaciá una fecha para quitar ese extremo, o «Limpiar» para quitar las dos.";
+  "Recorta por la fecha de solicitud del cierre. Vacías no recortan nada: se lleva todo el historial de los mensajeros elegidos. Vacía una fecha para quitar ese extremo, o «Limpiar» para quitar las dos.";
 /** Atajo al caso diario (ficha 384): el cierre del día de toda la flota, en un clic. */
 const HOY_LABEL = "Hoy";
 /**
@@ -164,7 +171,7 @@ const CERRAR_LABEL = "Cerrar";
 
 /** R39: el aviso accionable de confirmar sin nadie elegido. No se llama al servidor. */
 const MENSAJE_SIN_MENSAJERO =
-  "Elegí al menos un mensajero para descargar sus gestiones. Sin mensajeros no hay archivo.";
+  "Elige al menos un mensajero para descargar sus gestiones. Sin mensajeros no hay archivo.";
 /** R32: el rango invertido se corta acá; el borde lo vuelve a rechazar con su schema. */
 const MENSAJE_RANGO_INVERTIDO =
   "El rango de fechas está invertido: «Desde» tiene que ser anterior o igual a «Hasta».";
@@ -185,9 +192,9 @@ const MENSAJE_RANGO_INVERTIDO =
  * filtraría información sobre el alcance ajeno.
  */
 const MENSAJE_SIN_DATOS_EN_RANGO =
-  "No hay gestiones de cierre en el rango de fechas elegido para esos mensajeros. Ampliá el rango o vaciá las fechas y volvé a intentarlo.";
+  "No hay gestiones de cierre en el rango de fechas elegido para esos mensajeros. Amplía el rango o vacía las fechas y vuelve a intentarlo.";
 const MENSAJE_SIN_DATOS =
-  "Los mensajeros elegidos no tienen gestiones de cierre. Elegí otros mensajeros y volvé a intentarlo.";
+  "Los mensajeros elegidos no tienen gestiones de cierre. Elige otros mensajeros y vuelve a intentarlo.";
 
 export interface DescargarGestionesDialogProps {
   /** Opciones YA acotadas al alcance del actor, resueltas en el servidor (R29). */
@@ -211,6 +218,26 @@ export interface DescargarGestionesDialogProps {
   ariaLabel?: string;
   /** `true` mientras la pantalla tiene una lectura en vuelo. */
   disabled?: boolean;
+  /**
+   * SLT-113 — para quién es el libro del modelo nuevo (F481: la satélite no recibe las columnas de
+   * fulfillment). Ausente ⇒ `"satelite"`: falla cerrado, como `DescargarCierresButton`.
+   */
+  audiencia?: AudienciaDescargaGestionesFundida;
+}
+
+/** SLT-113 — las hojas del modelo nuevo de una respuesta `ok`, o `null` (el archivo de siempre). */
+function libroDe(
+  respuesta: Awaited<ReturnType<AccionGestionesDescarga>> | null,
+  columnasAnterior: DescargaColumna[],
+  audiencia: AudienciaDescargaGestionesFundida,
+) {
+  if (respuesta === null || respuesta.status !== "ok") return null;
+  return libroGestiones({
+    items: respuesta.items,
+    rechazos: respuesta.rechazosDeTienda,
+    columnasAnterior,
+    audiencia,
+  });
 }
 
 export function DescargarGestionesDialog({
@@ -221,6 +248,7 @@ export function DescargarGestionesDialog({
   label = DISPARADOR_LABEL,
   ariaLabel = DISPARADOR_ARIA,
   disabled = false,
+  audiencia = "satelite",
 }: Readonly<DescargarGestionesDialogProps>) {
   const [abierto, setAbierto] = useState(false);
 
@@ -313,10 +341,17 @@ export function DescargarGestionesDialog({
     if (rangoInvertido) {
       return { status: "error", mensaje: MENSAJE_RANGO_INVERTIDO };
     }
-    const resultado = await filasDesdeResultado(
-      accion(recorteElegido()),
+    // UNA sola llamada a la acción, por el adaptador común de siempre. SLT-113 (R370/R372): la
+    // respuesta se conserva para ver si algún cierre del conjunto es del modelo nuevo; si lo es, el
+    // archivo es el libro de sus hojas; si no, EXACTAMENTE el resultado de siempre.
+    let respuesta: Awaited<ReturnType<AccionGestionesDescarga>> | null = null;
+    const deSiempre = await filasDesdeResultado(
+      accion(recorteElegido()).then((r) => (respuesta = r)),
       filaDescargaGestionFundida,
     );
+    const hojas = libroDe(respuesta, columnas, audiencia);
+    const resultado: DescargaFilasResult =
+      hojas === null ? deSiempre : { status: "ok", filas: hojas[0].filas, libro: { hojas } };
     // FICHA 384: el conjunto VACÍO se redacta aquí (ver `MENSAJE_SIN_DATOS_EN_RANGO`). El
     // comportamiento no cambia —no había archivo antes y no lo hay ahora—: cambia el texto, que
     // deja de culpar a unos filtros que el usuario pudo no haber puesto.

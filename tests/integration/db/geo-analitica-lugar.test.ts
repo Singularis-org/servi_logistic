@@ -28,6 +28,7 @@ import { comoApp } from "@/tests/fabricas/organizaciones";
 import { crearEscenarioGeo71, type EmpresaGeo71, revertidaLarga, TIEMPO_DE_TEST_LARGO } from "./_fixtures/geo-71";
 import { comoDueno } from "./_fixtures/pais-20";
 import { HAY_BASE_DE_DATOS, crearPrismaDeTest, type TxDeTest } from "./_postgres-real";
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 
 // SLT-71 (T3.4; R1–R5, R7, R13; design §3, §11) — LAS LECTURAS DE ANALITICA FILTRAN POR EL LUGAR DE LA
 // ORDEN, contra la copia congelada de hoy (`scripts/geo-equivalencia/analitica-de-hoy.ts`) y sobre
@@ -118,13 +119,13 @@ type Actor = { usuarioId: string; rol: string };
 const MAESTRO: Actor = { usuarioId: randomUUID(), rol: "maestro" };
 
 function consultaEntregas(raw: object, actor: Actor = MAESTRO): ConsultaConteoEntregas {
-  const p = prepararConteoEntregas(raw, actor);
+  const p = prepararConteoEntregas(raw, actor, ZONA_CR);
   if (p.status !== "ok") throw new Error(`consulta de prueba no concedida: ${JSON.stringify(p)}`);
   return p.consulta;
 }
 
 function consultaProductos(raw: object): ConsultaProductos {
-  const p = prepararConsultaProductos(raw, MAESTRO);
+  const p = prepararConsultaProductos(raw, MAESTRO, ZONA_CR);
   if (p.status !== "ok") throw new Error(`consulta de productos no concedida: ${JSON.stringify(p)}`);
   return p.consulta;
 }

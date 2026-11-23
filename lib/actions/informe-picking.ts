@@ -7,6 +7,8 @@
 // conteos salen de `resumenTiendasPicking`, con la MISMA definicion de «atrasada» que el PDF.
 import { z } from "zod";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
+import { zonaDelBorde } from "@/lib/actions/_shared/zona-del-borde";
 import type { IPickingRepository } from "@/lib/interfaces/repositories/IPickingRepository";
 import type { ListarTiendasPickingResult } from "@/lib/whatsapp-envios/informes/picking/tipos";
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
@@ -20,6 +22,8 @@ export interface ListarTiendasPickingDeps {
   getActor?: () => Promise<Actor | null>;
   repo?: () => IPickingRepository;
   now?: () => Date;
+  /** SLT-42 (R22, R28): la zona del pais de la empresa; en produccion, la real (`zonaDelBorde`). */
+  reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">;
 }
 
 const ROLES_PERMITIDOS = new Set<string>(["maestro"]);
@@ -49,5 +53,6 @@ export async function listarTiendasPicking(
   }
   const repo = (deps.repo ?? (() => new PickingRepository(getPrismaClient())))();
   const ahora = (deps.now ?? (() => new Date()))();
-  return { status: "ok", tiendas: await resumenTiendasPicking(repo, ahora, p.data.diasAtraso) };
+  const zona = await zonaDelBorde(deps.reglasPais); // SLT-42 (R22, R28)
+  return { status: "ok", tiendas: await resumenTiendasPicking(repo, ahora, zona, p.data.diasAtraso) };
 }

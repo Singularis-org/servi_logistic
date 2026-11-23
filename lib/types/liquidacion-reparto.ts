@@ -56,13 +56,15 @@ export const previsualizarRepartoSchema = z
  * entero — no hay forma de expresar una por cierre, que es la mitad de R58 que vive en el
  * contrato y no en el codigo.
  */
-export const registrarRepartoMensajeroSchema = z
-  .object({ ...camposComunesDelPago, mensajeroId: z.string().uuid() })
-  .strict()
-  .superRefine(exigirReferenciaEnPagoElectronico);
+export function registrarRepartoMensajeroSchema(zona: string) {
+  return z
+    .object({ ...camposComunesDelPago(zona), mensajeroId: z.string().uuid() })
+    .strict()
+    .superRefine(exigirReferenciaEnPagoElectronico);
+}
 
 export type PrevisualizarRepartoInput = z.infer<typeof previsualizarRepartoSchema>;
-export type RegistrarRepartoMensajeroInput = z.infer<typeof registrarRepartoMensajeroSchema>;
+export type RegistrarRepartoMensajeroInput = z.infer<ReturnType<typeof registrarRepartoMensajeroSchema>>;
 
 // ── DTOs de salida (frontera Server Action -> cliente). Montos SIEMPRE STRING (R46) ─────────
 

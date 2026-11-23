@@ -13,6 +13,7 @@ import {
   serializarEscriturasReales,
 } from "./_postgres-real";
 import { sembrarBase, estatusId, type BaseSembrada, type TxDeTest } from "./_semilla-rollup";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // FICHA 352 — EL ORDEN DEL LISTADO DE `/ordenes` ES TOTAL Y ESTABLE, contra Postgres real.
 //
@@ -156,7 +157,7 @@ describeSiHayBase("el orden del listado de /ordenes es total y estable (ficha 35
           ...(await sembrarLote(tx, base, "C", T_C, 1, 3_540_000)),
         ];
         const repo = new OrdenRepository(tx as unknown as PrismaClient);
-        return fn({ repo, service: new OrdenService(repo, fakeIntentosEnLote()), tx, filas });
+        return fn({ repo, service: new OrdenService(repo, fakeIntentosEnLote(), undefined, reglasPaisFijas()), tx, filas });
       });
   });
 

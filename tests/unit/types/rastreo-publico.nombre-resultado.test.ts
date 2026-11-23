@@ -6,6 +6,7 @@ import type {
   OrdenRastreoFila,
 } from "@/lib/interfaces/repositories/IRastreoPublicoRepository";
 import { RastreoPublicoService } from "@/lib/services/RastreoPublicoService";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 import { nombreDeResultado } from "@/lib/types/gestion-resultado";
 import { ORDER_STATUS_SEED } from "@/lib/types/order-status";
 
@@ -64,8 +65,7 @@ describe("454/R31 · 455/R33 — el nombre visible del resultado pendiente en el
         RATE_MAX: 100,
         RATE_WINDOW_MINUTES: 10,
         DIGITOS_SEGUNDO_FACTOR: 4,
-        ZONA_HORARIA: "America/Costa_Rica",
-      });
+      }, reglasPaisFijas());
 
       const c = await servicio.consultar(454_001, "3456");
       if (c.estado !== "ok") throw new Error("precondicion: el rastreo debia encontrar la guia");
@@ -103,8 +103,7 @@ describe("454/R31 · 455/R33 — el nombre visible del resultado pendiente en el
       RATE_MAX: 100,
       RATE_WINDOW_MINUTES: 10,
       DIGITOS_SEGUNDO_FACTOR: 4,
-      ZONA_HORARIA: "America/Costa_Rica",
-    });
+    }, reglasPaisFijas());
     const c = await servicio.consultar(454_002, "3456");
     if (c.estado !== "ok") throw new Error("precondicion: el rastreo debia encontrar la guia");
     expect(c.envio.linea.map((e) => e.nombre)).toEqual(["En reparto"]);

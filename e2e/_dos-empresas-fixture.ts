@@ -9,6 +9,7 @@ import { comoPlataforma } from "../lib/db/contexto-empresa";
 import { getPrismaClient } from "../lib/db/prisma-client";
 import { ORDEN_MODULOS } from "../lib/modulos/catalogo";
 import { OrganizacionRepository } from "../lib/repositories/OrganizacionRepository";
+import { PaisRepository } from "../lib/repositories/PaisRepository";
 import { OrganizacionService } from "../lib/services/OrganizacionService";
 import type { AltaEmpresaResultado } from "../lib/types/organizacion";
 import { computeDeviceHash } from "../lib/utils/device";
@@ -93,7 +94,8 @@ function sufijo(): string {
 }
 
 function servicioDeAlta(): OrganizacionService {
-  return new OrganizacionService(new OrganizacionRepository(getPrismaClient()));
+  const prisma = getPrismaClient();
+  return new OrganizacionService(new OrganizacionRepository(prisma), new PaisRepository(prisma));
 }
 
 /**
@@ -136,7 +138,8 @@ export async function altaDeEmpresa(
       nombre: `Maestro ${letra} humo`,
       email,
       telefono: "88880000",
-      documento: `humo-${letra}-${s}`,
+      // SLT-42 (R10): una cédula física de CR (9 dígitos); única por empresa y tipo, así que basta el azar.
+      documento: String(crypto.randomInt(0, 1_000_000_000)).padStart(9, "0"),
       tipoDocumento: "cedula",
     },
   };

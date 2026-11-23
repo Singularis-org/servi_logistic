@@ -3,7 +3,10 @@ import type { PrismaClient } from "@prisma/client";
 
 import { AsistenteUsoRepository } from "@/lib/repositories/AsistenteUsoRepository";
 import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
-import { HAY_BASE_DE_DATOS, crearPrismaDeTest } from "./_postgres-real";
+import { HAY_BASE_DE_DATOS, bajoLockDeEscrituraReal, crearPrismaDeTest, type TxDeTest } from "./_postgres-real";
+import { crearUsuarioDePrueba } from "./_fixtures/orden-minima";
+import { datosDeOrganizacionDePrueba, fijarEmpresa } from "@/tests/fabricas/organizaciones";
+import { conAislamientoPorEmpresa } from "@/lib/db/extension-empresa";
 
 /**
  * ⭑ FICHA 436 · R16 y R17 — EL CONTADOR, CONTRA POSTGRES DE VERDAD.
@@ -39,21 +42,45 @@ describeSiHayBase("436/R16-R17 — asistente_uso_diario contra Postgres real", (
   let admin: PrismaClient;
   let clienteA: PrismaClient;
   let clienteB: PrismaClient;
+  let basesDeLaCarrera: PrismaClient[] = [];
   let usuarioId: string;
+  let empresaId: string | undefined;
 
   const limpiar = () =>
     admin.$executeRawUnsafe(`DELETE FROM "asistente_uso_diario" WHERE "fecha" >= DATE '2999-01-01'`);
 
   beforeAll(async () => {
     admin = crearPrismaDeTest();
-    clienteA = crearPrismaDeTest();
-    clienteB = crearPrismaDeTest();
+    // SLT-185 (R1141): las dos conexiones de la carrera escriben como en produccion: con la envoltura
+    // de `getPrismaClient()` y la empresa que resolveria la sesion (la del usuario sembrado). Sin ella,
+    // el contador nace con `organizacion_id` NULL y el trigger de misma empresa lo rechaza (SL017).
+    basesDeLaCarrera = [crearPrismaDeTest(), crearPrismaDeTest()];
+    const empresaDeLaSesion = async () => empresaId ?? null;
+    clienteA = conAislamientoPorEmpresa(basesDeLaCarrera[0], empresaDeLaSesion);
+    clienteB = conAislamientoPorEmpresa(basesDeLaCarrera[1], empresaDeLaSesion);
 
-    const alguien = await admin.usuario.findFirst({ select: { id: true } });
-    // ⚠️ SE ROMPE RUIDOSAMENTE Y NO SE SALTA. Un `if (!alguien) return;` dejaría el archivo en
-    // «passed» sin haber comprobado nada, que es el modo de fallo que este repo ya se comió.
-    expect(alguien, "la base no tiene ni un usuario: no hay FK que satisfacer").not.toBeNull();
-    usuarioId = alguien!.id;
+    // SLT-183: la empresa y el usuario se SIEMBRAN, COMMITEADOS (R1103): las dos conexiones de la carrera tienen
+    // que verlo. Antes se leia «el primer usuario» de la base, y la recien migrada no tiene ninguno.
+    // Se borra en el `afterAll`, que comprueba que no queda.
+    // Bajo el lock de la 227 (`bajoLockDeEscrituraReal`): un INSERT/DELETE commiteado de
+    // `organizacion`/`usuario` fuera de el choca con el DDL de otro archivo (40P01, medido).
+    const sembrado = await bajoLockDeEscrituraReal(async () => {
+      const empresa = await admin.organizacion.create({
+        data: datosDeOrganizacionDePrueba(),
+        select: { id: true },
+      });
+      empresaId = empresa.id;
+      return admin.$transaction(async (tx) => {
+        await fijarEmpresa(tx, empresa.id);
+        return crearUsuarioDePrueba(tx as unknown as TxDeTest, "maestro");
+      });
+    });
+    // ⚠️ SE ROMPE RUIDOSAMENTE Y NO SE SALTA. Control positivo (R1104): la siembra llego a la base.
+    expect(
+      await admin.usuario.count({ where: { id: sembrado.id } }),
+      "SLT-183: el usuario sembrado (dueno del contador) no esta en la base",
+    ).toBe(1);
+    usuarioId = sembrado.id;
 
     // Restos de una corrida que muriera a mitad. Acotado a las centinela: no puede tocar nada real.
     await limpiar();
@@ -64,8 +91,17 @@ describeSiHayBase("436/R16-R17 — asistente_uso_diario contra Postgres real", (
 
   afterAll(async () => {
     await limpiar();
-    await clienteA?.$disconnect();
-    await clienteB?.$disconnect();
+    // SLT-183 (R1103): la empresa y el usuario sembrados commiteados se van, y se comprueba
+    // contando por sus ids.
+    await bajoLockDeEscrituraReal(async () => {
+      if (usuarioId !== undefined) await admin.usuario.deleteMany({ where: { id: usuarioId } });
+      if (empresaId !== undefined) await admin.organizacion.deleteMany({ where: { id: empresaId } });
+    });
+    const quedan =
+      (usuarioId === undefined ? 0 : await admin.usuario.count({ where: { id: usuarioId } })) +
+      (empresaId === undefined ? 0 : await admin.organizacion.count({ where: { id: empresaId } }));
+    if (quedan !== 0) throw new Error(`SLT-183: ${quedan} filas sembradas siguen en la base`);
+    await Promise.all(basesDeLaCarrera.map((b) => b.$disconnect()));
     await admin?.$disconnect();
   });
 
@@ -104,6 +140,13 @@ describeSiHayBase("436/R16-R17 — asistente_uso_diario contra Postgres real", (
     );
     expect(filas).toHaveLength(1);
     expect(filas[0].consultas).toBe(3);
+    // SLT-185 (R1146): el contador se escribio con la empresa del usuario sembrado.
+    const empresas = await admin.$queryRawUnsafe<{ organizacion_id: string }[]>(
+      `SELECT "organizacion_id" FROM "asistente_uso_diario" WHERE "usuario_id" = $1 AND "fecha" = $2::date`,
+      usuarioId,
+      FECHA,
+    );
+    expect(empresas.map((e) => e.organizacion_id), "SLT-185: empresa en contexto").toEqual([empresaId]);
     // ⚠️ La fecha LEÍDA DE LA BASE es la misma cadena que se pidió. Si el `Date` de JavaScript se
     // colara por el camino, aquí saldría el día anterior o el siguiente según el huso de la
     // máquina — y el tope se reiniciaría a deshora sin que nadie lo notara.
@@ -138,14 +181,18 @@ describeSiHayBase("436/R16-R17 — asistente_uso_diario contra Postgres real", (
   });
 
   it("el índice MUERDE: dos filas del mismo usuario y día son imposibles", async () => {
+    // SLT-185: la escritura a mano lleva la empresa del usuario (`organizacion_id NOT NULL`, SL-17), y
+    // se exige que el rechazo sea el del UNICO (23505): sin empresa tambien se rechazaba, pero por el
+    // `NOT NULL` o por el trigger de misma empresa, y el caso pasaba sin medir el indice.
     await expect(
       admin.$executeRawUnsafe(
-        `INSERT INTO "asistente_uso_diario" ("id","usuario_id","fecha","consultas")
-         VALUES (gen_random_uuid()::text, $1, $2::date, 99)`,
+        `INSERT INTO "asistente_uso_diario" ("id","usuario_id","fecha","consultas","organizacion_id")
+         VALUES (gen_random_uuid()::text, $1, $2::date, 99, $3)`,
         usuarioId,
         FECHA,
+        empresaId,
       ),
-    ).rejects.toThrow();
+    ).rejects.toThrow(/23505/);
   });
 
   it("⭑⭑ R17 — DOS CONSULTAS SIMULTÁNEAS, retenidas en la misma ventana, dejan `consultas = 2`", async () => {
@@ -296,11 +343,14 @@ describeSiHayBase("436/R16-R17 — asistente_uso_diario contra Postgres real", (
       "no_lo_se",
       "created_at",
       "updated_at",
+      // SLT-185: la empresa (SL-17, migracion `20261022130100_organizacion_id_en_negocio`), un id.
+      "organizacion_id",
     ]);
-    // Los dos únicos textos son identificadores, no contenido.
+    // Los tres únicos textos son identificadores, no contenido.
     expect(columnas.filter((c) => c.data_type === "text").map((c) => c.column_name)).toEqual([
       "id",
       "usuario_id",
+      "organizacion_id",
     ]);
   });
 });

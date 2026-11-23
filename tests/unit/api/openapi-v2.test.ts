@@ -110,6 +110,8 @@ describe("SLT-45 R34 — las cinco operaciones de v2, con su cuerpo, respuestas 
       expect(respuestas(o)["401"]).toEqual(resp("Unauthorized"));
       expect(respuestas(o)["403"]).toEqual(resp("Forbidden"));
       expect(respuestas(o)["422"]).toEqual(resp("ValidationError"));
+      // SLT-201: el 500 generico del manejador global, el mismo que declaran las 10 de v1.
+      expect(respuestas(o)["500"]).toEqual(resp("InternalError"));
     }
     expect(openApiSpec.security).toEqual([{ bearerAuth: [] }]);
     expect(openApiSpec.tags.map((t) => t.name)).toContain("v2");
@@ -119,7 +121,7 @@ describe("SLT-45 R34 — las cinco operaciones de v2, con su cuerpo, respuestas 
     const op = operacion("/api/v2/ordenes", "post");
     expect((op.requestBody as Nodo).required).toBe(true);
     expect(refDelCuerpo(op)).toBe(ref("CrearOrdenRequestV2"));
-    expect(Object.keys(respuestas(op)).sort()).toEqual(["200", "401", "403", "409", "422"]);
+    expect(Object.keys(respuestas(op)).sort()).toEqual(["200", "401", "403", "409", "422", "500"]);
     expect(refDel200(op)).toBe(ref("CargaResponseV2"));
     expect(mensajeDelEjemplo(respuestas(op)["409"])).toBe(MSG_CARGA_SIN_TARIFA);
   });
@@ -127,7 +129,7 @@ describe("SLT-45 R34 — las cinco operaciones de v2, con su cuerpo, respuestas 
   it("POST /api/v2/ordenes/carga: cuerpo `CargaRequestV2`, 200 `CargaResponseV2` y 409 con el mensaje de la carga", () => {
     const op = operacion("/api/v2/ordenes/carga", "post");
     expect(refDelCuerpo(op)).toBe(ref("CargaRequestV2"));
-    expect(Object.keys(respuestas(op)).sort()).toEqual(["200", "401", "403", "409", "422"]);
+    expect(Object.keys(respuestas(op)).sort()).toEqual(["200", "401", "403", "409", "422", "500"]);
     expect(refDel200(op)).toBe(ref("CargaResponseV2"));
     expect(mensajeDelEjemplo(respuestas(op)["409"])).toBe(MSG_CARGA_SIN_TARIFA);
   });
@@ -135,7 +137,7 @@ describe("SLT-45 R34 — las cinco operaciones de v2, con su cuerpo, respuestas 
   it("POST /api/v2/ordenes/cotizacion: cuerpo `CotizacionRequestV2`, 200 `CotizacionResponseV2` y 409 con el mensaje de la cotización", () => {
     const op = operacion("/api/v2/ordenes/cotizacion", "post");
     expect(refDelCuerpo(op)).toBe(ref("CotizacionRequestV2"));
-    expect(Object.keys(respuestas(op)).sort()).toEqual(["200", "401", "403", "409", "422"]);
+    expect(Object.keys(respuestas(op)).sort()).toEqual(["200", "401", "403", "409", "422", "500"]);
     expect(refDel200(op)).toBe(ref("CotizacionResponseV2"));
     expect(mensajeDelEjemplo(respuestas(op)["409"])).toBe(MSG_COTIZACION_SIN_TARIFA);
   });
@@ -145,7 +147,7 @@ describe("SLT-45 R34 — las cinco operaciones de v2, con su cuerpo, respuestas 
     const op = operacion("/api/v2/ordenes/{id}", "get");
     expect(op).not.toHaveProperty("requestBody");
     expect(item.parameters).toEqual(paths["/api/ordenes/api-key/orden/{id}"].parameters);
-    expect(Object.keys(respuestas(op)).sort()).toEqual(["200", "401", "403", "404", "422"]);
+    expect(Object.keys(respuestas(op)).sort()).toEqual(["200", "401", "403", "404", "422", "500"]);
     expect(refDel200(op)).toBe(ref("OrdenDetalleV2"));
     expect(respuestas(op)["404"]).toEqual(resp("NotFound"));
   });
@@ -160,7 +162,7 @@ describe("SLT-45 R34 — las cinco operaciones de v2, con su cuerpo, respuestas 
     for (const valor of ["CR", "GTM", "cr", "C", "CRRR", "C1"]) {
       expect(patron.test(valor), valor).toBe(geografiaQuerySchema.safeParse({ pais: valor }).success);
     }
-    expect(Object.keys(respuestas(op)).sort()).toEqual(["200", "401", "403", "404", "422"]);
+    expect(Object.keys(respuestas(op)).sort()).toEqual(["200", "401", "403", "404", "422", "500"]);
     expect(refDel200(op)).toBe(ref("GeografiaResponse"));
     expect(mensajeDelEjemplo(respuestas(op)["404"])).toBe("El recurso solicitado no existe.");
   });
@@ -273,11 +275,11 @@ describe("SLT-45 R34 — los schemas de v2, contra el código real", () => {
 describe("SLT-45 R34 — el espejo .yaml declara lo mismo", () => {
   it("cada path de v2 trae en el yaml su operationId, su cuerpo, su 200 y sus códigos de error", () => {
     const esperado: [string, string, string | null, string, string[]][] = [
-      ["/api/v2/ordenes", "crearOrdenV2", "CrearOrdenRequestV2", "CargaResponseV2", ["401", "403", "409", "422"]],
-      ["/api/v2/ordenes/carga", "cargarOrdenesV2", "CargaRequestV2", "CargaResponseV2", ["401", "403", "409", "422"]],
-      ["/api/v2/ordenes/cotizacion", "cotizarOrdenesV2", "CotizacionRequestV2", "CotizacionResponseV2", ["401", "403", "409", "422"]],
-      ["/api/v2/ordenes/{id}", "detalleOrdenV2", null, "OrdenDetalleV2", ["401", "403", "404", "422"]],
-      ["/api/v2/geografia", "catalogoGeograficoV2", null, "GeografiaResponse", ["401", "403", "404", "422"]],
+      ["/api/v2/ordenes", "crearOrdenV2", "CrearOrdenRequestV2", "CargaResponseV2", ["401", "403", "409", "422", "500"]],
+      ["/api/v2/ordenes/carga", "cargarOrdenesV2", "CargaRequestV2", "CargaResponseV2", ["401", "403", "409", "422", "500"]],
+      ["/api/v2/ordenes/cotizacion", "cotizarOrdenesV2", "CotizacionRequestV2", "CotizacionResponseV2", ["401", "403", "409", "422", "500"]],
+      ["/api/v2/ordenes/{id}", "detalleOrdenV2", null, "OrdenDetalleV2", ["401", "403", "404", "422", "500"]],
+      ["/api/v2/geografia", "catalogoGeograficoV2", null, "GeografiaResponse", ["401", "403", "404", "422", "500"]],
     ];
     for (const [p, opId, cuerpo, ok, codigos] of esperado) {
       const b = bloquePath(p);

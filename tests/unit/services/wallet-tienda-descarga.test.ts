@@ -13,6 +13,7 @@ import {
 } from "@/lib/types/wallet-tienda";
 import { descargaConfig } from "@/lib/config/descarga";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 // Ficha 470 (T1.3, riesgo K6) — el tope real de la descarga es ahora el limite de Excel
 // (1.048.575 filas). Este archivo prueba la MECANICA del tope (N entra, N+1 no), que no depende
 // del valor: lo fija en 5000 para no construir un millon de filas por caso. Patron de
@@ -134,7 +135,7 @@ function servicio(repo: IWalletTiendaMovimientoRepository) {
 }
 
 function input(extra: Record<string, unknown> = {}) {
-  return listarMovimientosTiendaCompletoSchema.parse(extra);
+  return listarMovimientosTiendaCompletoSchema(ZONA_CR).parse(extra);
 }
 
 function ids(items: WalletTiendaMovimientoDTO[]): string[] {
@@ -163,7 +164,7 @@ describe("WalletTiendaService.listarMisMovimientosCompleto — ledger sin pagina
     const svc = servicio(repoEnMemoria(filas).repo);
 
     const paginado = await svc.listarMisMovimientos(
-      listarMovimientosTiendaSchema.parse({ pageSize: 20 }),
+      listarMovimientosTiendaSchema(ZONA_CR).parse({ pageSize: 20 }),
       TIENDA_A,
     );
     const completo = await svc.listarMisMovimientosCompleto(input(), TIENDA_A);
@@ -253,7 +254,7 @@ describe("WalletTiendaService.listarMisMovimientosCompleto — ledger sin pagina
     const filtros = { categoria: "cod_recaudado" as const };
 
     const paginado = await svc.listarMisMovimientos(
-      listarMovimientosTiendaSchema.parse({ ...filtros, pageSize: 50 }),
+      listarMovimientosTiendaSchema(ZONA_CR).parse({ ...filtros, pageSize: 50 }),
       TIENDA_A,
     );
     const completo = await svc.listarMisMovimientosCompleto(input(filtros), TIENDA_A);
@@ -273,7 +274,7 @@ describe("WalletTiendaService.listarMisMovimientosCompleto — ledger sin pagina
     const svc = servicio(repoEnMemoria(dosTiendas()).repo);
 
     const paginado = await svc.listarMisMovimientos(
-      listarMovimientosTiendaSchema.parse({}),
+      listarMovimientosTiendaSchema(ZONA_CR).parse({}),
       TIENDA_A,
     );
     const completo = await svc.listarMisMovimientosCompleto(input(), TIENDA_A);

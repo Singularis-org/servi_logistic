@@ -10,6 +10,7 @@ import type { ParadaRutaRow } from "@/lib/interfaces/repositories/IOrdenReposito
 import type { RouteOptimizationConfig } from "@/lib/config/route-optimization";
 import { codificarPolilinea } from "@/lib/geo/polilinea";
 
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 // SLT-59 T7.2 (R53, R54; design §12.1, D21) — recuperar a mano una ruta `desactualizada`. Con el
 // mismo conjunto, sin fuera de orden y sin desvio, el boton solo paga cuando han pasado
 // `RUTA_RECUPERACION_ENFRIAMIENTO_MIN` desde `updated_at` (cota del instante del fallo, R54).
@@ -116,7 +117,7 @@ function build(ruta: RutaOptimizadaDTO, paradas: ParadaRutaRow[]) {
     CONFIG,
     () => T0,
     undefined,
-    routes as unknown as IRoutesClient,
+    routes as unknown as IRoutesClient, reglasPaisFijas(),
   );
   const escrituras = () =>
     rutas.upsertOrigen.mock.calls.length +

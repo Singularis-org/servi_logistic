@@ -13,6 +13,7 @@ import { HAY_BASE_DE_DATOS, crearPrismaDeTest } from "./_postgres-real";
 import { cargarCatalogo459, enTransaccionRevertida459, type Catalogo459 } from "./_fixtures/caja-459";
 import { DIA_C1, DIA_C3, ESPERADO_468, sembrar468, type Escenario468 } from "./_fixtures/libro-468";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 // FICHA 468 / T4, T6, T7, T9 — EL LIBRO EN EXCEL CONTRA POSTGRES DE VERDAD.
 // ═════════════════════════════════════════════════════════════════════════════════════════════
@@ -37,7 +38,7 @@ import { DIA_C1, DIA_C3, ESPERADO_468, sembrar468, type Escenario468 } from "./_
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 const MAESTRO: Actor = { usuarioId: "00000000-0000-4000-8000-000000000468", rol: "maestro" };
 
-const VENTANA = listarLibroCajaCompletoSchema.parse({ desde: DIA_C1, hasta: DIA_C3 });
+const VENTANA = listarLibroCajaCompletoSchema(ZONA_CR).parse({ desde: DIA_C1, hasta: DIA_C3 });
 
 function sumar(xs: readonly string[]): string {
   return xs.reduce((a, x) => a.plus(new Prisma.Decimal(x)), new Prisma.Decimal(0)).toFixed(2);
@@ -191,8 +192,8 @@ describeSiHayBase("468 — el libro en Excel (Postgres real)", () => {
       // indemnizacion y las dos correcciones del empate.
       expect(r.items.length, "la ventana no trajo los movimientos del escenario").toBe(17);
       // R14: el final es `enCaja` de la tarjeta hasta el fin del periodo; el inicial, hasta su comienzo.
-      const tarjetaFin = await e.s.wallet.verResumenCaja(listarMovimientosSchema.parse({ hasta: DIA_C3 }), MAESTRO);
-      const tarjetaAntes = await e.s.wallet.verResumenCaja(listarMovimientosSchema.parse({ hasta: "2037-04-09" }), MAESTRO);
+      const tarjetaFin = await e.s.wallet.verResumenCaja(listarMovimientosSchema(ZONA_CR).parse({ hasta: DIA_C3 }), MAESTRO);
+      const tarjetaAntes = await e.s.wallet.verResumenCaja(listarMovimientosSchema(ZONA_CR).parse({ hasta: "2037-04-09" }), MAESTRO);
       if (tarjetaFin.status !== "ok" || tarjetaAntes.status !== "ok") throw new Error("verResumenCaja");
       expect(k.saldoFinal).toBe(tarjetaFin.resumen.enCaja);
       expect(k.saldoInicial).toBe(tarjetaAntes.resumen.enCaja);
@@ -211,7 +212,7 @@ describeSiHayBase("468 — el libro en Excel (Postgres real)", () => {
       expect(posiciones[0]).toBe(posiciones[1] - 1);
 
       // R14: sin fecha de inicio el saldo inicial es 0,00.
-      const sinDesde = await e.caja.kardex(listarLibroCajaCompletoSchema.parse({ hasta: DIA_C3, categoria: "ingreso_flete" }), MAESTRO);
+      const sinDesde = await e.caja.kardex(listarLibroCajaCompletoSchema(ZONA_CR).parse({ hasta: DIA_C3, categoria: "ingreso_flete" }), MAESTRO);
       expect(sinDesde.status === "ok" && sinDesde.kardex.saldoInicial).toBe("0.00");
 
       // R16: con un filtro de concepto, el saldo de cada fila es el de la caja ENTERA (el mismo que sin

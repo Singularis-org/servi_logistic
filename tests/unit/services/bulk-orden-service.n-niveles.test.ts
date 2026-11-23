@@ -26,7 +26,6 @@ import type {
 } from "@/lib/interfaces/repositories/ICatalogoGeograficoRepository";
 import type { ITarifaVigenteRepository } from "@/lib/interfaces/repositories/ITarifaVigenteRepository";
 import { notificadorNoOp } from "@/lib/notificaciones/notificadores";
-import { SIN_CUPO } from "@/lib/interfaces/repositories/ICupoPlanRepository";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { RawRow } from "@/lib/parsers/spreadsheet";
 import { catalogoEnMemoria, type NodoEnMemoria } from "../../fixtures/doble-catalogo-geografico";
@@ -45,7 +44,7 @@ const ZONA: ZonaAsignada = { id: "z1", nombre: "Zona uno", esCentral: false };
 /** La geografia de v1 del doble: la que lee `resolveGeo` (forma CR). */
 function buildRepo(): IOrdenRepository {
   return {
-    findUsuarioFulfillment: vi.fn().mockResolvedValue(false),
+    findUsuarioSeRecogeEnTienda: vi.fn().mockResolvedValue(true),
     findEstatusIdByValue: vi.fn().mockResolvedValue("os-1"),
     findExistingRemisiones: vi.fn(async () => new Map()),
     findAllProvincias: vi.fn().mockResolvedValue([{ id: "p1", nombre: "Alta", disponible: true }]),
@@ -131,7 +130,7 @@ function catalogoRepo(
 }
 
 function bulk(repo: IOrdenRepository, cat?: ICatalogoGeograficoRepository) {
-  return new BulkOrdenService(repo, sinTarifa, notificadorNoOp, SIN_CUPO, cat);
+  return new BulkOrdenService(repo, sinTarifa, notificadorNoOp, cat);
 }
 
 function fila(numRemision: string, geo: Record<string, string>): RawRow {

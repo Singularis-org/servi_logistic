@@ -22,7 +22,6 @@ import type {
   TarifaVigenteResuelta,
 } from "@/lib/interfaces/repositories/ITarifaVigenteRepository";
 import { notificadorNoOp } from "@/lib/notificaciones/notificadores";
-import { SIN_CUPO } from "@/lib/interfaces/repositories/ICupoPlanRepository";
 import { clavePar, type ParTarifa } from "@/lib/utils/cascada-tarifa";
 import type { TarifaTienda } from "@/lib/types/tarifa-flexible";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
@@ -65,7 +64,7 @@ function tarifaRepo(): ITarifaVigenteRepository & { resolveTarifas: ReturnType<t
 /** La geografia de v1 del doble (un distrito con zona), la misma en las lecturas por profundidad. */
 function buildRepo(): IOrdenRepository {
   return {
-    findUsuarioFulfillment: vi.fn().mockResolvedValue(false),
+    findUsuarioSeRecogeEnTienda: vi.fn().mockResolvedValue(true),
     findEstatusIdByValue: vi.fn().mockResolvedValue("os-1"),
     findExistingRemisiones: vi.fn(async () => new Map()),
     findAllProvincias: vi.fn().mockResolvedValue([{ id: "p1", nombre: "Alta", disponible: true }]),
@@ -122,7 +121,7 @@ function catalogoRepo(
 }
 
 function bulk(repo: IOrdenRepository, tarifas: ITarifaVigenteRepository, cat?: ICatalogoGeograficoRepository) {
-  return new BulkOrdenService(repo, tarifas, notificadorNoOp, SIN_CUPO, cat);
+  return new BulkOrdenService(repo, tarifas, notificadorNoOp, cat);
 }
 
 /** Fila de v1 (columnas separadas). */

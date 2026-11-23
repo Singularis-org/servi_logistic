@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import type { PrismaClient } from "@prisma/client";
-import { ORDER_STATUS_SEED } from "@/lib/types/order-status";
+import { DESCRIPCION_ESTADO, ORDER_STATUS_SEED } from "@/lib/types/order-status";
 import { seedOrderStatus } from "@/scripts/seed-catalogos";
 
 // R1/R5/R12: valores canonicos tras el rename de nomenclatura (feature 135). Seis
@@ -242,5 +242,15 @@ describe("seedOrderStatus siembra los values renombrados de forma idempotente (R
     expect(fake.rows.size).toBe(20); // 2026-08-19 (235): 21 -> 22; 2026-09-23 (454): 22 -> 20
     expect(fake.rows.get("incidente")?.id).toBe(idIncidente);
     expect(fake.rows.get("por_recolectar_en_tienda")?.id).toBe(idRecolectar);
+  });
+});
+
+// SLT-197 (R984, D7): el (i) de «En ruta a bodega central» ya no habla del mensajero de la tienda,
+// porque ahora también llegan ahí los paquetes retirados de una satélite. Literal escrito a mano.
+describe("DESCRIPCION_ESTADO (SLT-197)", () => {
+  it("R984: el (i) de «En ruta a bodega central» es el texto aprobado", () => {
+    expect(DESCRIPCION_ESTADO.en_ruta_bodega_central).toBe(
+      "El paquete va camino a la bodega central.",
+    );
   });
 });

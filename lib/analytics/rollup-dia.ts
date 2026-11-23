@@ -1,26 +1,25 @@
 import {
-  fechaCalendarioCR,
-  inicioDelDiaCREnUtc,
-  inicioDelDiaSiguienteCREnUtc,
-} from "@/lib/utils/fecha-cr";
+  fechaCalendario,
+  inicioDelDiaEnUtc,
+  inicioDelDiaSiguienteEnUtc,
+  ultimosNDias,
+} from "@/lib/utils/calendario-zona";
 
-// Feature 124 (design §3) — el dia CR del rollup y sus cotas. Modulo PURO: sin Prisma, sin
+// Feature 124 (design §3) — el dia del rollup y sus cotas. Modulo PURO: sin Prisma, sin
 // Next.js, sin `new Date()` ni `Date.now()` propios (R8: el reloj SIEMPRE se inyecta).
 //
 // Es el UNICO sitio del que sale la fecha objetivo y la unica aritmetica de dia del job
-// (R6): todo se apoya en `lib/utils/fecha-cr.ts` y no se reimplementa ni una hora de
-// desplazamiento.
+// (R6): todo se apoya en `lib/utils/calendario-zona.ts` y no se reimplementa ni una hora de
+// desplazamiento. SLT-42: el dia es el de `zona`, la zona IANA del pais de la empresa.
 //
-// ⛔ `startOfDayCR` NO se importa aqui y no debe importarse en ningun modulo del escritor.
-// Devuelve la MEDIANOCHE UTC de la fecha calendario CR (convencion `@db.Date` de la feature
-// 46), seis horas ANTES del comienzo real del dia en Costa Rica. Usarla contra columnas
-// `timestamp` produce la ventana 18:00-18:00 que hoy arrastra `RankingService` (ficha 166).
-// Es la trampa documentada del repo y esta feature no la repite.
-
-const UN_DIA_MS = 24 * 60 * 60 * 1000;
+// ⛔ `inicioDelDiaComoFecha` NO se importa aqui y no debe importarse en ningun modulo del
+// escritor. Devuelve la MEDIANOCHE UTC de la fecha calendario (convencion `@db.Date` de la
+// feature 46), desplazada el desfase de la zona respecto del comienzo real del dia. Usarla
+// contra columnas `timestamp` produce la ventana 18:00-18:00 (en CR) que arrastraba
+// `RankingService` (ficha 166). Es la trampa documentada del repo y esta feature no la repite.
 
 /**
- * Ventana del dia CR, semiabierta `[desde, hasta)`. `hasta` es ademas el CORTE (cota
+ * Ventana del dia local, semiabierta `[desde, hasta)`. `hasta` es ademas el CORTE (cota
  * superior ESTRICTA, R24).
  *
  * POR QUE VIVE AQUI y no en `lib/interfaces/repositories/IAnaliticaRollupRepository.ts`,
@@ -51,36 +50,40 @@ export interface VentanaDia {
 /**
  * D3 — la corrida programada agrega LA FECHA QUE ACABA DE CERRAR, es decir D−1 respecto del
  * instante de la corrida. El tablero del dia en curso no tiene rollup: lo sirve la 126 en
- * vivo. Con el reloj congelado a las 00:30 CR del dia D+1 (06:30 UTC) esto devuelve `D`.
+ * vivo. Con el reloj congelado a las 00:30 locales del dia D+1 esto devuelve `D`. Es la fecha
+ * calendario ANTERIOR a la de `now` en `zona`, no `now - 24 h`: el dia de cambio de hora dura
+ * 23 o 25 h (SLT-42, R23).
  *
  * `now` es OBLIGATORIO (R8): no hay default `new Date()` que permita que un test crea que
  * controla el reloj cuando no lo hace.
  */
-export function fechaObjetivo(now: Date): string {
-  return fechaCalendarioCR(new Date(now.getTime() - UN_DIA_MS));
+export function fechaObjetivo(now: Date, zona: string): string {
+  // «Ultimos 2 dias» cuenta hoy, asi que su primer dia es AYER.
+  return ultimosNDias(2, now, zona).desde;
 }
 
 /**
  * R5 — la ventana del dia, semiabierta `[desde, hasta)`:
- *   desde = `${fecha}T06:00:00.000Z`  (00:00:00 hora de pared CR)
- *   hasta = desde + 24 h              (00:00:00 CR del dia siguiente) == el CORTE
+ *   desde = instante de las 00:00:00 de pared de `zona` en `fecha`
+ *   hasta = instante de las 00:00:00 del dia siguiente == el CORTE (23 o 25 h despues el dia
+ *           de cambio de hora, SLT-42)
  *
  * `hasta` es cota superior ESTRICTA en las dos lecturas que la usan (ventana y corte). Eso
  * no es cosmetico: las transiciones `corte_sin_gestionar` que el corte diario escribe a las
- * 00:00:00 CR del dia D+1 caen EXACTAMENTE en `hasta` y por tanto NO entran en el estado de
+ * 00:00:00 locales del dia D+1 caen EXACTAMENTE en `hasta` y por tanto NO entran en el estado de
  * cierre de D (R24). Cambiar `<` por `<=` mueve el embudo de un dia entero.
  */
-export function ventanaDelDia(fecha: string): VentanaDia {
+export function ventanaDelDia(fecha: string, zona: string): VentanaDia {
   return {
-    desde: inicioDelDiaCREnUtc(fecha),
-    hasta: inicioDelDiaSiguienteCREnUtc(fecha),
+    desde: inicioDelDiaEnUtc(fecha, zona),
+    hasta: inicioDelDiaSiguienteEnUtc(fecha, zona),
   };
 }
 
 /**
  * `analytics_daily.fecha` es `@db.Date`, y la convencion del repo (feature 46) para esa
  * columna es la MEDIANOCHE UTC de la fecha calendario. NO es `ventana.desde`, que lleva las
- * 06:00 dentro: confundir las dos convenciones es el off-by-one clasico de esta tabla.
+ * hora de inicio del dia local: confundir las dos convenciones es el off-by-one clasico de esta tabla.
  */
 export function fechaComoDate(fecha: string): Date {
   return new Date(`${fecha}T00:00:00.000Z`);
@@ -106,12 +109,16 @@ export type FechaManualAdmitida =
  * Una fecha FUTURA tambien se rechaza: no es «hoy o ayer», y un dia que no ha cerrado no
  * tiene rollup (D3 — el dia en curso lo sirve la 126 en vivo).
  */
-export function validarFechaInvocacionManual(fecha: string, now: Date): FechaManualAdmitida {
+export function validarFechaInvocacionManual(
+  fecha: string,
+  now: Date,
+  zona: string,
+): FechaManualAdmitida {
   if (!FECHA_CALENDARIO.test(fecha)) {
     return { ok: false, motivo: `fecha invalida: se espera YYYY-MM-DD y llego "${fecha}"` };
   }
-  const hoy = fechaCalendarioCR(now);
-  const ayer = fechaObjetivo(now);
+  const hoy = fechaCalendario(now, zona);
+  const ayer = fechaObjetivo(now, zona);
   if (fecha === hoy || fecha === ayer) return { ok: true, fecha };
   if (fecha > hoy) {
     return { ok: false, motivo: `la fecha ${fecha} es futura: el rollup solo agrega dias cerrados` };

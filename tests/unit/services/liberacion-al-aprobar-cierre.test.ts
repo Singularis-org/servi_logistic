@@ -7,10 +7,9 @@ import {
   liberarAlAprobarCierreNoOp,
   type LiberarAlAprobarCierre,
 } from "@/lib/services/liberacion-al-aprobar-cierre";
-import { startOfDayCR } from "@/lib/utils/fecha-cr";
+import { startOfDayCR, ZONA_CR } from "@/lib/utils/fecha-cr";
 import type {
   CierreAdminResumenRow,
-  ICierresAdminRepository,
 } from "@/lib/interfaces/repositories/ICierresAdminRepository";
 import type { IOrdenRepository } from "@/lib/interfaces/repositories/IOrdenRepository";
 import type { IZonaRepository } from "@/lib/interfaces/repositories/IZonaRepository";
@@ -18,6 +17,8 @@ import type { ISignedUrlProvider } from "@/lib/interfaces/external/ISignedUrlPro
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { LiberacionResult } from "@/lib/interfaces/services/ILiberacionReprogramadaService";
 import { sinRetenidas } from "@/tests/fixtures/retenidas-doble";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
+import { dobleCierresAdmin } from "@/tests/fixtures/dobles/cierres-admin-repository";
 
 /**
  * FICHA 315 (defecto de produccion del 2026-08-28) — **APROBAR UN CIERRE LIBERA SUS REPROGRAMADAS
@@ -50,6 +51,7 @@ const CIERRE_ID = "c-315-aprobado";
 
 function resumenRow(overrides: Partial<CierreAdminResumenRow> = {}): CierreAdminResumenRow {
   return {
+    pagoIndependienteEfectivo: false, // SLT-123: la marca es obligatoria en la fila del repositorio
     cierreId: CIERRE_ID,
     mensajeroId: "men-1",
     mensajeroNombre: "Ana Mensajera",
@@ -72,13 +74,8 @@ type Traza = string[];
 function fakeRepo(
   traza: Traza,
   resolver: "updated" | "conflict" | "fuera_de_alcance" = "updated",
-): ICierresAdminRepository {
-  return {
-    findCierresByAlcance: vi.fn(async () => []),
-    findHistoricoPaginado: vi.fn(async () => ({ items: [], total: 0 })),
-    findColaPaginada: vi.fn(async () => ({ items: [], total: 0 })),
-    findHistoricoCompleto: vi.fn(async () => []),
-    findColaCompleta: vi.fn(async () => []),
+) {
+  return dobleCierresAdmin({
     findCierreByIdEnAlcance: vi.fn(async () => ({
       cierre: resumenRow(),
       gestiones: [],
@@ -90,20 +87,7 @@ function fakeRepo(
       traza.push("resolverCierre");
       return resolver;
     }),
-    forzarSolicitudVencido: vi.fn(async () => "updated" as const),
-    findGestionesIncidenteDelCierre: vi.fn(async () => []),
-    findGestionesRetornablesDelCierre: vi.fn(async () => []),
-    // Ficha 451 / SLT-72 (T2.1): las barridas del cierre. Doble VACIO: sin barridas, el camino de esta suite queda intacto.
-    findBarridasDelCierre: vi.fn(async () => []),
-    findGestionesPorAlcanceCompleto: vi.fn(async () => []),
-    findCatalogoFiltros: vi.fn(async () => ({ zonas: [], mensajeros: [], mensajerosFiltro: [] })),
-    findGestionEditableEnCierre: vi.fn(async () => null),
-    actualizarPagosGestion: vi.fn(async () => ({ status: "conflict" as const })),
-    // FICHA 398: la correccion en sitio del resultado. Doble MUDO: este archivo no la ejercita,
-    // y devolver `conflict` deja constancia de que nadie la esta midiendo aqui.
-    corregirResultadoGestionEnCierre: vi.fn(async () => ({ status: "conflict" as const })),
-    ajustarPagoMensajeroEnCierre: vi.fn(async () => ({ status: "conflict" as const })),
-  };
+  });
 }
 
 function newService(
@@ -156,6 +140,10 @@ function newService(
         premiosRepo,
         sinRetenidas(), // FICHA 462: 7.o argumento requerido; este caso no mide la marca
         undefined,
+        undefined,
+        undefined,
+        undefined,
+        reglasPaisFijas(),
       )
     : new CierresAdminService(
         repo,
@@ -167,6 +155,9 @@ function newService(
         sinRetenidas(), // FICHA 462: 7.o argumento requerido; este caso no mide la marca
         undefined,
         liberar,
+        undefined,
+        undefined,
+        reglasPaisFijas(),
       );
   return { service, repo, liberar, traza };
 }
@@ -184,7 +175,7 @@ describe("315 — aprobar un cierre dispara la liberacion de SUS reprogramadas",
     expect(r).toMatchObject({ status: "ok", cierreId: CIERRE_ID, estado: "aprobado" });
     expect(mockDe(liberar)).toHaveBeenCalledTimes(1);
     // ⭑ EL ID. Un timbre que sonara con otro cierre liberaria ordenes ajenas: peor que no sonar.
-    expect(mockDe(liberar)).toHaveBeenCalledWith(CIERRE_ID);
+    expect(mockDe(liberar)).toHaveBeenCalledWith(CIERRE_ID, ZONA_CR);
   });
 
   it("suena DESPUES de que la transaccion de la aprobacion haya confirmado, nunca dentro", async () => {
@@ -255,7 +246,7 @@ describe("315 — el adaptador real: que llama, con que fecha y que hace cuando 
       (cierreId: string, hoyCR: Date) => Promise<LiberacionResult>
     >(async () => ({ evaluadas: 5, liberadas: 5, omitidas: 0, esperandoCierre: 0 }));
 
-    await liberarAlAprobarCierreCon({ liberarPorCierreAprobado }, () => NOW)(CIERRE_ID);
+    await liberarAlAprobarCierreCon({ liberarPorCierreAprobado }, () => NOW)(CIERRE_ID, ZONA_CR);
 
     expect(liberarPorCierreAprobado).toHaveBeenCalledTimes(1);
     expect(liberarPorCierreAprobado).toHaveBeenCalledWith(CIERRE_ID, startOfDayCR(NOW));
@@ -275,7 +266,7 @@ describe("315 — el adaptador real: que llama, con que fecha y que hace cuando 
     await expect(
       liberarAlAprobarCierreCon({ liberarPorCierreAprobado }, () => NOW, {
         warn: (m) => avisos.push(m),
-      })(CIERRE_ID),
+      })(CIERRE_ID, ZONA_CR),
     ).resolves.toBeUndefined();
 
     expect(avisos).toHaveLength(1);
@@ -365,6 +356,6 @@ describe("315 — el camino real esta CABLEADO en el composition root, no en el 
   });
 
   it("el no-op no llama a nadie: es de verdad inerte", async () => {
-    await expect(liberarAlAprobarCierreNoOp("c-lo-que-sea")).resolves.toBeUndefined();
+    await expect(liberarAlAprobarCierreNoOp("c-lo-que-sea", ZONA_CR)).resolves.toBeUndefined();
   });
 });

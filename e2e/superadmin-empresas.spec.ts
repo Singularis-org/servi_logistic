@@ -9,11 +9,10 @@ import {
   conCandadoDelSuperadmin,
   enlaceEnviadoA,
   enlacesDelMenu,
+  entrarComoSuperadmin,
   entrarConOtp,
   NO_ENCONTRADO,
-  olvidarDispositivos,
   recuperarContrasena,
-  SUPERADMIN_DE_PRUEBA,
 } from "./_superadmin-fixture";
 
 /**
@@ -89,7 +88,8 @@ function datosNuevos(letra: string): DatosDeAlta {
     maestroNombre: `Maestro ${letra} ${s}`,
     email: `maestro-${letra.toLowerCase()}-${s}@example.test`,
     telefono: "88880000",
-    documento: `e2e-${letra.toLowerCase()}-${s}`,
+    // SLT-42 (R10): una cédula física de CR, 9 dígitos; el servidor rechaza cualquier otra forma.
+    documento: String(parseInt(s, 16) % 1_000_000_000).padStart(9, "0"),
   };
 }
 
@@ -120,8 +120,7 @@ test.beforeAll(async ({ browser }) => {
   contextoSa = await browser.newContext();
   sa = await contextoSa.newPage();
   await conCandadoDelSuperadmin(async () => {
-    await olvidarDispositivos(dueno!, SUPERADMIN_DE_PRUEBA.SUPERADMIN_EMAIL);
-    await entrarConOtp(superadmin(), SUPERADMIN_DE_PRUEBA.SUPERADMIN_EMAIL, SUPERADMIN_DE_PRUEBA.SUPERADMIN_PASSWORD);
+    await entrarComoSuperadmin(superadmin(), dueno!);
   });
   await superadmin().waitForURL("**/plataforma/empresas", { timeout: 60_000 });
 });

@@ -46,8 +46,12 @@ const M_ENUMS = "20261106120000_slt46_historial_tipos_de_nivel";
 const M_COPIA = "20261106120100_slt46_nodo_copia_a_geografia_vieja";
 const M_TIPOS = "20261106120200_slt46_pais_tipos_de_nivel_opcional";
 const DE_SLT46 = [M_ENUMS, M_COPIA, M_TIPOS];
-/** La última de la rama antes de SLT-46. */
-const PREVIA = "20261104150200_cobro_plataforma_porcentual_funciones";
+/**
+ * La que queda justo antes de SLT-46. Con el merge de geo_jerarquica (2026-11-23) es la de dev
+ * `20261106120000_plan_periodo_facturacion`: mismo timestamp, ordena antes por nombre y no toca
+ * `pais`, `nodo_geografico`, `tipo_nivel_geografico` ni `historial_plataforma` (independiente).
+ */
+const PREVIA = "20261106120000_plan_periodo_facturacion";
 
 const BASE = `slt46_iv_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
 

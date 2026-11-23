@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { RolValue } from "@prisma/client";
 import type { TxDeTest } from "./_postgres-real";
+import { crearUsuarioDePrueba } from "./_fixtures/orden-minima";
 
 // Ficha 474 — siembras de los tests de integracion de los envios automaticos por WhatsApp.
 // NO es un archivo de test. Todo se usa DENTRO de `enTransaccionRevertida`: no queda ni una fila.
@@ -19,11 +20,18 @@ export const ETIQUETA_ROL: Record<RolValue, string> = {
   superadmin: "superadmin",
 };
 
-/** Un usuario existente cuya identidad (tipo de identificacion) se clona. Lanza si no hay. */
+/**
+ * El usuario cuya identidad (tipo de identificacion) se clona. SLT-177 (R737): se CREA en la
+ * transaccion del test (la base migrada no trae usuarios), inactivo para que no cuente como
+ * destinatario de ningun envio.
+ */
 export async function usuarioModelo(tx: TxDeTest): Promise<string> {
-  const filas = await tx.$queryRawUnsafe<{ id: string }[]>(`SELECT "id" FROM "usuario" ORDER BY "created_at" LIMIT 1`);
-  if (filas.length === 0) throw new Error("474: no hay ningun usuario modelo en la base de test");
-  return filas[0].id;
+  const modelo = await crearUsuarioDePrueba(tx, "mensajero");
+  await tx.usuario.update({ where: { id: modelo.id }, data: { estado: "inactivo" } });
+  // Control positivo (R739): el modelo sembrado se lee de vuelta, exactamente uno.
+  const sembrados = await tx.usuario.count({ where: { id: modelo.id } });
+  if (sembrados !== 1) throw new Error(`474: el usuario modelo sembrado no esta en la base (${sembrados})`);
+  return modelo.id;
 }
 
 export interface UsuarioSembrado {

@@ -8,6 +8,7 @@
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { ApiOrdenDetalleDTO } from "@/lib/types/api-orden";
 import { ApiOrdenLecturaService } from "@/lib/services/ApiOrdenLecturaService";
+import { construirReglasPaisEmpresa } from "@/lib/services/ReglasPaisEmpresaService";
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
 // ⏳ 2026-09-10 (feature 415, T5): la tarifa VIGENTE que alimenta `costoEstimado`.
 import { TarifaVigenteRepository } from "@/lib/repositories/TarifaVigenteRepository";
@@ -38,6 +39,7 @@ export function buildDetallePorOrdenId(): DetallePorOrdenId {
     new OrdenRepository(prisma),
     signedUrls,
     new TarifaVigenteRepository(prisma),
+    construirReglasPaisEmpresa(prisma), // SLT-42 (R22): el mismo cableado que el listado.
   );
   return (actor, ordenId) => lectura.detallePorOrdenId(actor, ordenId);
 }

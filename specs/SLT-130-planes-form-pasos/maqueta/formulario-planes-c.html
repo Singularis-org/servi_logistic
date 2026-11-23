@@ -1,0 +1,324 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Plan · formulario por pasos</title>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--line:#e3e6eb;--ink:#16181d;--ink2:#2b2f37;--mut:#5b6270;--pri:#1d4ed8;--pri-soft:#e8eefc;--ok:#15803d;--ok-soft:#dcfce7;--warn:#7c2d12;--warn-soft:#fff7ed}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--ink)}
+button{font:inherit}
+.demo{position:sticky;top:0;z-index:30;background:#16181d;color:#fff;padding:10px 16px;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.demo b{font-size:14px;margin-right:6px}
+.demo button{border:1px solid #3a3f4a;background:transparent;color:#d6d9df;padding:8px 14px;border-radius:8px;font-size:13px;cursor:pointer;min-height:40px}
+.demo button.on{background:#fff;color:#16181d;border-color:#fff}
+.demo .sp{flex:1}
+/* fondo: listado de planes */
+.page{max-width:1100px;margin:0 auto;padding:28px 16px}
+.page h1{margin:0 0 16px;font-size:24px}
+.lista{background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.lista div{padding:14px 18px;border-top:1px solid var(--line);display:flex;justify-content:space-between;font-size:14px;color:var(--ink2)}
+.lista div:first-child{border-top:0}
+/* sheet */
+.velo{position:fixed;inset:0;background:rgba(15,18,25,.45);z-index:20}
+.sheet{position:fixed;top:0;right:0;bottom:0;width:min(920px,100vw);background:#fff;z-index:21;display:flex;flex-direction:column;box-shadow:-12px 0 32px rgba(0,0,0,.12)}
+.sh-head{padding:18px 24px;border-bottom:1px solid var(--line);display:flex;gap:16px;align-items:flex-start}
+.sh-head h2{margin:0;font-size:19px}
+.sh-head p{margin:4px 0 0;font-size:13px;color:var(--mut)}
+.x{margin-left:auto;border:0;background:none;width:40px;height:40px;border-radius:8px;cursor:pointer;color:var(--mut)}
+.x:hover{background:var(--bg)}
+.estado{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;border-radius:999px;padding:3px 10px;background:#eef1f5;color:var(--ink2)}
+.estado.ok{background:var(--ok-soft);color:var(--ok)}
+.sh-cuerpo{flex:1;display:flex;min-height:0}
+.rail{width:220px;flex:none;border-right:1px solid var(--line);padding:12px;display:flex;flex-direction:column;gap:2px;overflow-y:auto;background:#fbfbfc}
+.paso{border:0;background:none;font-size:14px;display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;cursor:pointer;text-align:left;min-height:44px;color:var(--ink2)}
+.paso:disabled{cursor:not-allowed;color:#9aa0ab}
+.paso.on{background:var(--pri-soft);color:var(--pri);font-weight:600}
+.bola{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;background:#eef1f5;color:var(--mut);flex:none}
+.paso.on .bola{background:#fff;color:var(--pri);border:2px solid var(--pri)}
+.paso.ok .bola{background:var(--pri);color:#fff}
+.contenido{flex:1;min-width:0;overflow-y:auto;padding:24px;display:flex;flex-direction:column;gap:18px}
+.contenido h3{margin:2px 0 0;font-size:18px}
+.n{margin:0;font-size:12px;color:var(--mut)}
+.sub{margin:0;font-size:13px;color:var(--mut)}
+.lbl{font-size:13px;font-weight:500;color:var(--ink2);display:flex;flex-direction:column;gap:6px}
+.inp{height:40px;border:1px solid #cfd4dc;border-radius:8px;padding:0 12px;font:inherit;font-size:14px;background:#fff;color:var(--ink);width:100%}
+.inp:focus{outline:2px solid #93b0f5;outline-offset:1px}
+.hint{font-size:12px;color:var(--mut);font-weight:400}
+.g2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.g3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+.seg{display:inline-flex;border:1px solid #cfd4dc;border-radius:8px;overflow:hidden;flex:none}
+.seg button{border:0;background:#fff;padding:0 14px;font-size:13px;color:var(--ink2);cursor:pointer;height:40px}
+.seg button+button{border-left:1px solid #cfd4dc}
+.seg button[aria-pressed=true]{background:var(--pri);color:#fff}
+.seg button:disabled{color:#9aa0ab;cursor:not-allowed}
+.mod{display:flex;gap:10px;align-items:center;border:1px solid var(--line);border-radius:10px;padding:14px;font-size:14px;cursor:pointer}
+.mod input{width:18px;height:18px}
+/* descuentos */
+.desc-cab,.desc{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr) auto 44px;gap:10px;align-items:center}
+.desc-cab{font-size:12px;font-weight:600;color:var(--mut);padding:0 2px}
+.desc-lista{display:flex;flex-direction:column;gap:8px}
+.quitar{width:40px;height:40px;border:1px solid var(--line);border-radius:8px;background:#fff;cursor:pointer;color:var(--mut)}
+.quitar:hover{color:#b91c1c;border-color:#fecaca}
+.agregar{align-self:flex-start;border:1px dashed #9fb4ec;background:#f5f8ff;color:var(--pri);border-radius:8px;height:40px;padding:0 14px;cursor:pointer;font-size:13px;font-weight:600}
+.agregar:disabled{opacity:.5;cursor:not-allowed}
+.vacio{border:1px dashed var(--line);border-radius:10px;padding:14px;font-size:13px;color:var(--mut)}
+/* revisar */
+.fila{display:flex;justify-content:space-between;gap:12px;padding:11px 0;border-top:1px solid #eef0f3;font-size:14px}
+.fila:first-child{border-top:0}
+.fila b{font-weight:700;color:var(--ink)}
+.fila .val{color:var(--ink2);text-align:right}
+.bloque{border:1px solid var(--line);border-radius:10px;padding:4px 16px}
+.tbl{border:1px solid var(--line);border-radius:10px;overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{background:var(--bg);text-align:left;font-weight:600}
+th,td{padding:10px 14px}
+tbody td{border-top:1px solid var(--line)}
+.aviso{background:var(--warn-soft);border-radius:8px;padding:10px 12px;font-size:13px;color:var(--warn)}
+.borrador{background:#eef4ff;border:1px solid #bfd0f7;border-radius:10px;padding:10px 14px;font-size:13px;color:#1e3a8a}
+.err{font-size:12px;color:#b91c1c}
+/* pie */
+.sh-pie{border-top:1px solid var(--line);padding:14px 24px;display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.guardado{font-size:12px;color:var(--mut);margin-right:auto}
+.btn{height:44px;padding:0 18px;border-radius:8px;font-size:14px;cursor:pointer}
+.btn.pri{border:0;background:var(--pri);color:#fff;font-weight:600}
+.btn.sec{border:1px solid #cfd4dc;background:#fff}
+.btn.fin{border:0;background:var(--ok);color:#fff;font-weight:600}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+/* variante horizontal: pasos arriba */
+.sheet.horiz .sh-cuerpo{flex-direction:column}
+.sheet.horiz .rail{width:auto;flex-direction:row;align-items:flex-start;gap:0;border-right:0;border-bottom:1px solid var(--line);padding:16px 24px 12px;overflow-x:auto;background:#fbfbfc}
+.sheet.horiz .paso{flex:1 1 0;min-width:96px;flex-direction:column;gap:6px;padding:4px 6px;text-align:center;font-size:12px;line-height:1.3;background:none;position:relative;border-radius:8px}
+.sheet.horiz .paso.on{background:none}
+.sheet.horiz .paso .bola{position:relative;z-index:1}
+.sheet.horiz .paso:not(:last-child)::after{content:"";position:absolute;top:17px;left:calc(50% + 17px);right:calc(-50% + 17px);height:2px;background:#e3e6eb}
+.sheet.horiz .paso.ok:not(:last-child)::after{background:var(--pri)}
+.sheet.horiz .contenido{padding:24px 32px;max-width:860px;width:100%;margin:0 auto}
+.demo .grupo{display:flex;gap:6px;align-items:center;font-size:12px;color:#9aa0ab}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#16181d;color:#fff;padding:12px 18px;border-radius:10px;font-size:14px;z-index:40}
+@media (max-width:760px){
+.sh-cuerpo{flex-direction:column}
+.rail{width:auto;flex-direction:row;overflow-x:auto;border-right:0;border-bottom:1px solid var(--line)}
+.paso{flex:none}
+.g2,.g3{grid-template-columns:minmax(0,1fr)}
+.desc-cab{display:none}
+.desc{grid-template-columns:minmax(0,1fr) minmax(0,1fr);}
+}
+</style>
+</head>
+<body>
+
+<div class="demo">
+<b>Demo</b>
+<button type="button" data-modo="editar" class="on">Editar plan «Pro»</button>
+<button type="button" data-modo="crear">Crear plan</button>
+<span class="sp"></span>
+<span class="grupo">Pasos:
+<button type="button" data-ori="vertical" class="on">Vertical (al lado)</button>
+<button type="button" data-ori="horizontal">Horizontal (arriba)</button></span>
+<button type="button" id="reiniciar">Borrar borrador de la demo</button>
+</div>
+
+<main class="page" aria-hidden="true">
+<h1>Planes</h1>
+<div class="lista"><div><span>Básico</span><span>Público</span></div><div><span>Pro</span><span>Público</span></div><div><span>Empresa X</span><span>Custom</span></div></div>
+</main>
+
+<div class="velo"></div>
+<aside class="sheet" role="dialog" aria-modal="true" aria-labelledby="sh-t">
+<header class="sh-head">
+<div>
+<h2 id="sh-t"></h2>
+<p id="sh-sub"></p>
+<p style="margin-top:8px"><span class="estado" id="estado"></span></p>
+</div>
+<button type="button" class="x" aria-label="Cerrar">
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M18 6L6 18M6 6l12 12"/></svg>
+</button>
+</header>
+<div class="sh-cuerpo">
+<nav class="rail" aria-label="Pasos" id="rail"></nav>
+<section class="contenido" id="contenido" aria-live="polite"></section>
+</div>
+<footer class="sh-pie">
+<span class="guardado" id="guardado"></span>
+<button type="button" class="btn sec" id="atras">Anterior</button>
+<button type="button" class="btn pri" id="sig">Guardar y continuar</button>
+</footer>
+</aside>
+
+<script>
+const PERIODOS=['Quincenal','Mensual','Bimestral','Anual'];
+const MODULOS=['Analítica','Monitoreo','Ranking'];
+const ROLES=[['admin','Administradores'],['mensajero','Mensajeros'],['adminTienda','Administradores de tienda'],['adminSatelite','Administradores satélite'],['apiKeys','API keys activas']];
+const ACTUAL={nombre:'Pro',visib:'publico',costoBase:'40000',descuentos:[{periodo:'Bimestral',monto:'5',tipo:'pct'},{periodo:'Anual',monto:'15',tipo:'pct'}],orden:{modo:'fijo',monto:'350',pct:'',min:''},topes:{admin:'3',mensajero:'20',adminTienda:'',adminSatelite:'',apiKeys:'2'},modulos:['Analítica','Monitoreo']};
+const VACIO={nombre:'',visib:'publico',costoBase:'',descuentos:[],orden:{modo:'global',monto:'',pct:'',min:''},topes:{admin:'',mensajero:'',adminTienda:'',adminSatelite:'',apiKeys:''},modulos:[]};
+const PASOS={
+editar:[['general','General'],['precio','Precio y descuentos'],['orden','Cobro por orden'],['topes','Topes'],['modulos','Módulos'],['vigencia','Cuándo rige'],['revisar','Revisar y programar']],
+crear:[['general','General'],['precio','Precio y descuentos'],['orden','Cobro por orden'],['topes','Topes'],['modulos','Módulos'],['revisar','Revisar y crear']]
+};
+const clon=o=>JSON.parse(JSON.stringify(o));
+const LS='demo-plan-borrador-';
+let modo='editar',st;
+function cargar(){
+let b=null;try{b=JSON.parse(localStorage.getItem(LS+modo));}catch(e){}
+st=b||{datos:clon(modo==='editar'?ACTUAL:VACIO),paso:0,hechos:[],hora:null,vigencia:'2026-11-16'};
+}
+function persistir(){try{localStorage.setItem(LS+modo,JSON.stringify(st));}catch(e){}}
+const fmt=v=>v===''||v==null?'':Number(v).toLocaleString('es-CR');
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const pasos=()=>PASOS[modo];
+
+/* ---------- pasos ---------- */
+const VISTAS={
+general(d){return `
+<p class="sub">Cómo se llama el plan y quién lo puede tener.</p>
+<div class="g2">
+<label class="lbl">Nombre<input class="inp" data-k="nombre" value="${esc(d.nombre)}" placeholder="Ej.: Pro"><span class="err" id="e-nombre"></span></label>
+<div class="lbl">Visibilidad<div class="seg" role="group" aria-label="Visibilidad">
+<button type="button" data-visib="publico" aria-pressed="${d.visib==='publico'}" ${modo==='editar'?'disabled':''}>Público</button>
+<button type="button" data-visib="custom" aria-pressed="${d.visib==='custom'}" ${modo==='editar'?'disabled':''}>Custom</button></div>
+<span class="hint">${modo==='editar'?'No se cambia después de crear el plan.':'Custom: atado a una sola empresa.'}</span></div>
+</div>`;},
+precio(d){
+const usados=d.descuentos.map(x=>x.periodo);
+const filas=d.descuentos.map((x,i)=>`
+<div class="desc">
+<label class="lbl"><span class="sr" style="position:absolute;left:-9999px">Período</span><select class="inp" data-desc="${i}" data-f="periodo">${PERIODOS.map(p=>`<option ${p===x.periodo?'selected':''} ${usados.includes(p)&&p!==x.periodo?'disabled':''}>${p}</option>`).join('')}</select></label>
+<label class="lbl"><span style="position:absolute;left:-9999px">Monto</span><input class="inp" inputmode="decimal" data-desc="${i}" data-f="monto" value="${esc(x.monto)}" placeholder="${x.tipo==='pct'?'Ej.: 10':'Ej.: 5 000'}"></label>
+<div class="seg" role="group" aria-label="Tipo del descuento">
+<button type="button" data-desc="${i}" data-tipo="fijo" aria-pressed="${x.tipo==='fijo'}">Fijo</button>
+<button type="button" data-desc="${i}" data-tipo="pct" aria-pressed="${x.tipo==='pct'}">%</button></div>
+<button type="button" class="quitar" data-quitar="${i}" aria-label="Quitar descuento ${x.periodo}">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg></button>
+</div>`).join('');
+return `
+<p class="sub">Lo que paga la empresa por período, antes del cobro por orden.</p>
+<div class="g2"><label class="lbl">Costo base mensual<input class="inp" inputmode="decimal" data-k="costoBase" value="${esc(d.costoBase)}" placeholder="Ej.: 45 000">${modo==='editar'?`<span class="hint">Hoy: ${fmt(ACTUAL.costoBase)}</span>`:''}<span class="err" id="e-costoBase"></span></label></div>
+<div style="display:flex;flex-direction:column;gap:10px">
+<strong style="font-size:14px">Descuentos por período</strong>
+<span class="hint">Uno por período. Se aplica sobre el costo base de ese período.</span>
+${d.descuentos.length?`<div class="desc-cab"><span>Período</span><span>Monto</span><span>Tipo</span><span></span></div><div class="desc-lista">${filas}</div>`:'<div class="vacio">Sin descuentos. Todas las empresas pagan el costo base completo.</div>'}
+<button type="button" class="agregar" id="agregar" ${usados.length>=PERIODOS.length?'disabled':''}>+ Agregar descuento</button>
+</div>`;},
+orden(d){const o=d.orden;return `
+<p class="sub">Se suma por cada orden de las empresas con este plan.</p>
+<div class="seg" role="group" aria-label="Modo del cobro por orden">
+<button type="button" data-om="fijo" aria-pressed="${o.modo==='fijo'}">Fijo</button>
+<button type="button" data-om="pct" aria-pressed="${o.modo==='pct'}">Porcentual</button>
+<button type="button" data-om="global" aria-pressed="${o.modo==='global'}">Valor global</button></div>
+${o.modo==='fijo'?`<div class="g2"><label class="lbl">Monto por orden<input class="inp" inputmode="decimal" data-o="monto" value="${esc(o.monto)}"></label></div>`:''}
+${o.modo==='pct'?`<div class="g2"><label class="lbl">Porcentaje del valor a cobrar<input class="inp" inputmode="decimal" data-o="pct" value="${esc(o.pct)}" placeholder="Ej.: 2"></label><label class="lbl">Mínimo por orden<input class="inp" inputmode="decimal" data-o="min" value="${esc(o.min)}" placeholder="Opcional"><span class="hint">Se cobra el mayor de los dos.</span></label></div>`:''}
+${o.modo==='global'?'<p class="sub">Pagan el valor global de la plataforma por cada orden.</p>':''}`;},
+topes(d){return `
+<p class="sub">Usuarios y API keys activos por empresa. Vacío = sin límite.</p>
+<div class="g3">${ROLES.map(([k,l])=>`<label class="lbl">${l}<input class="inp" inputmode="numeric" data-t="${k}" value="${esc(d.topes[k])}" placeholder="Sin límite">${modo==='editar'&&ACTUAL.topes[k]!==d.topes[k]?`<span class="hint">Hoy: ${ACTUAL.topes[k]||'sin límite'}</span>`:''}</label>`).join('')}</div>`;},
+modulos(d){return `
+<p class="sub">${modo==='editar'?'Los que apagues se apagan en cada empresa con el plan, salvo sus excepciones.':'Los módulos que se encienden al asignar el plan.'}</p>
+<div class="g3">${MODULOS.map(m=>`<label class="mod"><input type="checkbox" data-m="${m}" ${d.modulos.includes(m)?'checked':''}> ${m}</label>`).join('')}</div>`;},
+vigencia(){return `
+<p class="sub">No hay «De inmediato». Cada empresa recibe el cambio al inicio de su siguiente período desde esta fecha.</p>
+<label class="lbl" style="max-width:240px">A partir de<input class="inp" type="date" id="vig" value="${st.vigencia}"></label>
+<div class="tbl"><table><thead><tr><th>Empresa</th><th>Período</th><th>Rige desde</th></tr></thead><tbody>
+<tr><td>[Empresa 1]</td><td>Quincenal</td><td>16 nov</td></tr>
+<tr><td>[Empresa 2]</td><td>Mensual</td><td>1 dic</td></tr>
+<tr><td>[Empresa 3]</td><td>Anual</td><td>1 ene</td></tr></tbody></table></div>
+<p class="sub">Correo a los maestros al programar, 7 días y 1 día antes de su fecha.</p>`;},
+revisar(d){
+const filas=cambios(d);
+return `
+<p class="sub">${modo==='editar'?'Esto es lo que cambia. Nada se aplica hasta que pulses «Programar cambios».':'Así queda el plan. No existe hasta que pulses «Crear plan».'}</p>
+<div class="bloque">${filas.length?filas.map(f=>`<div class="fila"><b>${f[0]}</b><span class="val">${f[1]}</span></div>`).join(''):'<div class="fila"><span class="sub">Sin cambios.</span></div>'}</div>
+${modo==='editar'?`<div class="fila" style="border:0;padding:0"><b>Rige desde</b><span class="val">${new Date(st.vigencia+'T12:00').toLocaleDateString('es-CR',{day:'numeric',month:'short',year:'numeric'})} · inicio del siguiente período de cada empresa</span></div>`:''}
+${modo==='editar'&&d.topes.mensajero!==ACTUAL.topes.mensajero&&Number(d.topes.mensajero)<27?'<div class="aviso">[Empresa 1] ya tiene 27 mensajeros y pasa el tope nuevo.</div>':''}`;}
+};
+
+function txtDesc(x){return `${x.periodo}: ${x.tipo==='pct'?x.monto+' %':fmt(x.monto)}`;}
+function txtOrden(o){return o.modo==='fijo'?`${fmt(o.monto)} por orden`:o.modo==='pct'?`${o.pct} %${o.min?`, mínimo ${fmt(o.min)}`:''}`:'Valor global';}
+function cambios(d){
+const r=[];const A=ACTUAL;const ed=modo==='editar';
+const par=(k,a,b)=>{if(!ed)r.push([k,b||'—']);else if(a!==b)r.push([k,`${a||'—'} → <b>${b||'—'}</b>`]);};
+par('Nombre',A.nombre,d.nombre);
+par('Costo base mensual',fmt(A.costoBase),fmt(d.costoBase));
+par('Descuentos',A.descuentos.map(txtDesc).join(' · ')||'Ninguno',d.descuentos.map(txtDesc).join(' · ')||'Ninguno');
+par('Cobro por orden',txtOrden(A.orden),txtOrden(d.orden));
+ROLES.forEach(([k,l])=>par(k==='apiKeys'?'Tope de API keys':'Tope de '+l.toLowerCase(),A.topes[k]||'sin límite',d.topes[k]||'sin límite'));
+par('Módulos',A.modulos.join(' · ')||'Ninguno',d.modulos.join(' · ')||'Ninguno');
+return r;
+}
+
+/* ---------- pintar ---------- */
+const $=id=>document.getElementById(id);
+function pintar(){
+const P=pasos(),d=st.datos,ult=P.length-1;
+$('sh-t').textContent=modo==='editar'?'Editar plan «Pro»':'Crear plan';
+$('sh-sub').textContent=modo==='editar'?'Los cambios se guardan como borrador en cada paso.':'El plan se guarda como borrador en cada paso.';
+const listo=st.terminado;
+$('estado').className='estado'+(listo?' ok':'');
+$('estado').textContent=listo?(modo==='editar'?'Cambio programado':'Plan creado'):`Borrador · ${st.hechos.length} de ${ult} pasos guardados`;
+$('rail').innerHTML=P.map(([id,t],i)=>{const hecho=st.hechos.includes(id);const bloqueado=i>0&&!st.hechos.includes(P[i-1][0])&&!hecho&&i!==st.paso;
+return `<button type="button" class="paso ${i===st.paso?'on':''} ${hecho?'ok':''}" data-ir="${i}" ${bloqueado?'disabled':''} aria-current="${i===st.paso?'step':'false'}"><span class="bola">${hecho?'✓':i+1}</span>${t}</button>`;}).join('');
+const [id,t]=P[st.paso];
+$('contenido').innerHTML=`<div><p class="n">Paso ${st.paso+1} de ${P.length}</p><h3>${t}</h3></div>`+(st.paso<ult?'<div class="borrador">Borrador: se guarda al continuar, pero no se aplica a ninguna empresa hasta el último paso.</div>':'')+VISTAS[id](d);
+$('guardado').textContent=st.hora?`Borrador guardado a las ${st.hora}`:'Aún sin guardar';
+$('atras').disabled=st.paso===0;
+const sig=$('sig');
+if(st.paso===ult){
+const faltan=P.slice(0,ult).filter(p=>!st.hechos.includes(p[0]));
+sig.className='btn fin';sig.textContent=modo==='editar'?'Programar cambios':'Crear plan';
+sig.disabled=faltan.length>0||listo;
+sig.title=faltan.length?'Faltan pasos por guardar: '+faltan.map(p=>p[1]).join(', '):'';
+}else{sig.className='btn pri';sig.textContent='Guardar y continuar';sig.disabled=false;sig.title='';}
+}
+
+function valida(id){
+const d=st.datos;let ok=true;
+if(id==='general'&&!d.nombre.trim()){$('e-nombre').textContent='Pon un nombre.';ok=false;}
+if(id==='precio'&&!d.costoBase.trim()){$('e-costoBase').textContent='Pon el costo base mensual.';ok=false;}
+return ok;
+}
+
+/* ---------- eventos ---------- */
+document.addEventListener('input',e=>{
+const d=st.datos,el=e.target;
+if(el.dataset.k)d[el.dataset.k]=el.value;
+if(el.dataset.o)d.orden[el.dataset.o]=el.value;
+if(el.dataset.t)d.topes[el.dataset.t]=el.value;
+if(el.dataset.desc&&el.dataset.f==='monto')d.descuentos[+el.dataset.desc].monto=el.value;
+if(el.id==='vig')st.vigencia=el.value;
+});
+document.addEventListener('change',e=>{
+const d=st.datos,el=e.target;
+if(el.dataset.desc&&el.dataset.f==='periodo'){d.descuentos[+el.dataset.desc].periodo=el.value;pintar();}
+if(el.dataset.m){d.modulos=MODULOS.filter(m=>m===el.dataset.m?el.checked:d.modulos.includes(m));}
+});
+document.addEventListener('click',e=>{
+const d=st.datos,b=e.target.closest('button');if(!b)return;
+if(b.dataset.modo){modo=b.dataset.modo;document.querySelectorAll('[data-modo]').forEach(x=>x.classList.toggle('on',x===b));cargar();pintar();return;}
+if(b.dataset.ori){document.querySelectorAll('[data-ori]').forEach(x=>x.classList.toggle('on',x===b));document.querySelector('.sheet').classList.toggle('horiz',b.dataset.ori==='horizontal');document.getElementById('rail').setAttribute('aria-orientation',b.dataset.ori);return;}
+if(b.id==='reiniciar'){try{localStorage.removeItem(LS+'editar');localStorage.removeItem(LS+'crear');}catch(_){}cargar();pintar();return;}
+if(b.dataset.visib&&!b.disabled){d.visib=b.dataset.visib;pintar();}
+if(b.dataset.om){d.orden.modo=b.dataset.om;pintar();}
+if(b.dataset.tipo){d.descuentos[+b.dataset.desc].tipo=b.dataset.tipo;pintar();}
+if(b.dataset.quitar){d.descuentos.splice(+b.dataset.quitar,1);pintar();}
+if(b.id==='agregar'){const libre=PERIODOS.find(p=>!d.descuentos.some(x=>x.periodo===p));if(libre){d.descuentos.push({periodo:libre,monto:'',tipo:'pct'});pintar();}}
+if(b.dataset.ir){st.paso=+b.dataset.ir;persistir();pintar();}
+if(b.id==='atras'){st.paso=Math.max(0,st.paso-1);pintar();}
+if(b.id==='sig'){
+const P=pasos(),id=P[st.paso][0],ult=P.length-1;
+if(st.paso<ult){
+if(!valida(id))return;
+if(!st.hechos.includes(id))st.hechos.push(id);
+st.hora=new Date().toLocaleTimeString('es-CR',{hour:'2-digit',minute:'2-digit'});
+st.paso++;persistir();pintar();
+}else{st.terminado=true;persistir();pintar();toast(modo==='editar'?'Cambio programado. Se avisó a los maestros.':'Plan creado.');}
+}
+if(b.classList.contains('x'))toast('El borrador queda guardado. Puedes retomarlo luego.');
+});
+function toast(t){const n=document.createElement('div');n.className='toast';n.textContent=t;document.body.appendChild(n);setTimeout(()=>n.remove(),2600);}
+
+cargar();pintar();
+</script>
+</body>
+</html>

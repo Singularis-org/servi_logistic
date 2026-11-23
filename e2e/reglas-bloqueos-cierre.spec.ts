@@ -1,7 +1,7 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
 import { marcarCasilla } from "./_escenarios/casillas";
-import { cierresDe } from "./_escenarios/cierres";
+import { cierresDe, filaDeCola } from "./_escenarios/cierres";
 import { correrCron, drenarGeocodificacion } from "./_escenarios/crons";
 import {
   crearEscenarioReparto,
@@ -41,6 +41,7 @@ const NO_PUEDES = "Mientras tanto no puedes entregar, cobrar ni recibir trabajo 
 const BODEGA_BLOQUEADA = "No puedes asignar órdenes: tu bodega tiene cierres pendientes de resolver.";
 const CIERRE_ABIERTO = "Tienes 1 cierre abierto de tus mensajeros.";
 const MOTIVO_CIERRE = "tiene cierres sin resolver";
+const DETALLE = "Detalle del cierre · Tu cierre del día";
 
 let r: RepartoE2E;
 let m: MensajeroE2E;
@@ -85,7 +86,10 @@ test.describe.serial("Reglas y bloqueos de cierre — camino crítico del vencid
   test("paso 2 — M ve el aviso de bloqueo total", async ({ browser }) => {
     const page = await paginaDe(browser, m);
     await page.goto("/cierre-dia");
-    await expect(page.getByRole("alert").filter({ hasText: NO_PUEDES })).toBeVisible();
+    // SLT-109 (R246, R249): el aviso es la franja del detalle de su cierre vencido, pintado como página.
+    const detalle = page.getByRole("region", { name: DETALLE });
+    await expect(detalle.getByRole("status").filter({ hasText: NO_PUEDES })).toBeVisible();
+    await expect(detalle.getByText("Vencido", { exact: true })).toBeVisible();
   });
 
   test("paso 3 — la bodega satélite no puede asignarle a M: aviso del cierre abierto y M deshabilitado", async ({ browser }) => {
@@ -101,9 +105,7 @@ test.describe.serial("Reglas y bloqueos de cierre — camino crítico del vencid
   test("paso 4 — válvula: destrabar el `vencido` y aprobarlo ya como `solicitado`", async ({ browser }) => {
     const page = await paginaDe(browser, r.adminSatelite);
     await page.goto("/cierres-admin");
-    const comprobante = page
-      .getByRole("region", { name: "Pendientes de decisión" })
-      .getByRole("region", { name: `Comprobante del cierre de ${m.nombre}` });
+    const comprobante = filaDeCola(page.getByRole("region", { name: "Pendientes de decisión" }), m.nombre);
     await expect(comprobante.getByText("Vencido", { exact: true })).toBeVisible();
     // 111/R15: un `vencido` no se decide por la vía normal.
     await expect(comprobante.getByRole("button", { name: "Ver / decidir" })).toHaveCount(0);
@@ -117,7 +119,8 @@ test.describe.serial("Reglas y bloqueos de cierre — camino crítico del vencid
     await expect(comprobante.getByText("Solicitado", { exact: true })).toBeVisible();
     await comprobante.getByRole("button", { name: "Ver / decidir" }).click();
     const detalle = page.getByRole("dialog", { name: "Detalle del cierre" });
-    await expect(detalle.getByRole("region", { name: "Totales del cierre" })).toBeVisible();
+    // SLT-100: «Totales del cierre» pasó a las cifras de arriba del detalle único.
+    await expect(detalle.getByRole("group", { name: "Cifras del cierre" })).toBeVisible();
     await detalle.getByRole("button", { name: "Aprobar", exact: true }).click();
     await expect(page.getByText("Cierre aprobado correctamente.")).toBeVisible();
     expect((await cierresDe(m)).map((c) => [c.id, c.estado])).toEqual([[vencidoId, "aprobado"]]);
@@ -126,8 +129,10 @@ test.describe.serial("Reglas y bloqueos de cierre — camino crítico del vencid
   test("paso 5 — resuelto, M no está bloqueado y la bodega vuelve a asignar", async ({ browser }) => {
     const suya = await paginaDe(browser, m);
     await suya.goto("/cierre-dia");
-    await expect(suya.getByRole("region", { name: "Totales del día" })).toBeVisible();
-    await expect(suya.getByRole("alert").filter({ hasText: NO_PUEDES })).toHaveCount(0);
+    // SLT-109 (R240): sin nada que reenviar, la página pinta el cierre de hoy, sin franja de bloqueo.
+    const detalle = suya.getByRole("region", { name: DETALLE });
+    await expect(detalle.getByText("Sin solicitar", { exact: true })).toBeVisible();
+    await expect(suya.getByText(NO_PUEDES)).toHaveCount(0);
 
     const page = await paginaDe(browser, r.adminSatelite);
     const bodega = await bodegaDelSatelite(page);

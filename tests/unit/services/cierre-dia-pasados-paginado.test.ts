@@ -10,6 +10,7 @@ import type { CierrePasadoDTO } from "@/lib/interfaces/services/ICierreDiaServic
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { RangoPagina } from "@/lib/utils/rango-pagina";
 import { listarCierresPasadosSchema } from "@/lib/types/cierre";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // Feature 170 — FASE 2, T I.1 (R40/R41/R44/R51/R54) — «Cierres solicitados» del mensajero.
 //
@@ -137,7 +138,7 @@ function servicio(repo: ICierreDiaRepository, contarTarifa?: { n: number }) {
       return null;
     }),
   }) as unknown as ITarifaZonaMensajeroRepository;
-  return new CierreDiaService(repo, zonaRepo, ordenRepo, signedUrls, tarifaRepo);
+  return new CierreDiaService(repo, zonaRepo, ordenRepo, signedUrls, tarifaRepo, undefined, undefined, reglasPaisFijas());
 }
 
 function input(extra: Record<string, unknown> = {}) {

@@ -5,6 +5,7 @@ import {
   borrarGrupoDistritos,
   cambiarDistritosDeGrupo,
   crearGrupoDistritos,
+  guardarTopeIntentos,
   guardarValoresTarifa,
   renombrarGrupoDistritos,
 } from "@/lib/actions/tarifas";
@@ -13,6 +14,7 @@ import type { ITarifaValorRepository } from "@/lib/interfaces/repositories/ITari
 import type { Actor } from "@/lib/interfaces/services/ITarifaValorService";
 import { GrupoDistritosService } from "@/lib/services/GrupoDistritosService";
 import { TarifaValorService } from "@/lib/services/TarifaValorService";
+import { TopeIntentosService } from "@/lib/services/TopeIntentosService";
 import { MAX_CAMBIOS_DE_VALOR } from "@/lib/types/tarifa-flexible";
 
 // SLT-54 T2.4, T2.5 (design §7, §8; R26, R35-R38) — el borde de Tarifas. Reescrito: lo que aqui se probaba
@@ -30,6 +32,7 @@ function repoValores(overrides: Partial<Record<keyof ITarifaValorRepository, Moc
     grupoEnZona: vi.fn().mockResolvedValue(true),
     esTiendaTarifable: vi.fn().mockResolvedValue(true),
     vehiculoEsElegibleONivelOcupado: vi.fn().mockResolvedValue(true),
+    mensajeroEsElegibleONivelOcupado: vi.fn().mockResolvedValue(true),
     fijar: vi.fn().mockResolvedValue({ id: "tv-1", reemplazo: false }),
     quitar: vi.fn().mockResolvedValue("ok"),
     listar: vi.fn().mockResolvedValue([]),
@@ -61,6 +64,7 @@ describe("SLT-54 R26, R28 — las acciones viejas ya no existen", () => {
         "cargarPantallaTarifas",
         "cargarZonaTarifas",
         "guardarValoresTarifa",
+        "guardarTopeIntentos",
         "crearGrupoDistritos",
         "renombrarGrupoDistritos",
         "cambiarDistritosDeGrupo",
@@ -236,6 +240,107 @@ describe("SLT-54 R37 — dos cambios del mismo concepto y nivel", () => {
   });
 });
 
+// SLT-55 T3.3 (design §8). Lo mismo por el cliente de produccion, sin ningun doble, esta en
+// `tests/integration/db/tarifas-valor-propio-pantalla.test.ts`.
+describe("SLT-55 — guardar un valor propio del mensajero", () => {
+  const PROPIO = {
+    concepto: "mensajero_entregado",
+    modo: "monto",
+    valor: "2900",
+    zonaId: null,
+    grupoId: null,
+    tiendaId: null,
+    vehiculoId: null,
+    mensajeroId: "m-1",
+  };
+  const NO_ELEGIBLE = "El mensajero no existe, no es de la empresa o está dado de baja: no admite un valor nuevo.";
+
+  it("R1: la entrada del contrato llega al repositorio con su mensajero, en el nivel `mensajero` y sin IVA", async () => {
+    const repo = repoValores();
+    const res = await guardar(repo, [
+      { accion: "fijar", clave: "mensajero_entregado:todos", datos: PROPIO },
+      { accion: "quitar", clave: "mensajero_novedad:todos", id: "tv-9" },
+    ]);
+    expect(res).toEqual({
+      status: "ok",
+      resultados: [
+        { clave: "mensajero_entregado:todos", status: "ok" },
+        { clave: "mensajero_novedad:todos", status: "ok" },
+      ],
+    });
+    expect(repo.mensajeroEsElegibleONivelOcupado).toHaveBeenCalledWith({ concepto: "mensajero_entregado", mensajeroId: "m-1" });
+    expect(repo.fijar.mock.calls[0][0]).toMatchObject({
+      concepto: "mensajero_entregado",
+      modo: "monto",
+      ivaPct: null,
+      nivel: "mensajero",
+      mensajeroId: "m-1",
+      zonaId: null,
+      grupoId: null,
+      tiendaId: null,
+      vehiculoId: null,
+    });
+    expect(repo.fijar.mock.calls[0][1]).toBe("u-m");
+    expect(repo.quitar).toHaveBeenCalledWith("tv-9", "u-m");
+  });
+
+  it("R10: el admin recibe forbidden al fijar y al quitar, sin escribir", async () => {
+    const repo = repoValores();
+    const res = await guardar(
+      repo,
+      [
+        { accion: "fijar", clave: "a", datos: PROPIO },
+        { accion: "quitar", clave: "b", id: "tv-9" },
+      ],
+      ADMIN,
+    );
+    expect(res).toEqual({
+      status: "ok",
+      resultados: [
+        { clave: "a", status: "forbidden" },
+        { clave: "b", status: "forbidden" },
+      ],
+    });
+    expect(repo.fijar).not.toHaveBeenCalled();
+    expect(repo.quitar).not.toHaveBeenCalled();
+  });
+
+  it("R7, R8: un mensajero no elegible se dice en `mensajeroId`, en su fila, y las demás se guardan", async () => {
+    const repo = repoValores({
+      mensajeroEsElegibleONivelOcupado: vi.fn().mockResolvedValueOnce(false).mockResolvedValue(true),
+    });
+    const res = await guardar(repo, [
+      { accion: "fijar", clave: "a", datos: PROPIO },
+      { accion: "fijar", clave: "b", datos: { ...PROPIO, concepto: "mensajero_rechazo" } },
+    ]);
+    expect(res).toEqual({
+      status: "ok",
+      resultados: [
+        { clave: "a", status: "validation_error", fieldErrors: { mensajeroId: [NO_ELEGIBLE] } },
+        { clave: "b", status: "ok" },
+      ],
+    });
+    expect(repo.fijar).toHaveBeenCalledTimes(1);
+  });
+
+  it("R5: con la clave `ivaPct`, aunque valga 0, se rechaza sin escribir", async () => {
+    const repo = repoValores();
+    const res = await guardar(repo, [{ accion: "fijar", clave: "a", datos: { ...PROPIO, ivaPct: "0" } }]);
+    if (res.status !== "ok") throw new Error(res.status);
+    expect(res.resultados[0].status).toBe("validation_error");
+    expect(Object.keys(res.resultados[0].fieldErrors ?? {})).toEqual(["ivaPct"]);
+    expect(repo.fijar).not.toHaveBeenCalled();
+  });
+
+  it("R6: mensajero con zona se rechaza: nunca se guarda como valor de la zona", async () => {
+    const repo = repoValores();
+    const res = await guardar(repo, [{ accion: "fijar", clave: "a", datos: { ...PROPIO, zonaId: "z1" } }]);
+    if (res.status !== "ok") throw new Error(res.status);
+    expect(res.resultados[0].status).toBe("validation_error");
+    expect(repo.fijar).not.toHaveBeenCalled();
+  });
+});
+
 function repoGrupos(overrides: Partial<Record<keyof IGrupoDistritosRepository, Mock>> = {}) {
   return {
     existeZona: vi.fn().mockResolvedValue(true),
@@ -330,5 +435,59 @@ describe("SLT-54 R42 — las cuatro actions de grupos", () => {
   it("un fallo inesperado es `error`", async () => {
     const repo = repoGrupos({ borrar: vi.fn().mockRejectedValue(new Error("base caida")) });
     expect(await borrarGrupoDistritos({ id: "g1" }, depsDeGrupos(repo))).toEqual({ status: "error" });
+  });
+});
+
+describe("SLT-77 R3-R5, R27 — guardar el tope de intentos", () => {
+  function montar(guardar = vi.fn().mockResolvedValue({ cambio: true })) {
+    return { guardar, servicio: new TopeIntentosService({ guardar }) };
+  }
+
+  it("el maestro guarda, y la empresa no viaja en ningun argumento: solo el valor y su actor", async () => {
+    const { guardar, servicio } = montar();
+    const res = await guardarTopeIntentos({ tope: 5 }, { getActor: conActor(MAESTRO), servicio });
+    expect(res).toEqual({ status: "ok", tope: 5 });
+    expect(guardar).toHaveBeenCalledExactlyOnceWith(5, "u-m");
+  });
+
+  it("R3: una entrada que nombra otra empresa se rechaza, sin escribir", async () => {
+    const { guardar, servicio } = montar();
+    const res = await guardarTopeIntentos(
+      { tope: 5, organizacionId: "otra-empresa" },
+      { getActor: conActor(MAESTRO), servicio },
+    );
+    expect(res).toMatchObject({ status: "validation_error" });
+    expect(guardar).not.toHaveBeenCalled();
+  });
+
+  it("R4: el admin recibe forbidden, tambien con una entrada invalida", async () => {
+    const { guardar, servicio } = montar();
+    const deps = { getActor: conActor(ADMIN), servicio };
+    expect(await guardarTopeIntentos({ tope: 5 }, deps)).toEqual({ status: "forbidden" });
+    expect(await guardarTopeIntentos({ tope: 99 }, deps)).toEqual({ status: "forbidden" });
+    expect(guardar).not.toHaveBeenCalled();
+  });
+
+  it.each([0, 11, 2.5])("R5: %s es validation_error, en el campo tope y sin escribir", async (tope) => {
+    const { guardar, servicio } = montar();
+    const res = await guardarTopeIntentos({ tope }, { getActor: conActor(MAESTRO), servicio });
+    if (res.status !== "validation_error") throw new Error(res.status);
+    expect(Object.keys(res.fieldErrors)).toEqual(["tope"]);
+    expect(guardar).not.toHaveBeenCalled();
+  });
+
+  it("sin sesión responde unauthenticated sin tocar el servicio", async () => {
+    const { guardar, servicio } = montar();
+    expect(await guardarTopeIntentos({ tope: 5 }, { getActor: async () => null, servicio })).toEqual({
+      status: "unauthenticated",
+    });
+    expect(guardar).not.toHaveBeenCalled();
+  });
+
+  it("R27: un fallo es `error`, no un ok", async () => {
+    const { servicio } = montar(vi.fn().mockRejectedValue(new Error("sin empresa")));
+    expect(await guardarTopeIntentos({ tope: 5 }, { getActor: conActor(MAESTRO), servicio })).toEqual({
+      status: "error",
+    });
   });
 });

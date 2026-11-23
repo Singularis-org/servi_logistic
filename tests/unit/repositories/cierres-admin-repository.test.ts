@@ -12,6 +12,8 @@ import type { IWalletMensajeroFeedService } from "@/lib/interfaces/services/IWal
 import { idEstado, sembrarCatalogoEstados } from "@/tests/fixtures/catalogo-estados";
 import type { IWalletIndemnizacionFeedService } from "@/lib/interfaces/services/IWalletIndemnizacionFeedService";
 import { APLICACION_GESTIONES } from "@/tests/fixtures/anclaje-devolucion";
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 
 // Feature 38 — tests unit del CierresAdminRepository (mockea Prisma, sin DB real,
 // patron cierre-dia-repository.test.ts). Cubre R2/R4/R5 (findCierresByAlcance con
@@ -190,6 +192,8 @@ function buildPrisma(overrides: Record<string, unknown> = {}) {
     // FICHA 425 (B11): la CUARTA consulta del detalle — los rechazos de tienda que el cierre puso
     // delante de quien lo aprueba. Vacio por defecto (el cierre normal no incorporo ninguno).
     cierreRechazoTienda: { findMany: vi.fn().mockResolvedValue([]) },
+    // SLT-101 (R94): la QUINTA consulta del detalle, el ultimo movimiento de fulfillment por orden.
+    ordenFulfillmentMovimiento: { findMany: vi.fn().mockResolvedValue([]) },
     // Feature 173/T B.2: al aprobar, el feed del contra-entrega LEE el ledger por tienda para
     // saber cuanto se le acredito a las tiendas en ESE cierre. En esta suite el repositorio
     // del ledger es un doble que no escribe nada, asi que el ledger esta VACIO — y devolver
@@ -209,6 +213,7 @@ function buildPrisma(overrides: Record<string, unknown> = {}) {
 // `cierre_detail` lo de la ORDEN, congelado.
 function gestionRow(overrides: Record<string, unknown> = {}) {
   return {
+    createdAt: new Date("2026-07-15T18:00:00.000Z"),
     id: "g1",
     ordenId: "o1",
     resultado: "entregado",
@@ -228,6 +233,7 @@ function gestionRow(overrides: Record<string, unknown> = {}) {
     pagos: [{ metodo: "efectivo", monto: new Prisma.Decimal("12.50") }],
     historialEstados: [], // feature 102: acotado al origen SLA (vacio = rechazo NO-SLA/otro resultado)
     ajustesPagoMensajero: [], // SLT-56 (R19): la relacion que ahora lee GESTION_ADMIN_SELECT
+    pagosCongelados: [], // SLT-101 (R66): el pago congelado del mensajero (vacio = sin fila)
     ...overrides,
   };
 }
@@ -335,7 +341,7 @@ describe("CierresAdminRepository.findCierreByIdEnAlcance (R6/R13)", () => {
     prisma.cierreDia.findFirst.mockResolvedValue(null);
     const { repo } = makeRepo(prisma as unknown as Record<string, unknown>);
 
-    const r = await repo.findCierreByIdEnAlcance("c-ajeno", ALCANCE_SAT);
+    const r = await repo.findCierreByIdEnAlcance("c-ajeno", ALCANCE_SAT, ZONA_CR);
 
     expect(r).toBeNull();
     const arg = prisma.cierreDia.findFirst.mock.calls[0][0];
@@ -351,7 +357,7 @@ describe("CierresAdminRepository.findCierreByIdEnAlcance (R6/R13)", () => {
     prisma.cierreDetail.findMany.mockResolvedValue([detalleRow()]);
     const { repo } = makeRepo(prisma as unknown as Record<string, unknown>);
 
-    const r = await repo.findCierreByIdEnAlcance("c1", ALCANCE_MAESTRO);
+    const r = await repo.findCierreByIdEnAlcance("c1", ALCANCE_MAESTRO, ZONA_CR);
 
     expect(r).not.toBeNull();
     expect(prisma.gestionOrden.findMany.mock.calls[0][0].where).toEqual({ cierreId: "c1" });
@@ -384,7 +390,7 @@ describe("CierresAdminRepository.findCierreByIdEnAlcance (R6/R13)", () => {
     prisma.cierreDetail.findMany.mockResolvedValue([detalleRow()]);
     const { repo } = makeRepo(prisma as unknown as Record<string, unknown>);
 
-    const r = await repo.findCierreByIdEnAlcance("c1", ALCANCE_MAESTRO);
+    const r = await repo.findCierreByIdEnAlcance("c1", ALCANCE_MAESTRO, ZONA_CR);
 
     // R1: el select del historial va ACOTADO a las familias que se derivan, y a ninguna mas.
     //
@@ -439,7 +445,7 @@ describe("CierresAdminRepository.findCierreByIdEnAlcance (R6/R13)", () => {
     ]);
     const { repo } = makeRepo(prisma as unknown as Record<string, unknown>);
 
-    const r = await repo.findCierreByIdEnAlcance("c1", ALCANCE_MAESTRO);
+    const r = await repo.findCierreByIdEnAlcance("c1", ALCANCE_MAESTRO, ZONA_CR);
 
     expect(r?.gestiones[0].ingresoEmpresa).toMatchObject({
       montoCobrar: "25000.00",
@@ -489,7 +495,7 @@ describe("CierresAdminRepository.findCierreByIdEnAlcance (R6/R13)", () => {
     ]);
     const { repo } = makeRepo(prisma as unknown as Record<string, unknown>);
 
-    const r = await repo.findCierreByIdEnAlcance("c1", ALCANCE_MAESTRO);
+    const r = await repo.findCierreByIdEnAlcance("c1", ALCANCE_MAESTRO, ZONA_CR);
 
     expect(r?.gestiones[0].ingresoEmpresa).toMatchObject({
       flete: null,
@@ -513,7 +519,7 @@ describe("CierresAdminRepository.findCierreByIdEnAlcance (R6/R13)", () => {
     ]);
     const { repo } = makeRepo(prisma as unknown as Record<string, unknown>);
 
-    const r = await repo.findCierreByIdEnAlcance("c1", ALCANCE_MAESTRO);
+    const r = await repo.findCierreByIdEnAlcance("c1", ALCANCE_MAESTRO, ZONA_CR);
 
     expect(r?.gestiones[0].ingresoEmpresa).toMatchObject({
       tarifa: null,
@@ -548,7 +554,7 @@ describe("CierresAdminRepository.findCierreByIdEnAlcance (R6/R13)", () => {
     ]);
     const { repo } = makeRepo(prisma as unknown as Record<string, unknown>);
 
-    const r = await repo.findCierreByIdEnAlcance("c1", ALCANCE_MAESTRO);
+    const r = await repo.findCierreByIdEnAlcance("c1", ALCANCE_MAESTRO, ZONA_CR);
 
     // Flete 1000.00 + 13 % = 130.00; comision 5 % de 25000.00 = 1250.00 + 13 % = 162.50.
     expect(r?.gestiones[0].ingresoEmpresa).toMatchObject({
@@ -591,7 +597,7 @@ describe("CierresAdminRepository.findCierreByIdEnAlcance (R6/R13)", () => {
     ]);
     const { repo } = makeRepo(prisma as unknown as Record<string, unknown>);
 
-    const r = await repo.findCierreByIdEnAlcance("c1", ALCANCE_MAESTRO);
+    const r = await repo.findCierreByIdEnAlcance("c1", ALCANCE_MAESTRO, ZONA_CR);
 
     // Flete 1500.00 + 13 % = 195.00; comision 2 % de 25000.00 = 500.00 + 13 % = 65.00.
     // Fulfillment 450.00 + 13 % = 58.50, fuera del total (SLT-52 R31).
@@ -619,7 +625,7 @@ describe("CierresAdminRepository.findCierreByIdEnAlcance (R6/R13)", () => {
     ]);
     const { repo } = makeRepo(prisma as unknown as Record<string, unknown>);
 
-    const r = await repo.findCierreByIdEnAlcance("c1", ALCANCE_MAESTRO);
+    const r = await repo.findCierreByIdEnAlcance("c1", ALCANCE_MAESTRO, ZONA_CR);
 
     expect(r?.gestiones[0]).toMatchObject({
       numGuia: 10,
@@ -647,7 +653,7 @@ describe("CierresAdminRepository.findCierreByIdEnAlcance (R6/R13)", () => {
     prisma.cierreDetail.findMany.mockResolvedValue([detalleRow()]);
     const { repo } = makeRepo(prisma as unknown as Record<string, unknown>);
 
-    const r = await repo.findCierreByIdEnAlcance("c1", ALCANCE_MAESTRO);
+    const r = await repo.findCierreByIdEnAlcance("c1", ALCANCE_MAESTRO, ZONA_CR);
 
     expect(r?.gestiones).toHaveLength(1);
     expect(r?.gestiones[0].ordenId).toBe("o1");
@@ -663,7 +669,7 @@ describe("CierresAdminRepository.findCierreByIdEnAlcance (R6/R13)", () => {
     prisma.cierreDetail.findMany.mockResolvedValue([]); // sin snapshot
     const { repo } = makeRepo(prisma as unknown as Record<string, unknown>);
 
-    await expect(repo.findCierreByIdEnAlcance("c1", ALCANCE_MAESTRO)).rejects.toThrow(
+    await expect(repo.findCierreByIdEnAlcance("c1", ALCANCE_MAESTRO, ZONA_CR)).rejects.toThrow(
       CierreDetalleFaltanteError,
     );
   });
@@ -675,7 +681,7 @@ describe("CierresAdminRepository.resolverCierre (R10/R12/R13/R14/R15)", () => {
     prisma.cierreDia.updateMany.mockResolvedValue({ count: 1 });
     const { repo } = makeRepo(prisma as unknown as Record<string, unknown>);
 
-    const r = await repo.resolverCierre({
+    const r = await repo.resolverCierre({ zonaHoraria: ZONA_DE_CR,
       cierreId: "c1",
       alcance: ALCANCE_SAT,
       nuevoEstado: "rechazado",
@@ -707,7 +713,7 @@ describe("CierresAdminRepository.resolverCierre (R10/R12/R13/R14/R15)", () => {
     prisma.cierreDia.updateMany.mockResolvedValue({ count: 1 });
     const { repo } = makeRepo(prisma as unknown as Record<string, unknown>);
 
-    await repo.resolverCierre({
+    await repo.resolverCierre({ zonaHoraria: ZONA_DE_CR,
       cierreId: "c1",
       alcance: ALCANCE_MAESTRO,
       nuevoEstado: "aprobado",
@@ -733,7 +739,7 @@ describe("CierresAdminRepository.resolverCierre (R10/R12/R13/R14/R15)", () => {
     prisma.cierreDia.updateMany.mockResolvedValue({ count: 1 });
     const { repo } = makeRepo(prisma as unknown as Record<string, unknown>);
 
-    await repo.resolverCierre({
+    await repo.resolverCierre({ zonaHoraria: ZONA_DE_CR,
       cierreId: "c1",
       alcance: ALCANCE_SAT,
       nuevoEstado: "aprobado",
@@ -760,7 +766,7 @@ describe("CierresAdminRepository.resolverCierre (R10/R12/R13/R14/R15)", () => {
     prisma.cierreDia.count.mockResolvedValue(1); // existe en alcance pero ya no `solicitado`
     const { repo } = makeRepo(prisma as unknown as Record<string, unknown>);
 
-    const r = await repo.resolverCierre({
+    const r = await repo.resolverCierre({ zonaHoraria: ZONA_DE_CR,
       cierreId: "c1",
       alcance: ALCANCE_SAT,
       nuevoEstado: "aprobado",
@@ -782,7 +788,7 @@ describe("CierresAdminRepository.resolverCierre (R10/R12/R13/R14/R15)", () => {
     prisma.cierreDia.count.mockResolvedValue(0);
     const { repo } = makeRepo(prisma as unknown as Record<string, unknown>);
 
-    const r = await repo.resolverCierre({
+    const r = await repo.resolverCierre({ zonaHoraria: ZONA_DE_CR,
       cierreId: "c-ajeno",
       alcance: ALCANCE_SAT,
       nuevoEstado: "aprobado",
@@ -921,7 +927,7 @@ describe("CierresAdminRepository.resolverCierre — enganche wallet (feature 42/
     (wallet.walletFeedService.construirMovimientosDeIngreso as ReturnType<typeof vi.fn>).mockResolvedValue(movs);
     const { repo } = makeRepo(prisma as unknown as Record<string, unknown>, wallet);
 
-    const r = await repo.resolverCierre({
+    const r = await repo.resolverCierre({ zonaHoraria: ZONA_DE_CR,
       cierreId: "c1",
       alcance: ALCANCE_MAESTRO,
       nuevoEstado: "aprobado",
@@ -945,7 +951,7 @@ describe("CierresAdminRepository.resolverCierre — enganche wallet (feature 42/
     const wallet = buildWalletDeps();
     const { repo } = makeRepo(prisma as unknown as Record<string, unknown>, wallet);
 
-    await repo.resolverCierre({
+    await repo.resolverCierre({ zonaHoraria: ZONA_DE_CR,
       cierreId: "c1",
       alcance: ALCANCE_SAT,
       nuevoEstado: "rechazado",
@@ -964,7 +970,7 @@ describe("CierresAdminRepository.resolverCierre — enganche wallet (feature 42/
     const wallet = buildWalletDeps();
     const { repo } = makeRepo(prisma as unknown as Record<string, unknown>, wallet);
 
-    const r = await repo.resolverCierre({
+    const r = await repo.resolverCierre({ zonaHoraria: ZONA_DE_CR,
       cierreId: "c1",
       alcance: ALCANCE_SAT,
       nuevoEstado: "aprobado",
@@ -985,7 +991,7 @@ describe("CierresAdminRepository.resolverCierre — enganche wallet (feature 42/
     const wallet = buildWalletDeps();
     const { repo } = makeRepo(prisma as unknown as Record<string, unknown>, wallet);
 
-    const r = await repo.resolverCierre({
+    const r = await repo.resolverCierre({ zonaHoraria: ZONA_DE_CR,
       cierreId: "c-vencido",
       alcance: ALCANCE_SAT,
       nuevoEstado: "aprobado",
@@ -1016,7 +1022,7 @@ describe("CierresAdminRepository.resolverCierre — enganche wallet (feature 42/
     const { repo } = makeRepo(prisma as unknown as Record<string, unknown>, wallet);
 
     await expect(
-      repo.resolverCierre({
+      repo.resolverCierre({ zonaHoraria: ZONA_DE_CR,
         cierreId: "c1",
         alcance: ALCANCE_MAESTRO,
         nuevoEstado: "aprobado",
@@ -1042,7 +1048,7 @@ describe("CierresAdminRepository.resolverCierre — enganche ledger por tienda (
     (wallet.walletTiendaFeedService.construirMovimientosPorTienda as ReturnType<typeof vi.fn>).mockResolvedValue(movsTienda);
     const { repo } = makeRepo(prisma as unknown as Record<string, unknown>, wallet);
 
-    const r = await repo.resolverCierre({
+    const r = await repo.resolverCierre({ zonaHoraria: ZONA_DE_CR,
       cierreId: "c1",
       alcance: ALCANCE_MAESTRO,
       nuevoEstado: "aprobado",
@@ -1067,7 +1073,7 @@ describe("CierresAdminRepository.resolverCierre — enganche ledger por tienda (
     const wallet = buildWalletDeps();
     const { repo } = makeRepo(prisma as unknown as Record<string, unknown>, wallet);
 
-    await repo.resolverCierre({
+    await repo.resolverCierre({ zonaHoraria: ZONA_DE_CR,
       cierreId: "c1",
       alcance: ALCANCE_SAT,
       nuevoEstado: "rechazado",
@@ -1086,7 +1092,7 @@ describe("CierresAdminRepository.resolverCierre — enganche ledger por tienda (
     const wallet = buildWalletDeps();
     const { repo } = makeRepo(prisma as unknown as Record<string, unknown>, wallet);
 
-    const r = await repo.resolverCierre({
+    const r = await repo.resolverCierre({ zonaHoraria: ZONA_DE_CR,
       cierreId: "c1",
       alcance: ALCANCE_SAT,
       nuevoEstado: "aprobado",
@@ -1107,7 +1113,7 @@ describe("CierresAdminRepository.resolverCierre — enganche ledger por tienda (
     const wallet = buildWalletDeps();
     const { repo } = makeRepo(prisma as unknown as Record<string, unknown>, wallet);
 
-    const r = await repo.resolverCierre({
+    const r = await repo.resolverCierre({ zonaHoraria: ZONA_DE_CR,
       cierreId: "c-vencido",
       alcance: ALCANCE_SAT,
       nuevoEstado: "aprobado",
@@ -1134,7 +1140,7 @@ describe("CierresAdminRepository.resolverCierre — enganche ledger por tienda (
     const { repo } = makeRepo(prisma as unknown as Record<string, unknown>, wallet);
 
     await expect(
-      repo.resolverCierre({
+      repo.resolverCierre({ zonaHoraria: ZONA_DE_CR,
         cierreId: "c1",
         alcance: ALCANCE_MAESTRO,
         nuevoEstado: "aprobado",
@@ -1164,7 +1170,7 @@ describe("CierresAdminRepository.resolverCierre — enganche pago al mensajero (
     (wallet.walletMensajeroFeedService.construirMovimientosDePago as ReturnType<typeof vi.fn>).mockResolvedValue({ libro, egresoCaja });
     const { repo } = makeRepo(prisma as unknown as Record<string, unknown>, wallet);
 
-    const r = await repo.resolverCierre({
+    const r = await repo.resolverCierre({ zonaHoraria: ZONA_DE_CR,
       cierreId: "c1",
       alcance: ALCANCE_MAESTRO,
       nuevoEstado: "aprobado",
@@ -1192,7 +1198,7 @@ describe("CierresAdminRepository.resolverCierre — enganche pago al mensajero (
     const wallet = buildWalletDeps();
     const { repo } = makeRepo(prisma as unknown as Record<string, unknown>, wallet);
 
-    await repo.resolverCierre({
+    await repo.resolverCierre({ zonaHoraria: ZONA_DE_CR,
       cierreId: "c1",
       alcance: ALCANCE_SAT,
       nuevoEstado: "rechazado",
@@ -1213,7 +1219,7 @@ describe("CierresAdminRepository.resolverCierre — enganche pago al mensajero (
     const wallet = buildWalletDeps();
     const { repo } = makeRepo(prisma as unknown as Record<string, unknown>, wallet);
 
-    const r = await repo.resolverCierre({
+    const r = await repo.resolverCierre({ zonaHoraria: ZONA_DE_CR,
       cierreId: "c1",
       alcance: ALCANCE_SAT,
       nuevoEstado: "aprobado",
@@ -1234,7 +1240,7 @@ describe("CierresAdminRepository.resolverCierre — enganche pago al mensajero (
     const wallet = buildWalletDeps();
     const { repo } = makeRepo(prisma as unknown as Record<string, unknown>, wallet);
 
-    const r = await repo.resolverCierre({
+    const r = await repo.resolverCierre({ zonaHoraria: ZONA_DE_CR,
       cierreId: "c-vencido",
       alcance: ALCANCE_SAT,
       nuevoEstado: "aprobado",
@@ -1262,7 +1268,7 @@ describe("CierresAdminRepository.resolverCierre — enganche pago al mensajero (
     const { repo } = makeRepo(prisma as unknown as Record<string, unknown>, wallet);
 
     await expect(
-      repo.resolverCierre({
+      repo.resolverCierre({ zonaHoraria: ZONA_DE_CR,
         cierreId: "c1",
         alcance: ALCANCE_MAESTRO,
         nuevoEstado: "aprobado",
@@ -1319,6 +1325,8 @@ describe("CierresAdminRepository.resolverCierre — liberación de `novedad_inte
         create: vi.fn().mockResolvedValue({ id: "g-sintetica" }),
       },
       cierreDetail: { findMany: vi.fn().mockResolvedValue([]) },
+      // SLT-77 (R35): la relectura del tope en la tx. El mismo 3 de `LIBERACION`; la carrera se mide en `tope-intentos-carreras`.
+      $queryRaw: vi.fn().mockResolvedValue([{ tope: 3 }]),
       orden: { findMany: vi.fn(), updateMany: vi.fn() },
       ordenHistorialEstado: { createMany: vi.fn() },
       // FICHA 362: el registro de la decision, en la MISMA tx.
@@ -1354,7 +1362,7 @@ describe("CierresAdminRepository.resolverCierre — liberación de `novedad_inte
   }
 
   function aprobar(repo: CierresAdminRepository) {
-    return repo.resolverCierre({
+    return repo.resolverCierre({ zonaHoraria: ZONA_DE_CR,
       cierreId: "c1",
       alcance: ALCANCE_MAESTRO,
       nuevoEstado: "aprobado",
@@ -1443,7 +1451,7 @@ describe("CierresAdminRepository.resolverCierre — liberación de `novedad_inte
 
     // Rechazar NO pasa liberacionSinGestionar (el service no lo hace); aunque lo pasara, la
     // liberacion vive DENTRO del `if (nuevoEstado === 'aprobado')`.
-    await repo.resolverCierre({
+    await repo.resolverCierre({ zonaHoraria: ZONA_DE_CR,
       cierreId: "c1",
       alcance: ALCANCE_MAESTRO,
       nuevoEstado: "rechazado",
@@ -1463,7 +1471,7 @@ describe("CierresAdminRepository.resolverCierre — liberación de `novedad_inte
     const prisma = buildLiberacionPrisma([{ id: "o1", zonaId: "z-sat" }]);
     const { repo } = makeRepo(prisma as unknown as Record<string, unknown>);
 
-    await repo.resolverCierre({
+    await repo.resolverCierre({ zonaHoraria: ZONA_DE_CR,
       cierreId: "c1",
       alcance: ALCANCE_MAESTRO,
       nuevoEstado: "aprobado",
@@ -1528,7 +1536,7 @@ describe("264/B4 — findCierreByIdEnAlcance devuelve las ordenes sin gestionar 
     const prisma = prismaConLista([sinGestionRow()]);
     const { repo } = makeRepo(prisma as unknown as Record<string, unknown>);
 
-    await repo.findCierreByIdEnAlcance("c1", ALCANCE_MAESTRO);
+    await repo.findCierreByIdEnAlcance("c1", ALCANCE_MAESTRO, ZONA_CR);
 
     const arg = (prisma.cierreSinGestion.findMany as ReturnType<typeof vi.fn>).mock.calls[0][0] as {
       where: unknown;
@@ -1549,7 +1557,7 @@ describe("264/B4 — findCierreByIdEnAlcance devuelve las ordenes sin gestionar 
     const prisma = prismaConLista([sinGestionRow()]);
     const { repo } = makeRepo(prisma as unknown as Record<string, unknown>);
 
-    const r = await repo.findCierreByIdEnAlcance("c1", ALCANCE_MAESTRO);
+    const r = await repo.findCierreByIdEnAlcance("c1", ALCANCE_MAESTRO, ZONA_CR);
 
     expect(r?.sinGestion).toEqual([
       {
@@ -1569,7 +1577,7 @@ describe("264/B4 — findCierreByIdEnAlcance devuelve las ordenes sin gestionar 
     const prisma = prismaConLista([sinGestionRow()]);
     const { repo } = makeRepo(prisma as unknown as Record<string, unknown>);
 
-    const r = await repo.findCierreByIdEnAlcance("c1", ALCANCE_MAESTRO);
+    const r = await repo.findCierreByIdEnAlcance("c1", ALCANCE_MAESTRO, ZONA_CR);
 
     const claves = Object.keys(r?.sinGestion[0] ?? {}).join(" ").toLowerCase();
     for (const palabra of [
@@ -1590,7 +1598,7 @@ describe("264/B4 — findCierreByIdEnAlcance devuelve las ordenes sin gestionar 
     const prisma = prismaConLista([sinGestionRow({ numGuia: null, estatusOrigen: null })]);
     const { repo } = makeRepo(prisma as unknown as Record<string, unknown>);
 
-    const r = await repo.findCierreByIdEnAlcance("c1", ALCANCE_MAESTRO);
+    const r = await repo.findCierreByIdEnAlcance("c1", ALCANCE_MAESTRO, ZONA_CR);
 
     expect(r?.sinGestion).toHaveLength(1); // NO se descarta la fila
     expect(r?.sinGestion[0].numGuia).toBeNull();
@@ -1601,7 +1609,7 @@ describe("264/B4 — findCierreByIdEnAlcance devuelve las ordenes sin gestionar 
     const prisma = prismaConLista([], cierreResumenRow({ sinGestionRegistrado: false }));
     const { repo } = makeRepo(prisma as unknown as Record<string, unknown>);
 
-    const r = await repo.findCierreByIdEnAlcance("c1", ALCANCE_MAESTRO);
+    const r = await repo.findCierreByIdEnAlcance("c1", ALCANCE_MAESTRO, ZONA_CR);
 
     // `[]` + `false` NO es «no hubo ninguna»: es «no lo sabemos». Los dos viajan juntos.
     expect(r?.sinGestion).toEqual([]);
@@ -1611,7 +1619,7 @@ describe("264/B4 — findCierreByIdEnAlcance devuelve las ordenes sin gestionar 
     otro.cierreDia.findFirst.mockResolvedValue(cierreResumenRow());
     otro.gestionOrden.findMany.mockResolvedValue([]);
     const { repo: repo2 } = makeRepo(otro as unknown as Record<string, unknown>);
-    expect((await repo2.findCierreByIdEnAlcance("c1", ALCANCE_MAESTRO))?.sinGestionRegistrado).toBe(
+    expect((await repo2.findCierreByIdEnAlcance("c1", ALCANCE_MAESTRO, ZONA_CR))?.sinGestionRegistrado).toBe(
       true,
     );
   });
@@ -1621,7 +1629,7 @@ describe("264/B4 — findCierreByIdEnAlcance devuelve las ordenes sin gestionar 
     prisma.cierreDia.findFirst.mockResolvedValue(null);
     const { repo } = makeRepo(prisma as unknown as Record<string, unknown>);
 
-    const r = await repo.findCierreByIdEnAlcance("c-ajeno", ALCANCE_SAT);
+    const r = await repo.findCierreByIdEnAlcance("c-ajeno", ALCANCE_SAT, ZONA_CR);
 
     expect(r).toBeNull();
     // La guardia de alcance NO se repite en la consulta de la lista, y no hace falta: el
@@ -1663,7 +1671,7 @@ describe("425/B11 — findCierreByIdEnAlcance devuelve los rechazos de tienda de
     const prisma = prismaConRechazos([FILA_CRUDA]);
     const { repo } = makeRepo(prisma as unknown as Record<string, unknown>);
 
-    await repo.findCierreByIdEnAlcance("c1", ALCANCE_MAESTRO);
+    await repo.findCierreByIdEnAlcance("c1", ALCANCE_MAESTRO, ZONA_CR);
 
     const arg = (prisma.cierreRechazoTienda.findMany as ReturnType<typeof vi.fn>).mock.calls[0][0] as {
       where: unknown;
@@ -1677,7 +1685,7 @@ describe("425/B11 — findCierreByIdEnAlcance devuelve los rechazos de tienda de
     const prisma = prismaConRechazos([FILA_CRUDA]);
     const { repo } = makeRepo(prisma as unknown as Record<string, unknown>);
 
-    const r = await repo.findCierreByIdEnAlcance("c1", ALCANCE_MAESTRO);
+    const r = await repo.findCierreByIdEnAlcance("c1", ALCANCE_MAESTRO, ZONA_CR);
 
     expect(r?.rechazosDeTienda).toEqual([
       {
@@ -1699,7 +1707,7 @@ describe("425/B11 — findCierreByIdEnAlcance devuelve los rechazos de tienda de
     const prisma = prismaConRechazos([]);
     const { repo } = makeRepo(prisma as unknown as Record<string, unknown>);
 
-    const r = await repo.findCierreByIdEnAlcance("c1", ALCANCE_MAESTRO);
+    const r = await repo.findCierreByIdEnAlcance("c1", ALCANCE_MAESTRO, ZONA_CR);
 
     expect(r?.rechazosDeTienda).toEqual([]);
   });
@@ -1708,7 +1716,7 @@ describe("425/B11 — findCierreByIdEnAlcance devuelve los rechazos de tienda de
     const prisma = prismaConRechazos([FILA_CRUDA], null);
     const { repo } = makeRepo(prisma as unknown as Record<string, unknown>);
 
-    expect(await repo.findCierreByIdEnAlcance("c-ajeno", ALCANCE_MAESTRO)).toBeNull();
+    expect(await repo.findCierreByIdEnAlcance("c-ajeno", ALCANCE_MAESTRO, ZONA_CR)).toBeNull();
     expect(prisma.cierreRechazoTienda.findMany).not.toHaveBeenCalled();
   });
 });

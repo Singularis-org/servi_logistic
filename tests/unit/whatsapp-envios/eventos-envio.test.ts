@@ -30,9 +30,10 @@ const DISPONIBLES_A_MANO = [
 ].sort();
 
 describe("474/R49 — catalogo de eventos", () => {
-  it("las claves son EXACTAMENTE los valores del enum de Prisma (18)", () => {
+  // SLT-136: 19 con `factura_plataforma_emitida`, que no es disponible.
+  it("las claves son EXACTAMENTE los valores del enum de Prisma (19)", () => {
     const delEnum = Object.values(NotificacionEventoPrisma).sort();
-    expect(delEnum.length).toBe(18); // autocomprobacion: la extraccion no esta vacia
+    expect(delEnum.length).toBe(19); // autocomprobacion: la extraccion no esta vacia
     expect(Object.keys(EVENTOS_ENVIO_WHATSAPP).sort()).toEqual(delEnum);
   });
 
@@ -45,11 +46,11 @@ describe("474/R49 — catalogo de eventos", () => {
     expect(eventosDisponibles().map((e) => e.clave).sort()).toEqual(DISPONIBLES_A_MANO);
   });
 
-  it("los ocho no disponibles llevan un motivo no vacio", () => {
+  it("los nueve no disponibles llevan un motivo no vacio (+1 de SLT-136)", () => {
     const no = Object.values(EVENTOS_ENVIO_WHATSAPP as Record<string, PerfilEventoEnvio>).filter(
       (p) => !p.disponible,
     );
-    expect(no).toHaveLength(8);
+    expect(no).toHaveLength(9);
     for (const p of no) {
       if (p.disponible) throw new Error("imposible");
       expect(p.porQue.trim().length).toBeGreaterThan(10);
@@ -75,5 +76,15 @@ describe("474/R49 — catalogo de eventos", () => {
     expect(esEventoDisponible("orden_rechazada")).toBe(false);
     expect(esEventoDisponible("no_existe")).toBe(false);
     expect(esEventoDisponible("toString")).toBe(false);
+  });
+});
+
+describe("SLT-136/R23 — la factura emitida no se ofrece como disparo de WhatsApp", () => {
+  it("no esta disponible y dice por que", () => {
+    const perfil = EVENTOS_ENVIO_WHATSAPP.factura_plataforma_emitida as PerfilEventoEnvio;
+    expect(perfil.disponible).toBe(false);
+    expect(esEventoDisponible("factura_plataforma_emitida")).toBe(false);
+    if (perfil.disponible) throw new Error("imposible");
+    expect(perfil.porQue).toContain("maestro");
   });
 });

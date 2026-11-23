@@ -1,15 +1,18 @@
 "use server";
 
+import { construirReglasPaisEmpresa } from "@/lib/services/ReglasPaisEmpresaService";
 import {
   asignarBodegaSchema,
   asignarRecoleccionSchema,
   desasignarRecoleccionSchema,
   generarGuiaSchema,
+  retirarSateliteSchema,
   rutearSateliteSchema,
   type AsignarBodegaResult,
   type AsignarRecoleccionResult,
   type GenerarGuiaResult,
   type ListarMensajerosParaAsignacionResult,
+  type RetirarSateliteResult,
   type RutearSateliteResult,
 } from "@/lib/types/orden-guia";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
@@ -49,6 +52,8 @@ function buildGuiaService(): IGuiaAsignacionService {
       new OrdenDiaRepartoCambioRepository(prisma),
       new OrdenTraspasoRepository(prisma),
     ),
+    // SLT-42 (R22): la zona horaria del pais de la empresa.
+    construirReglasPaisEmpresa(prisma),
   );
 }
 
@@ -257,6 +262,25 @@ export async function rutearABodegaSatelite(
     const data = rutearSateliteSchema.parse(input); // ZodError -> VALIDATION_ERROR
     const service = deps.guiaService ?? buildGuiaService();
     return service.rutearABodegaSatelite(data, actor); // resultado tipado de dominio
+  });
+  return isAppErrorShape(r) ? toGuiaActionError(r) : r;
+}
+
+/**
+ * SLT-197 (R971/R975/R976): retira ordenes del estante de una satelite a la central
+ * (`en_bodega_satelite -> en_ruta_bodega_central`). Solo maestro/admin (lo decide el service).
+ * Superficie: `RetirarACentralModal` (accion «Retirar a bodega central» de `/ordenes`).
+ */
+export async function retirarABodegaCentral(
+  input: unknown,
+  deps: GuiaActionDeps = {},
+): Promise<RetirarSateliteResult> {
+  const r = await withErrorHandler(async () => {
+    const actor = await (deps.getActor ?? resolveActorFromSession)();
+    if (!actor) throw new UnauthenticatedError(); // R976: antes de tocar el service
+    const data = retirarSateliteSchema.parse(input); // ZodError -> VALIDATION_ERROR (R976)
+    const service = deps.guiaService ?? buildGuiaService();
+    return service.retirarABodegaCentral(data, actor);
   });
   return isAppErrorShape(r) ? toGuiaActionError(r) : r;
 }

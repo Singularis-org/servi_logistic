@@ -3,6 +3,8 @@
 import { Download } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { TACTIL_MOVIL } from "@/components/shared/texto-entero";
+import { cn } from "@/lib/utils";
 import { useInstalarPwa } from "@/hooks/useInstalarPwa";
 
 // Feature 164 — boton de instalar la PWA. Se pinta SOLO cuando el navegador ha ofrecido
@@ -31,7 +33,8 @@ export function InstalarPwaButton({
       onClick={() => void instalar()}
       // El nombre accesible va SIEMPRE completo, tambien en la variante de solo icono.
       aria-label="Instalar la aplicación"
-      className={className}
+      // SLT-193 (R911, R913): 44 × 44 en móvil para cualquier rol; en escritorio no cambia.
+      className={cn(TACTIL_MOVIL, className)}
     >
       <Download aria-hidden="true" />
       {soloIcono ? null : "Instalar"}

@@ -56,6 +56,11 @@ export const CHIP_POR_CATEGORIA_TIENDA: Record<
   cobro_tienda_anulado: () => "cobros",
   flete_devolucion_anulado: () => "cobros",
   iva_flete_devolucion_anulado: () => "cobros",
+  // SLT-94 (R36): el cobro de fulfillment por paquete y su devolución.
+  fulfillment: () => "cobros",
+  iva_fulfillment: () => "cobros",
+  fulfillment_anulado: () => "cobros",
+  iva_fulfillment_anulado: () => "cobros",
   // Correcciones.
   ajuste_debito: () => "correcciones",
 };
@@ -71,6 +76,8 @@ export const CHIP_POR_CATEGORIA_MENSAJERO: Record<
 > = {
   pago_devengado: () => "cierres",
   pago_efectivo: () => "cierres",
+  // SLT-139 (R329): lo pagado por la satélite nace de un cierre conciliado.
+  pago_satelite: () => "cierres",
   liquidacion: () => "pagos",
   premio_ranking: () => "premios",
   incentivo: () => "incentivos",

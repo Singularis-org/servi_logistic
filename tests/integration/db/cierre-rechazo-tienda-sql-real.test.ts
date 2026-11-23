@@ -11,10 +11,11 @@ import {
   HAY_BASE_DE_DATOS,
   crearPrismaDeTest,
   enTransaccionRevertida,
-  fksDeOrden,
   serializarEscriturasReales,
   type TxDeTest,
 } from "./_postgres-real";
+import { crearFksDeOrden } from "./_fixtures/orden-minima";
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 
 /**
  * FICHA 425 (B5) — QUE RECHAZOS DE TIENDA SE LLEVA UN CIERRE, EJECUTADO CONTRA POSTGRES.
@@ -66,32 +67,33 @@ interface Semilla {
 
 describeSiHayBase("425/B5 — el cierre incorpora los rechazos de tienda que le tocan, contra Postgres", () => {
   let prisma: PrismaClient;
-  let fks: NonNullable<Awaited<ReturnType<typeof fksDeOrden>>>;
+  // SLT-178: lo asigna `sembrarBaseDelCaso` en cada caso, dentro de su transaccion revertida.
+  let fks: Awaited<ReturnType<typeof crearFksDeOrden>>;
   let fksUsuario: { tipoIdentificacionId: string; rolId: string };
   let n = 0;
 
   beforeAll(async () => {
     prisma = crearPrismaDeTest();
-    const encontradas = await fksDeOrden(prisma);
-    if (encontradas === null) {
-      throw new Error(
-        "hay DATABASE_URL pero la tabla `orden` esta vacia: sin FKs no se puede sembrar. " +
-          "Corre `pnpm run db:seed` antes de esta suite.",
-      );
+    // SLT-178: las FK de catalogo del usuario se leen POR SU CLAVE (rol `mensajero`, tipo `cedula`),
+    // nunca de un usuario que ya este en la base.
+    const rol = await prisma.rol.findUnique({ where: { value: "mensajero" }, select: { id: true } });
+    const tipo = await prisma.tipoIdentificacion.findUnique({ where: { value: "cedula" }, select: { id: true } });
+    if (rol === null || tipo === null) {
+      throw new Error("falta el rol `mensajero` o el tipo de identificacion `cedula`: aplica las migraciones y `pnpm run db:seed`.");
     }
-    fks = encontradas;
-    const usuario = await prisma.usuario.findFirst({
-      select: { tipoIdentificacionId: true, rolId: true },
-    });
-    if (usuario === null) {
-      throw new Error("hace falta al menos UN usuario en la base para prestar las FKs de catalogo.");
-    }
-    fksUsuario = usuario;
+    fksUsuario = { tipoIdentificacionId: tipo.id, rolId: rol.id };
   });
 
   afterAll(async () => {
     await prisma.$disconnect();
   });
+
+  /** SLT-178: tienda y zona del caso (`crearFksDeOrden`), creadas en su transaccion revertida. */
+  async function sembrarBaseDelCaso(tx: TxDeTest): Promise<void> {
+    fks = await crearFksDeOrden(tx);
+    expect(await tx.usuario.count({ where: { id: fks.tiendaId } }), "tienda sembrada").toBe(1);
+    expect(await tx.zona.count({ where: { id: fks.zonaId } }), "zona sembrada").toBe(1);
+  }
 
   async function crearMensajero(tx: TxDeTest): Promise<string> {
     const clave = `${SUFIJO}${(n += 1)}`;
@@ -211,6 +213,7 @@ describeSiHayBase("425/B5 — el cierre incorpora los rechazos de tienda que le 
   it("R1/R18: incorpora el rechazo suelto como VINCULO; calle y ayuda facturan como siempre; la reprogramacion no entra", async () => {
     const m = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      await sembrarBaseDelCaso(tx);
       const mensajeroId = await crearMensajero(tx);
       const calle = await sembrarGestion(tx, mensajeroId, CALLE, "entregado");
       const ayuda = await sembrarGestion(tx, mensajeroId, AYUDA, "devolucion_a_origen_por_rechazo");
@@ -248,6 +251,7 @@ describeSiHayBase("425/B5 — el cierre incorpora los rechazos de tienda que le 
   it("R3: un rechazo ya vinculado no lo recoge un cierre posterior, y la base impide que otro cierre se lo lleve", async () => {
     const m = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      await sembrarBaseDelCaso(tx);
       const mensajeroId = await crearMensajero(tx);
       const r1 = await sembrarGestion(tx, mensajeroId, RECHAZO_TIENDA, "devolucion_a_origen_por_rechazo");
       const c1 = await crearCierre(tx, mensajeroId);
@@ -297,6 +301,7 @@ describeSiHayBase("425/B5 — el cierre incorpora los rechazos de tienda que le 
   it("R4: una segunda corrida no duplica el vinculo ni crea un segundo cierre", async () => {
     const m = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      await sembrarBaseDelCaso(tx);
       const mensajeroId = await crearMensajero(tx);
       const r = await sembrarGestion(tx, mensajeroId, RECHAZO_TIENDA, "devolucion_a_origen_por_rechazo");
       const primera = await crearCierre(tx, mensajeroId, "vencido");
@@ -318,6 +323,7 @@ describeSiHayBase("425/B5 — el cierre incorpora los rechazos de tienda que le 
   it("R5: el mensajero SOLO con rechazos de tienda ahora SI obtiene cierre, y el corte lo selecciona (caso Arnel)", async () => {
     const m = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      await sembrarBaseDelCaso(tx);
       const mensajeroId = await crearMensajero(tx);
       const ids: string[] = [];
       for (const remision of ["NA-947", "NA-981", "NA-1103"]) {
@@ -328,7 +334,7 @@ describeSiHayBase("425/B5 — el cierre incorpora los rechazos de tienda que le 
       // repositorio no llegaria a correr nunca para este mensajero.
       const seleccionados = await new CorteDiarioRepository(
         tx as unknown as PrismaClient,
-      ).findMensajerosConActividadSinCierre(diaQueElCorteCierra(new Date()));
+      ).findMensajerosConActividadSinCierre(diaQueElCorteCierra(new Date(), ZONA_CR));
       const cierreId = await crearCierre(tx, mensajeroId, "vencido");
       const cierre =
         cierreId === null
@@ -386,6 +392,7 @@ describeSiHayBase("425/B5 — el cierre incorpora los rechazos de tienda que le 
   it("R17: un mensajero SOLO con reprogramaciones de tienda sigue sin cierre y sin un solo vinculo (D2)", async () => {
     const m = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      await sembrarBaseDelCaso(tx);
       const mensajeroId = await crearMensajero(tx);
       const repro = await sembrarGestion(tx, mensajeroId, REPRO_TIENDA, "reprogramado");
       const cierreId = await crearCierre(tx, mensajeroId, "vencido");
@@ -405,6 +412,7 @@ describeSiHayBase("425/B5 — el cierre incorpora los rechazos de tienda que le 
     // FILA CRUZADA (ver cabecera): aisla el cerrojo `resultado: "rechazada"`.
     const m = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      await sembrarBaseDelCaso(tx);
       const mensajeroId = await crearMensajero(tx);
       await sembrarGestion(tx, mensajeroId, CALLE, "entregado");
       const cruzada = await sembrarGestion(tx, mensajeroId, RECHAZO_TIENDA, "reprogramado");
@@ -426,6 +434,7 @@ describeSiHayBase("425/B5 — el cierre incorpora los rechazos de tienda que le 
     // FILA CRUZADA (ver cabecera): aisla el cerrojo `historialEstados: { some: rechazo_tienda }`.
     const m = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      await sembrarBaseDelCaso(tx);
       const mensajeroId = await crearMensajero(tx);
       await sembrarGestion(tx, mensajeroId, CALLE, "entregado");
       const cruzada = await sembrarGestion(tx, mensajeroId, REPRO_TIENDA, "devolucion_a_origen_por_rechazo");
@@ -445,6 +454,7 @@ describeSiHayBase("425/B5 — el cierre incorpora los rechazos de tienda que le 
   it("R2/R15: el detalle lee lo CONGELADO, del rechazo mas viejo al mas reciente, aunque la orden cambie despues", async () => {
     const m = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      await sembrarBaseDelCaso(tx);
       const mensajeroId = await crearMensajero(tx);
       // Se siembra PRIMERO el mas nuevo: el orden de insercion no puede ser lo que decide.
       const nuevo = await sembrarGestion(tx, mensajeroId, RECHAZO_TIENDA, "devolucion_a_origen_por_rechazo", {
@@ -478,7 +488,7 @@ describeSiHayBase("425/B5 — el cierre incorpora los rechazos de tienda que le 
         where: { id: { in: [viejo.ordenId, nuevo.ordenId] } },
         data: { destinatario: "CAMBIADO DESPUES", producto: "CAMBIADO DESPUES" },
       });
-      const detalle = await repoDe(tx).findCierrePropioConGestiones(cierreId, mensajeroId);
+      const detalle = await repoDe(tx).findCierrePropioConGestiones(cierreId, mensajeroId, ZONA_CR);
       return {
         viejo,
         nuevo,

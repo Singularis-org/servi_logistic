@@ -2,7 +2,10 @@ import { z } from "zod";
 import { cierreConfig } from "@/lib/config/cierre";
 import { cierreBodegaConfig } from "@/lib/config/cierre-bodega";
 import type { ListarCompletoResult } from "@/lib/types/descarga-listado";
-import type { CierreGestionDescargaDTO } from "@/lib/interfaces/services/ICierresAdminService";
+import type {
+  CierreGestionDescargaDTO,
+  ConRechazosDeTiendaEnOk,
+} from "@/lib/interfaces/services/ICierresAdminService";
 import type { ListarPaginadoResult } from "@/lib/types/listado-paginado";
 import { paginaInputSchema } from "@/lib/types/pagina-input";
 import { filtrosCierresBodegaSchema } from "@/lib/types/filtros-cierres";
@@ -24,6 +27,10 @@ function conFiltrosDeBodega<T extends z.ZodRawShape>(base: z.ZodObject<T>) {
 import type {
   CierreBodegaResumen,
   CierreBodegaResumenLite,
+  CierreConsolidableCola,
+  CifrasCierreBodegaCentralDescargaDTO,
+  CifrasCierreBodegaDescargaDTO,
+  ConCifrasBodegaEnOk,
   ListarConsolidacionServiceResult,
   SolicitarCierreBodegaServiceResult,
 } from "@/lib/interfaces/services/ICierreBodegaService";
@@ -194,8 +201,10 @@ export type ListarPendientesCierresBodegaResult = ListarPaginadoResult<
 
 // Feature 170 (T J.1, R41/R42): la COLA de cierre_dia consolidables. Fila distinta
 // (`CierreBodegaResumenLite`, un cierre del dia) y por eso alias propio, no un rename.
+// SLT-106 (R192): la pagina lleva la fila de la cola (`CierreConsolidableCola`), la misma que ya
+// devuelve el servicio; el conjunto de la descarga sigue siendo Lite.
 export type ListarConsolidablesResult = ListarPaginadoResult<
-  CierreBodegaResumenLite,
+  CierreConsolidableCola,
   CierreBodegaListadoError
 >;
 
@@ -207,8 +216,10 @@ export type ListarConsolidablesResult = ListarPaginadoResult<
  * redacta el mensaje de CUALQUIER error de borde en un solo sitio. `limite_excedido` lleva SOLO
  * conteos, jamas filas ni un conjunto truncado (R6).
  */
-export type ListarCierresBodegaSolicitadosCompletoResult =
-  ListarCompletoResult<CierreBodegaResumen>;
+export type ListarCierresBodegaSolicitadosCompletoResult = ConCifrasBodegaEnOk<
+  ListarCompletoResult<CierreBodegaResumen>,
+  CifrasCierreBodegaDescargaDTO
+>; // SLT-141 (R385, R386): la satelite, sin `pagoEntregado`
 export type ListarConsolidablesCompletoResult = ListarCompletoResult<CierreBodegaResumenLite>;
 
 /**
@@ -219,10 +230,15 @@ export type ListarConsolidablesCompletoResult = ListarCompletoResult<CierreBodeg
  * error de borde en un solo sitio. `limite_excedido` lleva SOLO conteos, jamas filas ni un
  * conjunto truncado (R6).
  */
-export type ListarPendientesCierresBodegaCompletoResult =
-  ListarCompletoResult<CierreBodegaResumen>;
-export type ListarHistoricoCierresBodegaCompletoResult =
-  ListarCompletoResult<CierreBodegaResumen>;
+// SLT-141 (R385): la rama `ok` puede llevar ademas `cifrasModeloNuevo` (solo con cierres nuevos).
+export type ListarPendientesCierresBodegaCompletoResult = ConCifrasBodegaEnOk<
+  ListarCompletoResult<CierreBodegaResumen>,
+  CifrasCierreBodegaCentralDescargaDTO
+>;
+export type ListarHistoricoCierresBodegaCompletoResult = ConCifrasBodegaEnOk<
+  ListarCompletoResult<CierreBodegaResumen>,
+  CifrasCierreBodegaCentralDescargaDTO
+>;
 
 /**
  * Feature 230 — Tanda 7 (T7.3, R13/R21/R26/R38) — el conjunto de la HOJA FUNDIDA de «cierres de
@@ -236,8 +252,9 @@ export type ListarHistoricoCierresBodegaCompletoResult =
  * Union de error ANCHO por el motivo de siempre: lo consume `filasDesdeResultado`, que traduce
  * `limite_excedido`, `forbidden` y `unauthenticated` a mensajes accionables en un solo sitio.
  */
-export type ListarGestionesCierresBodegaCompletoResult =
-  ListarCompletoResult<CierreGestionDescargaDTO>;
+export type ListarGestionesCierresBodegaCompletoResult = ConRechazosDeTiendaEnOk<
+  ListarCompletoResult<CierreGestionDescargaDTO>
+>; // SLT-113 (R372): la rama `ok` puede llevar `rechazosDeTienda`
 
 // Resultados de las Server Actions: resultado de dominio del service +
 // `unauthenticated` (sin sesion, lo resuelve el borde). Para ver-detalle/aprobar se

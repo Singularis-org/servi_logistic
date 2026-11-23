@@ -121,8 +121,8 @@ export type CotizacionBody = z.infer<typeof cotizacionBodySchema>;
  *
  * FULFILLMENT (2026-08-25): el sexto concepto. Es el monto FIJO por orden de la
  * tarifa que resuelve, y solo aparece con valor cuando la tienda hace
- * fulfillment (`tarifas.fulfillment > 0`, ver `tieneFulfillment` en
- * `lib/utils/ingreso-empresa.ts`). Cuando no lo hace vale CERO y no falta: es la
+ * fulfillment (`montoFulfillmentDeTarifa` > 0 en `lib/utils/ingreso-empresa.ts`;
+ * SLT-94: ya no decide donde nace la orden). Cuando no lo hace vale CERO y no falta: es la
  * misma decision que ya tomo `comision` en el escenario devuelto (R28) — un cero
  * afirmado se lee, un campo ausente se adivina.
  */

@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 
-import { reintentosConfig } from "@/lib/config/reintentos";
 import { HAY_BASE_DE_DATOS, RegistroCaido, clienteConSavepoint } from "./_postgres-real";
 import { conEscenario, diaCR, montarServicios, prepararMundo, type Mundo } from "./454/_escenario";
 import {
@@ -31,7 +30,7 @@ import {
  */
 
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
-const UMBRAL = reintentosConfig.MIN_INTENTOS_ENTREGA;
+const UMBRAL = 3; // el de toda empresa nueva (SLT-77 R2)
 
 type Modo = "aprobar" | "sin_punteros" | "falla";
 

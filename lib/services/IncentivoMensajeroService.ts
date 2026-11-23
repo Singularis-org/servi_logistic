@@ -20,6 +20,9 @@ import type {
 } from "@/lib/types/incentivo-mensajero";
 import { derivarCuentaPorPagar } from "@/lib/utils/cuenta-por-pagar";
 import { instanteDelMovimientoManual } from "@/lib/utils/fecha-movimiento-manual";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
+import { zonaDeLaEmpresa } from "@/lib/services/zona-de-la-empresa";
+import { ALCANCE_ACCESO_TOTAL } from "@/lib/services/alcance-cierres";
 
 /**
  * SLT-68 (design §6.1/§6.2) — el INCENTIVO MANUAL A UN MENSAJERO: «un premio sin podio».
@@ -35,7 +38,8 @@ export class IncentivoMensajeroService implements IIncentivoMensajeroService {
   constructor(
     private readonly cierres: Pick<
       ILiquidacionPagoRepository,
-      "listarCierresImputables" | "bloquearBeneficiario" | "obtenerCierreParaPago"
+      // SLT-124 (R8, R10): las dos lecturas del cierre van con el alcance de la central en el WHERE.
+      "listarCierresImputablesEnAlcance" | "bloquearBeneficiario" | "obtenerCierreParaPagoEnAlcance"
     >,
     private readonly libro: Pick<
       IPagoMensajeroMovimientoRepository,
@@ -44,6 +48,8 @@ export class IncentivoMensajeroService implements IIncentivoMensajeroService {
     private readonly caja: ICajaIncentivoMensajeroFeedService,
     private readonly runTransaction: IncentivoTxRunner,
     private readonly nuevoId: () => string = randomUUID,
+    /** SLT-42 (R22, R28): la zona del pais de la empresa, para el instante de un incentivo con fecha elegida. */
+    private readonly reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">,
   ) {}
 
   async registrar(
@@ -55,18 +61,34 @@ export class IncentivoMensajeroService implements IIncentivoMensajeroService {
     const mensajeroNombre = await this.libro.obtenerNombreMensajero(input.mensajeroId);
     if (mensajeroNombre === null) return { status: "no_encontrado" }; // R4 (RLS por empresa)
 
-    const cierre = cierreMasReciente(await this.cierres.listarCierresImputables(input.mensajeroId));
+    // SLT-124 (R8, R9): el aprobado mas reciente DE LA CENTRAL. Un cierre de satelite no lo paga
+    // nadie en el sistema (SLT-122, D1); sin ninguno central, `sin_cierre_aprobado`.
+    const cierre = cierreMasReciente(
+      await this.cierres.listarCierresImputablesEnAlcance(input.mensajeroId, ALCANCE_ACCESO_TOTAL),
+    );
     if (cierre === null) return { status: "sin_cierre_aprobado" }; // R5
 
     // La identidad del incentivo: el egreso de caja la nombra antes de que exista el devengo.
     const id = this.nuevoId();
     const descripcion = `Incentivo · ${input.motivo}`;
-    const fechaMovimiento = instanteDelMovimientoManual(input.fecha);
+    // SLT-42 (R22, R28): un dia anterior empieza en la zona del pais; solo se lee si hay fecha elegida.
+    const fechaMovimiento =
+      input.fecha === undefined
+        ? undefined
+        : instanteDelMovimientoManual(
+            input.fecha,
+            await zonaDeLaEmpresa(this.reglasPais, "IncentivoMensajeroService.registrar"),
+          );
 
     const escrito = await this.runTransaction(async (tx) => {
       // El mismo candado que el pago a mensajero: serializa contra un reparto simultaneo del cierre.
       await this.cierres.bloquearBeneficiario(tx, { tipo: "cierre", cierreId: cierre.id });
-      const vigente = await this.cierres.obtenerCierreParaPago(cierre.id, tx);
+      // SLT-124 (R10): la relectura bajo el candado tambien filtra el destino en la base.
+      const vigente = await this.cierres.obtenerCierreParaPagoEnAlcance(
+        cierre.id,
+        ALCANCE_ACCESO_TOTAL,
+        tx,
+      );
       if (vigente === null || vigente.estado !== "aprobado") return { status: "sin_cierre_aprobado" as const };
 
       // La CAJA PRIMERO: su clave de idempotencia es la barrera del doble envio (R10). Sin fila

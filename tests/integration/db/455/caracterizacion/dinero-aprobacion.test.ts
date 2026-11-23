@@ -172,7 +172,10 @@ const MOVIMIENTOS_ESPERADOS = [
   "caja|ingreso|ingreso_iva_flete_devolucion|468.00",
   "caja|ingreso|ingreso_iva_flete|325.00",
   "mensajero|devengo|pago_devengado|1500.00",
-  "mensajero|pago|pago_efectivo|1500.00",
+  // SLT-195 (SLT-139 R317, R336): cierre NUEVO de satelite, aprobado con la marca
+  // `pago_independiente_efectivo` en true -> al asentar, `pago_satelite = P` y ningun `pago_efectivo`.
+  // P = 1500.00 (1 entrega x 1500, tarifa de la zona). Antes `pago_efectivo|1500.00` (min(P, E) = min(1500, 6000)).
+  "mensajero|pago|pago_satelite|1500.00",
   "tienda|credito|cod_recaudado|10000.00",
   "tienda|debito|comision_cod|300.00",
   "tienda|debito|flete_devolucion|3600.00",

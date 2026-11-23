@@ -64,6 +64,12 @@ export const CATEGORIA_TIENDA_LABEL: Record<WalletTiendaMovimientoCategoria, str
   // Ficha 458-B (design §2.3, D7): la anulación de un cobro por rechazo, flete e IVA por separado.
   flete_devolucion_anulado: "Cobro por devolución a origen anulado",
   iva_flete_devolucion_anulado: "IVA del cobro por devolución a origen anulado",
+  // SLT-94 (R36): el cobro de fulfillment por paquete y su devolución, con el MISMO texto que su
+  // contrapartida en el libro de la caja (`CATEGORIA_LABEL`), como los cargos del cierre.
+  fulfillment: "Fulfillment cobrado a la tienda",
+  iva_fulfillment: "IVA del fulfillment cobrado a la tienda",
+  fulfillment_anulado: "Devolución de fulfillment a la tienda",
+  iva_fulfillment_anulado: "Devolución del IVA del fulfillment a la tienda",
   ajuste_credito: "Corrección a favor de la tienda",
   ajuste_debito: "Corrección en contra de la tienda",
 };

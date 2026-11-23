@@ -66,8 +66,10 @@ node scripts/archivos-en-vuelo.mjs --candidata <key>   # exit 1 si choca
 
 Por cada feature en vuelo de cualquiera, el script mira dos fuentes:
 - los archivos que su rama remota **ya toca**: `git diff origin/<integracion>...origin/<rama>`;
-- los que su `tasks.md` **dice que tocará**: las rutas entre backticks de su sección
-  `## Archivos esperados` (`docs/specs.md > 3. tasks.md`).
+- los que su spec **dice que tocará**: las rutas entre backticks de la sección
+  `## Archivos esperados` de su `tasks.md` (ruta completa) o de su `requirements.md` único (ruta
+  ligera; `docs/specs.md > 3. tasks.md`). En la ruta directa no hay spec: la candidata da los suyos
+  con `--archivos a,b`, y de las features en vuelo cuenta lo que su rama ya toca.
 
 Reglas de lectura:
 - **Lista en `## Archivos esperados` todo archivo que vas a editar**, también los de la raíz

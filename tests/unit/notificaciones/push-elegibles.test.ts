@@ -46,7 +46,7 @@ describe("410/R2 — el catalogo cubre TODOS los eventos del enum, ni uno menos"
     }
   });
 
-  it("⭑ son DOCE elegibles y SEIS no, tal como los conto el diseno aprobado (+1 de la 462)", () => {
+  it("⭑ son DOCE elegibles y SEIS no, tal como los conto el diseno aprobado (+1 de la 462 y +1 de SLT-136)", () => {
     const elegibles = Object.entries(PUSH_ELEGIBLE)
       .filter(([, e]) => e.push === "si")
       .map(([k]) => k)
@@ -60,6 +60,8 @@ describe("410/R2 — el catalogo cubre TODOS los eventos del enum, ni uno menos"
       "cierre_dia_vencido",
       "devoluciones_represadas",
       "dia_reparto_corregido",
+      // ⭑ SLT-136 (R23): DINERO que la empresa debe a la plataforma, una vez por factura. Solo al maestro.
+      "factura_plataforma_emitida",
       "geocodificacion_caida",
       "mensajero_bloqueado_por_cierres",
       "novedades_sin_gestionar",
@@ -297,5 +299,17 @@ describe("462/R21 — `reprogramadas_esperan_cierre` empuja a admin y bodega sat
     const entrada = PUSH_ELEGIBLE.reprogramadas_esperan_cierre;
     expect(entrada.push).toBe("si");
     expect(entrada.push === "si" && [...entrada.roles]).toEqual(["admin", "adminSatelite"]);
+  });
+});
+
+describe("SLT-136/R23, R24 — `factura_plataforma_emitida` empuja SOLO al maestro", () => {
+  it("⭑ SI para `maestro`; NO para ningun otro rol", () => {
+    expect(esElegiblePush("factura_plataforma_emitida", "maestro")).toBe(true);
+    for (const rol of TODOS_LOS_ROLES.filter((r) => r !== "maestro")) {
+      expect(esElegiblePush("factura_plataforma_emitida", rol), `${rol} no deberia recibir este push`).toBe(false);
+    }
+    expect(eventoPuedeEmpujar("factura_plataforma_emitida")).toBe(true);
+    const entrada = PUSH_ELEGIBLE.factura_plataforma_emitida;
+    expect(entrada.push === "si" && [...entrada.roles]).toEqual(["maestro"]);
   });
 });

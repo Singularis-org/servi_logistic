@@ -37,6 +37,7 @@ import {
 } from "./gasto-fijo-estado-label";
 import { PROXIMO_COBRO_INACTIVA, periodicidadLegible } from "./wallet-labels";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 /**
  * Columnas del archivo: las SEIS de datos del panel («Acciones» no entra, son botones: no es un
  * dato).
@@ -89,7 +90,8 @@ export function filaDescargaGastoFijo(
     ),
     proximoCobro:
       plantilla.activa === true
-        ? proximoCobro(plantilla, ahora)
+        // SLT-81: la UI sigue en la zona de CR
+        ? proximoCobro(plantilla, ahora, ZONA_CR)
         : PROXIMO_COBRO_INACTIVA,
     estado: estadoPlantillaGastoFijo(plantilla.activa === true),
     // Ficha 333 (G4): el interruptor, con la MISMA etiqueta que pinta la tabla. `=== true` por el

@@ -10,6 +10,7 @@ import type { Actor } from "@/lib/interfaces/services/IVehiculoService";
 import { PAIS_TOPE_DE_NIVELES, PaisService } from "@/lib/services/PaisService";
 import type { TipoNivelDTO } from "@/lib/types/geografia-nodo";
 import { ETIQUETAS_NEUTRAS, etiquetasDePais, type PaisDTO } from "@/lib/types/pais";
+import { MONEDA_CR } from "@/tests/fabricas/reglas-pais";
 
 // SL-20 (T2.1, T2.3; design §5) — `PaisService` con el repositorio doble.
 //   · R23: el alta crea el país del catálogo con el nombre del catálogo; un código o un nombre
@@ -43,6 +44,12 @@ const COSTA_RICA: PaisDTO = {
   digitosCodigoNivel2: 3,
   digitosCodigoNivel3: 5,
   disponible: true,
+  prefijoTelefonico: "506",
+  telefonoDigitosNacionales: 8,
+  zonaHoraria: "America/Costa_Rica",
+  // SL-21 (R3): la moneda y el impuesto que deja la migración 20261124120000.
+  moneda: MONEDA_CR,
+  impuestoNombre: "IVA",
 };
 
 const PAIS_XA: PaisDTO = {
@@ -58,6 +65,11 @@ const PAIS_XA: PaisDTO = {
   digitosCodigoNivel2: null,
   digitosCodigoNivel3: null,
   disponible: true,
+  prefijoTelefonico: null,
+  telefonoDigitosNacionales: null,
+  zonaHoraria: null,
+  moneda: null,
+  impuestoNombre: null,
 };
 
 const TIPO_4: TipoNivelDTO = {
@@ -126,6 +138,11 @@ function repoDoble(
           digitosCodigoNivel2: null,
           digitosCodigoNivel3: null,
           disponible: true,
+          prefijoTelefonico: null,
+          telefonoDigitosNacionales: null,
+          zonaHoraria: null,
+          moneda: null,
+          impuestoNombre: null,
         },
         tipos: [],
       },
@@ -133,6 +150,10 @@ function repoDoble(
     renombrarTipo: vi.fn<IPaisRepository["renombrarTipo"]>(async () => o.renombrarTipo ?? "renombrado"),
     agregarNivel: vi.fn<IPaisRepository["agregarNivel"]>(async () => o.agregarNivel ?? TIPO_4),
     reordenarTipos: vi.fn<IPaisRepository["reordenarTipos"]>(async () => o.reordenarTipos ?? "reordenado"),
+    // SLT-42: el servicio de países no los usa; están para cumplir el puerto.
+    tipoDocumentoDelPais: vi.fn<IPaisRepository["tipoDocumentoDelPais"]>(async () => null),
+    tieneTipoDocumentoActivo: vi.fn<IPaisRepository["tieneTipoDocumentoActivo"]>(async () => true),
+    zonasConEmpresas: vi.fn<IPaisRepository["zonasConEmpresas"]>(async () => []),
   } satisfies IPaisRepository;
   return repo;
 }

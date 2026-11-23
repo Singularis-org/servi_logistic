@@ -1,4 +1,5 @@
 import { EstadoConInfo, NotaAyudaConInfo } from "@/components/shared/EstadoInfo";
+import { CLASE_INFO_TACTIL } from "@/components/shared/texto-entero";
 import type { MiAsignacionDTO } from "@/lib/interfaces/services/IMisAsignacionesService";
 
 import { CLASE_NOTA_AYUDA, type MarcaPintable } from "./pos-estado";
@@ -76,6 +77,7 @@ export function PosCardHeader({
       <div className="flex flex-col items-end gap-1">
         <EstadoConInfo
           codigo={orden.estatusValue}
+          className={CLASE_INFO_TACTIL}
           chipClassName="rounded-lg bg-warning px-3 py-1.5 text-xs font-black uppercase tracking-wide text-navy"
         />
         {marcas.map((m) => (
@@ -88,6 +90,7 @@ export function PosCardHeader({
         ))}
         {notaAyuda ? (
           <NotaAyudaConInfo
+            className={CLASE_INFO_TACTIL}
             chipClassName={`rounded-full px-2 py-0.5 text-[10px] font-bold tracking-wide ${CLASE_NOTA_AYUDA}`}
           />
         ) : null}

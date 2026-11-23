@@ -1,8 +1,7 @@
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 
 import { AsignacionSateliteService } from "@/lib/services/AsignacionSateliteService";
 import { MSG_TOPE_INTENTOS_ASIGNACION } from "@/lib/services/mensajes-bloqueo";
-import { reintentosConfig } from "@/lib/config/reintentos";
 import type { IOrdenRepository } from "@/lib/interfaces/repositories/IOrdenRepository";
 import type {
   EstadoAsignabilidad,
@@ -11,6 +10,7 @@ import type {
 } from "@/lib/interfaces/services/IAsignabilidadCoordenadasService";
 import type { IOrdenHistorialService } from "@/lib/interfaces/services/IOrdenHistorialService";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 /**
  * FEATURE 276 (T8) — LA MISMA PUERTA EN LA BODEGA SATELITE. R18, R19, R20, R7.
@@ -23,7 +23,7 @@ import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 
 const ADMIN_SATELITE: Actor = { usuarioId: "u-sat", rol: "adminSatelite" };
 const ZONA = "z-limon";
-const UMBRAL = reintentosConfig.MIN_INTENTOS_ENTREGA;
+const UMBRAL = 3; // el de toda empresa nueva (SLT-77 R2)
 
 function ordenRow(over: Record<string, unknown> = {}) {
   return {
@@ -83,8 +83,12 @@ function gateOk(): IAsignabilidadCoordenadasService {
 
 function historialCon(
   porOrden: Record<string, number>,
-): Pick<IOrdenHistorialService, "contarIntentosEnLote"> {
-  return { contarIntentosEnLote: vi.fn(async () => new Map(Object.entries(porOrden))) };
+  tope = 3,
+): Pick<IOrdenHistorialService, "contarIntentosEnLote" | "topeIntentos"> {
+  return {
+    contarIntentosEnLote: vi.fn(async () => new Map(Object.entries(porOrden))),
+    topeIntentos: vi.fn(async () => tope),
+  };
 }
 
 function montar(porOrden: Record<string, number>, repoOver: Record<string, unknown> = {}) {
@@ -95,6 +99,7 @@ function montar(porOrden: Record<string, number>, repoOver: Record<string, unkno
     repo as unknown as IOrdenRepository,
     gate,
     historial,
+    reglasPaisFijas(),
   );
   return { service, repo, gate, historial };
 }
@@ -177,6 +182,7 @@ describe("276/T8 · R20 — un solo motivo, un solo punto", () => {
       { findCentralZonaId: vi.fn(async () => "z-gam") } as never,
       gateOk(),
       historialCon({ o1: UMBRAL }),
+      reglasPaisFijas(),
     );
     const rc = await central.asignarDesdeBodega({ ordenIds: ["o1"], mensajeroId: "m1" }, {
       usuarioId: "u-maestro",
@@ -196,32 +202,20 @@ describe("276/T8 · R20 — un solo motivo, un solo punto", () => {
 /* 4 · R7 — el umbral sale de la configuracion                                 */
 /* -------------------------------------------------------------------------- */
 
-describe("276/T8 · R7 — con `REINTENTOS_MIN_INTENTOS = 5` la puerta se mueve", () => {
-  const ANTES = process.env.REINTENTOS_MIN_INTENTOS;
-
-  afterEach(() => {
-    if (ANTES === undefined) delete process.env.REINTENTOS_MIN_INTENTOS;
-    else process.env.REINTENTOS_MIN_INTENTOS = ANTES;
-    vi.resetModules();
-  });
-
-  async function conUmbral5(intentos: number) {
-    process.env.REINTENTOS_MIN_INTENTOS = "5";
-    vi.resetModules();
-    const { AsignacionSateliteService: Fresco } = await import(
-      "@/lib/services/AsignacionSateliteService"
-    );
+describe("SLT-77 R20 — con tope 5 de la empresa la puerta se mueve", () => {
+  function conUmbral5(intentos: number) {
     const repo = fakeRepo();
-    const service = new Fresco(
+    const service = new AsignacionSateliteService(
       repo as unknown as IOrdenRepository,
       gateOk(),
-      historialCon({ o1: intentos, o2: intentos, o3: intentos }),
+      historialCon({ o1: intentos, o2: intentos, o3: intentos }, 5),
+      reglasPaisFijas(),
     );
     return { service, repo };
   }
 
   it("4a. con 4 intentos deja asignar (4 < 5)", async () => {
-    const { service, repo } = await conUmbral5(4);
+    const { service, repo } = conUmbral5(4);
 
     const r = await service.asignar(LOTE, ADMIN_SATELITE);
 
@@ -230,7 +224,7 @@ describe("276/T8 · R7 — con `REINTENTOS_MIN_INTENTOS = 5` la puerta se mueve"
   });
 
   it("4b. con 5 intentos NO deja asignar", async () => {
-    const { service, repo } = await conUmbral5(5);
+    const { service, repo } = conUmbral5(5);
 
     const r = await service.asignar(LOTE, ADMIN_SATELITE);
 

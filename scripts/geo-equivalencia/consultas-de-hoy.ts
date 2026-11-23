@@ -15,7 +15,7 @@ import type { NivelGeografico } from "@/lib/types/geografia-nodo";
 import type { SortDir, SortField } from "@/lib/types/orden";
 import { ordenTotal } from "@/lib/types/ordenamiento-listado";
 import { ESTADOS_TERMINALES } from "@/lib/types/order-status-transiciones";
-import { ESTADOS_PAQUETE_EN_ESTANTE } from "@/lib/utils/estados-bodega-satelite";
+import { ESTADOS_PAQUETE_EN_ESTANTE, ESTADOS_QUE_NO_SE_MUEVEN } from "@/lib/utils/estados-bodega-satelite";
 import { NOMBRE_USUARIO_SELECT } from "@/lib/utils/nombre-usuario";
 
 // SLT-65 (design §8) — LA LECTURA DE HOY, CONGELADA. NO SE EDITA.
@@ -616,34 +616,24 @@ export async function contarSinEntregarDeHoy(
 // =================================================================================================
 
 /**
- * ⭑ EL CORTE DE ELEGIBILIDAD DE LA RECONCILIACION (366/R6/R7/R8), EN UNA SOLA DECLARACION.
+ * ⭑ EL CORTE DE ELEGIBILIDAD DE LA RECONCILIACION (366/R6/R7/R8 → SLT-224 PR 2, D6).
  *
- * Vive en el `WHERE` a proposito: son condiciones sobre filas de OTRAS tablas (`cierre_detail` y
- * `gestion_orden`), no `if`s que un doble pueda esquivar. Sus cuatro cortes, sin ninguno de
- * estado:
- *   · `deletedAt: null`       — una orden borrada no se re-estampa;
- *   · `cierreDetalles: none`  — ya tiene un detalle congelado en un cierre: eso ya se facturo, y
- *     `cierre_detail` es INMUTABLE (366/R8);
- *   · `gestiones: none {...}` — tiene una gestion VIGENTE cuyo resultado ya decidio dinero
- *     (`entregada`, `rechazada`, `incidente`). Una `reprogramada` o una `devuelta` vigentes NO
- *     excluyen: las dos se rutean HACIA ADELANTE por `orden.zonaId`
- *     (`LiberacionReprogramadaService`, `DevolucionSlaService`), asi que dejarlas con la zona
- *     vieja las liberaria a la bodega equivocada — el mismo atasco que la 366 vino a arreglar.
- *
- * El estado NO entra aqui: cada consumidor le añade su clausula COMPLEMENTARIA, y esa
- * complementariedad es lo que hace que los dos conjuntos sean disjuntos por construccion.
+ * Copia del de `lib/repositories/_shared/reconciliar-zona-ordenes.ts` en `origin/geo_jerarquica`
+ * 3c58093c (SLT-224), el codigo de antes de SLT-65: la orden entra por `distrito_id`. Solo protege
+ * el dinero EN CURSO (R1722): un detalle de cierre sin aprobar, o una gestion vigente que decidio
+ * dinero y aun no tiene cierre aprobado. El estado NO entra aqui.
  */
-// Copia de ZonaRepository.ts:187–200 en b2bade4.
 export function whereBaseElegible(distritoIds: string[], zonaResueltaId: string): Prisma.OrdenWhereInput {
   return {
     distritoId: { in: distritoIds },
     zonaId: { not: zonaResueltaId },
     deletedAt: null,
-    cierreDetalles: { none: {} },
+    cierreDetalles: { none: { cierre: { estado: { not: "aprobado" } } } },
     gestiones: {
       none: {
         anuladaAt: null,
         resultado: { in: ["entregado", "devolucion_a_origen_por_rechazo", "incidente"] },
+        OR: [{ cierreId: null }, { cierre: { estado: { not: "aprobado" } } }],
       },
     },
   };
@@ -656,10 +646,11 @@ export interface PlanDeHoy {
   retenidasEnBodegaSatelite: number;
 }
 
-// Copia de `update`, ZonaRepository.ts:461–531 en b2bade4, SIN las escrituras: sin el `loteId`, el
-// `resolverActorCongelado` (:488–491), el `updateMany` ni el `appendAccion` (:534–560). Lo que el
-// original escribia, aqui se devuelve: `elegibles` por zona y el conteo de retenidas. Como en el
-// original, una zona sin elegibles no entra en `porZona` (el `continue` de :532).
+// Copia de `reconciliarZonaDeOrdenes` (`_shared/reconciliar-zona-ordenes.ts` en 3c58093c, SLT-224;
+// antes `update`, ZonaRepository.ts:461–531 en b2bade4), SIN las escrituras: sin el `loteId`, el
+// `resolverActorCongelado`, el `updateMany` ni el `appendAccion`. Lo que el original escribia, aqui
+// se devuelve: `elegibles` por zona y el conteo de retenidas. Como en el original, una zona sin
+// elegibles no entra en `porZona` (su `continue`).
 export async function planDeHoy(tx: TxDePlan, distritosAfectados: string[]): Promise<PlanDeHoy> {
   const porZona: PlanDeHoy["porZona"] = new Map();
   let ordenesRetenidasEnBodegaSatelite = 0;
@@ -695,13 +686,14 @@ export async function planDeHoy(tx: TxDePlan, distritosAfectados: string[]): Pro
         // en `whereBaseElegible`, arriba, y lo leen las DOS consultas de este bloque.
         const base = whereBaseElegible(distritoIds, zonaResueltaId);
 
-        // FICHA 377 (R2/R8): en transito si, en el estante no. El porque, en ZonaRepository.ts:498–523.
+        // FICHA 377 (R2/R8): en transito si, en el estante no. El porque, en el helper compartido.
         ordenesRetenidasEnBodegaSatelite += await tx.orden.count({
           where: { ...base, estatus: { value: { in: [...ESTADOS_PAQUETE_EN_ESTANTE] } } },
         });
 
         const elegibles = await tx.orden.findMany({
-          where: { ...base, estatus: { value: { notIn: [...ESTADOS_PAQUETE_EN_ESTANTE] } } },
+          // R1721/R1723: todo lo que la clasificacion no marca `se_mueve`.
+          where: { ...base, estatus: { value: { notIn: [...ESTADOS_QUE_NO_SE_MUEVEN] } } },
           select: { id: true, numGuia: true, numRemision: true },
         });
         if (elegibles.length === 0) continue;

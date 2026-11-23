@@ -15,6 +15,7 @@ import { fechaDiaMovimientoCR } from "@/lib/utils/fecha-dia-iso";
 
 import { DOCUMENTO_CAJA_NOMBRE, conceptoDeMovimientoCaja, ORIGEN_LABEL, money } from "./wallet-labels";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 // FICHA 458-C (T C.5, design §5.2; R58, R63–R67, R71, R79, R100) — el «Ver» de una fila del libro de
 // la caja ACTUAL. Sustituye a la columna de acciones de antes: «Reversar» (y su `Modal`) y
 // `DocumentoCajaAcciones` se retiran, y lo que hacían vive en el panel compartido
@@ -64,7 +65,8 @@ export function detalleDeFilaCaja(m: WalletMovimientoDTO, autoria?: AutoriaDeFil
   return {
     destino: { libro: "caja", movimientoId: m.id },
     concepto,
-    fecha: fechaDiaMovimientoCR(m.fechaMovimiento),
+    // SLT-81: la UI sigue en la zona de CR
+    fecha: fechaDiaMovimientoCR(m.fechaMovimiento, ZONA_CR),
     monto: m.monto,
     direccion: m.tipo === "ingreso" ? "entra" : "sale",
     motivo: m.descripcion,

@@ -16,6 +16,7 @@ import type {
   IngresoEmpresaDTO,
 } from "@/lib/interfaces/services/ICierreDiaService";
 import type { CierreDestinoTipo, CierreEstado } from "@/lib/types/cierre";
+import type { ParteDeTienda } from "@/lib/types/parte-de-tienda";
 import { EMPRESA } from "@/lib/config/marca";
 // FICHA 408 — los dos módulos del vocabulario de la causa de devolución. Los DOS son PUROS
 // (sin React, sin DOM), así que este archivo lo sigue siendo. El precedente de importar
@@ -168,7 +169,7 @@ export const GESTION_TIENDA_BADGE_LABEL = "La tienda";
  * no son suyos, y que aun asi cuenta en este cierre.
  */
 export const GESTION_TIENDA_BADGE_NOTA =
-  "Esta gestión la registró la tienda desde «Ayuda solicitada», no vos: el motivo y la foto son suyos. Cuenta en tu cierre igual.";
+  "Esta gestión la registró la tienda desde «Ayuda solicitada», no tú: el motivo y la foto son suyos. Cuenta en tu cierre igual.";
 
 // --- Desglose del ingreso de la empresa por orden (texto separado, i18n-ready) ---
 export const MONTO_COBRAR_COL = "A cobrar";
@@ -184,8 +185,6 @@ export const FLETE_DEV_CON_IVA_LABEL = "Flete por devolución a origen + IVA";
 // (SLT-52 R29). Llamarlo «devolución a origen» diría que se cobró una que no hubo.
 export const FLETE_NO_ENTREGADAS_LABEL = "Flete de gestiones no entregadas";
 export const FLETE_NO_ENTREGADAS_CON_IVA_LABEL = `${FLETE_NO_ENTREGADAS_LABEL} + IVA`;
-export const FLETE_NO_ENTREGADAS_NOTA =
-  "Se le factura a la tienda, pero no sale de lo recaudado: una gestión no entregada no cobra contra entrega.";
 // Menor 2 de la revisión F2.2: en el nuevo tampoco se descuentan los fletes de reprogramado, novedad e
 // incidente. `PAGO_TIENDA_NOTA` es cierta y completa solo en el viejo, donde esos no se cobran.
 export const PAGO_TIENDA_NOTA_MODELO_NUEVO =
@@ -217,12 +216,17 @@ export function fleteDevConIvaDeGestion(
  * R65, los totales: los paneles no reciben el modelo, y lo dicen sus gestiones. Basta con una: un cierre
  * de bodega puede agregar días a ambos lados de la activación, y «no entregadas» sigue siendo cierto
  * para los rechazos del viejo. La otra frase no lo sería para una novedad del nuevo.
+ *
+ * SLT-154 (R463, D1): sin acceso total `ingresoEmpresa` llega en `null` y el modelo viaja en
+ * `tarifaModelo`; sin leerlo, la satélite perdería el modelo nuevo y sus notas dirían algo falso.
  */
 export function hayGestionEnModeloNuevo(
-  grupos: Readonly<Record<string, readonly Pick<CierreDetalleGestion, "ingresoEmpresa">[]>>,
+  grupos: Readonly<
+    Record<string, readonly Pick<CierreDetalleGestion, "ingresoEmpresa" | "tarifaModelo">[]>
+  >,
 ): boolean {
   return Object.values(grupos).some((lista) =>
-    lista.some((g) => g.ingresoEmpresa?.tarifaModelo === "nuevo"),
+    lista.some((g) => (g.tarifaModelo ?? g.ingresoEmpresa?.tarifaModelo) === "nuevo"),
   );
 }
 /**
@@ -255,8 +259,6 @@ export const INDEMNIZACION_COL = "Indemnización";
 // `PAGO_TIENDA_LABEL`) NO se tocan (R21/R30).
 // ---------------------------------------------------------------------------
 
-/** Rótulo y nombre accesible de la cascada A. Responde: ¿de quién es este dinero? */
-export const CASCADA_DUENO_TITULO = "De quién es el dinero";
 /**
  * Rótulo y nombre accesible de la cascada B. Responde: ¿cuánto le entrega esta bodega a la
  * central? Es la única de las dos que alcanza al `adminSatelite` (R39).
@@ -289,12 +291,6 @@ export const PARA_LA_CENTRAL_LABEL = "Para la central";
  * satélite, así que las dos sólo coinciden cuando ese pago es cero.
  */
 export const NETO_EMPRESA_LABEL = `Neto de ${EMPRESA.enFrase}`;
-
-/**
- * La LÍNEA PUENTE (R10): lo que la empresa cobra sobre lo recaudado. Sin ella la cascada A enseña
- * «recaudado − facturado = para la tienda», que NO da en cuanto hay un rechazo.
- */
-export const COBRADO_SOBRE_RECAUDADO_LABEL = "Cobrado sobre lo recaudado";
 
 /** El mismo número que el «Ingreso bruto» del cierre de mensajero, dicho como lo dice quien lo lee. */
 export const FACTURADO_EMPRESA_LABEL = `Lo que ${EMPRESA.enFrase} facturó`;
@@ -343,10 +339,6 @@ export const GANA_BODEGA_SATELITE_NOTA =
 export const GANA_BODEGA_SATELITE_NOTA_MODELO_NUEVO =
   "Lo que se le reconoce a la bodega satélite por sus gestiones. No es un movimiento de caja registrado.";
 
-/** R10 — por qué esa línea SUMA a lo facturado pero no se resta de lo recaudado. */
-export const FLETE_RECHAZO_NO_DEDUCIBLE_NOTA =
-  "Se le factura a la tienda, pero no sale de lo recaudado: una devolución a origen no cobra contra entrega.";
-
 // ---------------------------------------------------------------------------
 // FICHA 395 (2026-09-08) — LAS TRES CASCADAS DEL CIERRE DE **MENSAJERO**.
 //
@@ -366,106 +358,12 @@ export const FLETE_RECHAZO_NO_DEDUCIBLE_NOTA =
 // ---------------------------------------------------------------------------
 
 /**
- * FICHA 395 — el resultado de la PARTICIÓN: lo que le queda a la tienda EN TOTAL.
- *
- * Rima con `GANA_BODEGA_SATELITE_LABEL` («Gana la bodega satélite») a propósito: mismo verbo,
- * misma forma, misma familia de preguntas. Y NO se reusa `PARA_LA_TIENDA_LABEL` («Para la
- * tienda»), que en el cierre de BODEGA nombra `pagoTienda`: darle aquí un segundo significado
- * haría que la misma etiqueta valiera dos cifras distintas según por qué pantalla se entre, que
- * es exactamente el defecto que la 393 cerró (R24).
- *
- * Elección de redacción del `frontend_dev`; el encargo la escribió «La tienda gana», con el
- * mismo verbo y el orden invertido.
- */
-export const GANA_LA_TIENDA_LABEL = "Gana la tienda";
-
-/**
- * FICHA 395 — la frase que impide confundirlo con «Pago a tienda». Las dos notas son un PAR y
- * se leen juntas: una dice «no es lo que se le paga hoy», la otra «no es lo que gana en total».
- */
-export const GANA_LA_TIENDA_NOTA =
-  `Lo recaudado menos todo lo que ${EMPRESA.enFrase} le factura, incluido el flete por devolución a origen. No es lo que se le paga hoy.`;
-/** D40: en el nuevo ese flete suma también reprogramado, novedad e incidente (SLT-52 R29). */
-export const GANA_LA_TIENDA_NOTA_MODELO_NUEVO =
-  `Lo recaudado menos todo lo que ${EMPRESA.enFrase} le factura, incluido el flete de gestiones no entregadas. No es lo que se le paga hoy.`;
-
-/** FICHA 395 — la otra mitad del par: por qué el pago de hoy no es lo que la tienda gana. */
-export const PAGO_TIENDA_HOY_NOTA =
-  "Es lo que se le paga de este dinero hoy. No es lo que gana en total: el flete por devolución a origen se le cobra aparte.";
-/** D40: la misma frase en el modelo nuevo. El feed lo debita igual (`CONCEPTOS_DEVOLUCION`). */
-export const PAGO_TIENDA_HOY_NOTA_MODELO_NUEVO =
-  "Es lo que se le paga de este dinero hoy. No es lo que gana en total: el flete de gestiones no entregadas se le cobra aparte.";
-
-/**
- * FICHA 395 — qué significa que la tienda gane un NEGATIVO. Mismo criterio que
- * `PARA_LA_CENTRAL_NEGATIVO_NOTA`: un «−₡3.400» sin explicación en una pantalla de dinero es
- * peor que no tener el número.
- */
-export const GANA_LA_TIENDA_NEGATIVO_NOTA =
-  `${EMPRESA.alInicio} le factura más de lo que se recaudó en este cierre: a la tienda no le queda nada y pasa a deber la diferencia.`;
-
-/** FICHA 395 — de qué se compone la línea puente, dicho sin jerga contable. */
-export const COBRADO_SOBRE_RECAUDADO_NOTA =
-  "Flete + IVA y comisión + IVA de lo que sí se entregó: sale del dinero que el mensajero recaudó.";
-
-/**
- * FICHA 395 — de qué resta sale el neto de la empresa, en el idioma de quien la hace.
- * SL-39 (R23/R24) — dice «sin el IVA»: el IVA facturado tiene su propia línea en la cascada y no es
- * de la empresa.
- */
-export const NETO_EMPRESA_NOTA =
-  `Lo que ${EMPRESA.enFrase} facturó, sin el IVA, menos el pago al mensajero y menos el ingreso de bodega por devoluciones a origen.`;
-/** SLT-54 (R71): el mismo renglón en el modelo nuevo, donde ese ingreso no sale solo de devoluciones. */
-export const NETO_EMPRESA_NOTA_MODELO_NUEVO =
-  `Lo que ${EMPRESA.enFrase} facturó, sin el IVA, menos el pago al mensajero y menos el ingreso de bodega.`;
-
-/**
  * SL-39 (R24) — la línea propia del IVA en la cascada «Lo que le queda a la empresa», justo después
  * de «Lo que la empresa facturó». El importe llega derivado del servidor (`ivaFacturado`, R21).
  * También es el renglón del IVA en el bloque «Liquidación» del detalle (menor 1 de la revisión).
  * La palabra del impuesto se compone desde `IMPUESTO_ROTULO`: SL-21 la cambia en un solo sitio.
  */
 export const IVA_FACTURADO_LABEL = `${IMPUESTO_ROTULO} facturado`;
-
-/** SL-39 (R24) — de quién es ese IVA. */
-export const IVA_FACTURADO_NOTA =
-  `El IVA que se le cobró a la tienda en este cierre. No es de ${EMPRESA.enFrase}.`;
-
-/** FICHA 395 — qué significa un neto NEGATIVO: no es un fallo, es una pérdida del cierre. */
-export const NETO_EMPRESA_NEGATIVO_NOTA =
-  `${EMPRESA.alInicio} pagó más de lo que facturó en este cierre: ese neto es una pérdida, no una ganancia.`;
-
-/**
- * FICHA 395 — EL TIEMPO VERBAL DEL CARGO DEL FLETE POR RECHAZO, y es una trampa real.
- *
- * El cargo se escribe en el saldo de la tienda **al APROBAR** el cierre (`WalletTiendaFeedService`,
- * dentro de la transacción de `CierresAdminRepository.resolverCierre`). Medido contra producción
- * el 2026-09-08: de 37 cierres aprobados con rechazos, los 37 lo tienen; los `solicitado` y el
- * `vencido`, ninguno. Escribir «se le cargó» en un cierre que todavía no se aprueba es MENTIRA, y
- * el cierre que abrió esta ficha estaba «Vencido».
- *
- * Cuál de las tres se pinta NO se infiere del estado a ojo: `fleteRechazoYaCobradoATienda` viaja
- * ya resuelto del servidor —exige aprobado Y flete por rechazo mayor que cero— y el `estado` sólo
- * distingue «todavía no» de «ya no».
- *
- * Se dice «al saldo de la tienda» y no «a su wallet»: «Saldo a favor» y «Cargos de la empresa» es lo
- * que la tienda lee en su propia pantalla (`mi-wallet-labels`). Elección del `frontend_dev`.
- */
-export const FLETE_RECHAZO_YA_COBRADO_NOTA =
-  "Ya se le cargó al saldo de la tienda: ese cargo se hace al aprobar el cierre.";
-export const FLETE_RECHAZO_AUN_NO_COBRADO_NOTA =
-  "Todavía no se le ha cargado al saldo de la tienda: ese cargo se hace al aprobar el cierre.";
-export const FLETE_RECHAZO_NO_SE_COBRARA_NOTA =
-  "Este cierre se rechazó, así que ese cargo no se le hizo a la tienda ni se le va a hacer.";
-
-/**
- * FICHA 395 — los títulos de las dos cascadas que la ficha ESTRENA. La primera —la partición—
- * reusa `CASCADA_DUENO_TITULO` («De quién es el dinero»): es literalmente la misma pregunta que
- * responde en el cierre de bodega, y estrenar un segundo título para ella sería dar dos nombres a
- * la misma sección según por qué pantalla se entre.
- */
-export const CASCADA_FACTURA_TIENDA_TITULO = `Lo que ${EMPRESA.enFrase} le factura a la tienda`;
-export const CASCADA_NETO_EMPRESA_TITULO = `Lo que le queda a ${EMPRESA.enFrase}`;
 
 // ---------------------------------------------------------------------------
 // FICHA 396 (2026-09-08) — DE QUÉ TIENDA ES CADA PARTE DEL «PAGO A TIENDA».
@@ -489,16 +387,6 @@ export const CASCADA_NETO_EMPRESA_TITULO = `Lo que le queda a ${EMPRESA.enFrase}
 // ---------------------------------------------------------------------------
 
 /**
- * FICHA 396 — el título de la sección del desglose. Rima con `CASCADA_DUENO_TITULO` («De quién
- * es el dinero») a propósito: es la MISMA pregunta bajada un nivel, de «la empresa o la tienda» a
- * «cuál de las tiendas». Dos preguntas de la misma familia, dos títulos de la misma forma.
- *
- * Elección de redacción del `frontend_dev`; el spec pedía que el texto existiera y saliera de una
- * constante (R3), no qué decía.
- */
-export const DESGLOSE_POR_TIENDA_TITULO = "De qué tienda es cada parte";
-
-/**
  * FICHA 396 (R1) — LA MARCA: dice que el importe de al lado es un total de VARIAS tiendas, y de
  * cuántas. Va pegada a los DOS agregados que el desglose parte —«Pago a tienda» y «Gana la
  * tienda»—, porque los dos engañan igual: un número solo, sin esta frase, se lee como si fuera
@@ -518,87 +406,23 @@ export function totalDeVariasTiendasNota(cuantasTiendas: number): string {
 }
 
 /**
- * FICHA 396 (R4) — LAS TRES CIFRAS DE UNA TIENDA. Y son TRES, no cuatro: R5 lo prohíbe, y la
- * tercera entró el 2026-09-08 por firma explícita del humano (Q7 del spec), no de paso.
+ * FICHA 396 — EL UMBRAL (R2, Q5) Y LA MARCA (R1), en UNA sola función para todos los niveles del
+ * detalle. Devuelve la frase de `totalDeVariasTiendasNota` cuando el nivel tiene dos o más
+ * tiendas, y `null` con una o ninguna: ahí la pantalla no enseña ni marca ni «Por tienda».
  *
- * ⚠️ LOS DOS ÚLTIMOS TIENEN QUE SER IMPOSIBLES DE CONFUNDIR, y por eso dicen «hoy» y «en total»
- * con todas las letras: confundir lo que se le paga con lo que gana es exactamente el fallo que
- * la ficha 395 acaba de arreglar un nivel más arriba, y aquí se multiplica por el número de
- * tiendas. La diferencia entre las dos, por tienda, es el flete por rechazo + IVA de ESA tienda,
- * que se le cobra aparte contra su saldo (`DESGLOSE_POR_TIENDA_NOTA`).
+ * El umbral se evalúa sobre las tiendas del NIVEL que se pinta (el cierre de un mensajero, o el
+ * agregado de bodega), nunca sobre una lista de más arriba. Está en un solo sitio a propósito: la
+ * marca y el desglose tienen que aparecer y desaparecer JUNTOS.
  *
- * NO se reusan `PAGO_TIENDA_LABEL` («Pago a tienda») ni `GANA_LA_TIENDA_LABEL` («Gana la
- * tienda»): esos dos nombran los AGREGADOS del cierre entero, y darles aquí un segundo
- * significado —el de UNA tienda— haría que la misma etiqueta valiera dos cifras distintas en la
- * misma pantalla, que es el defecto que la 393 cerró (R24) y el que esta ficha viene a arreglar.
- * Dentro de la cascada de una tienda el sujeto ya ES esa tienda: el rótulo dice qué se le hace,
- * no a quién.
+ * SLT-172 la mudó aquí desde `DesglosePorTienda.tsx`, que se retiró sin superficie: su único
+ * consumidor vivo es `components/private/cierres/detalle/detalle-cierre-vista.ts`.
  *
- * Elección de redacción del `frontend_dev`.
+ * SLT-174 (R661): recibe `readonly ParteDeTienda[]`, pedido a `lib/types/parte-de-tienda`, un
+ * módulo sin imports. Pedirlo a `lib/utils/ingreso-empresa` metería ese módulo (que importa
+ * `Prisma` como valor) en el árbol del panel del mensajero que vigila `pagos-captura.guardia` (R19).
  */
-export const TIENDA_RECAUDADO_LABEL = "Recaudado de esta tienda";
-export const TIENDA_PAGO_HOY_LABEL = "Se le paga hoy";
-export const TIENDA_GANA_TOTAL_LABEL = "Gana en total";
-
-/**
- * FICHA 396 — la frase que impide leer las dos cifras de pago como un descuadre. Es el par
- * `PAGO_TIENDA_HOY_NOTA` / `GANA_LA_TIENDA_NOTA` de la 395 dicho UNA vez para todo el desglose:
- * repetir las dos notas dentro de cada tienda las convertiría en ruido justo donde hay que
- * leerlas, y con dos tiendas ya serían cuatro párrafos casi iguales.
- */
-export const DESGLOSE_POR_TIENDA_NOTA =
-  "«Se le paga hoy» y «Gana en total» no son la misma cifra: la diferencia es el flete por devolución a origen, que a la tienda se le cobra aparte, contra su saldo.";
-/** D40: la misma identidad en el nuevo: `pagoTienda − ganaLaTienda` es `fleteDevolucionConIva`. */
-export const DESGLOSE_POR_TIENDA_NOTA_MODELO_NUEVO =
-  "«Se le paga hoy» y «Gana en total» no son la misma cifra: la diferencia es el flete de gestiones no entregadas, que a la tienda se le cobra aparte, contra su saldo.";
-
-/**
- * FICHA 396 (R17) — lo que el desglose NO reparte, dicho mientras se enseña el desglose.
- *
- * El pago al mensajero y el ingreso de bodega por rechazos son del cierre ENTERO y se quedan
- * agregados (R16, Q2): repartirlos exigiría inventar un criterio —¿por órdenes? ¿por importe?—
- * que nadie ha firmado, y un número repartido con un criterio inventado miente con precisión,
- * mientras que uno agregado y rotulado sólo calla. Sin esta frase, quien vea unas cifras
- * partidas por tienda y otras no supondría que el reparto está en alguna parte.
- */
-export const DESGLOSE_NO_REPARTIDO_NOTA =
-  "El pago al mensajero y el ingreso de bodega por devoluciones a origen son del cierre completo: no están repartidos entre las tiendas.";
-/** SLT-54 (R71): la misma frase en el modelo nuevo. */
-export const DESGLOSE_NO_REPARTIDO_NOTA_MODELO_NUEVO =
-  "El pago al mensajero y el ingreso de bodega son del cierre completo: no están repartidos entre las tiendas.";
-
-/**
- * FICHA 396 (D2) — EL NOMBRE ACCESIBLE de la cascada de UNA tienda, y tiene que ser ÚNICO.
- *
- * ⚠️ EL NOMBRE DE LA TIENDA NO BASTA, y no es un caso teórico: el servidor agrupa por el
- * `tiendaId` congelado precisamente para que **dos tiendas homónimas no se fundan** (R7, atado
- * con un test contra Postgres real), así que dos cascadas pueden llegar con el MISMO nombre
- * visible y con dinero distinto. Dos regiones con el mismo nombre accesible dejan a quien navega
- * por landmarks sin manera de decir cuál es cuál — y el modal del cierre de BODEGA lo multiplica:
- * el desglose se monta una vez por mensajero incluido MÁS una para el agregado, así que la misma
- * tienda aparece varias veces a propósito.
- *
- * Por eso el nombre lleva DOS discriminantes:
- *  - la POSICIÓN dentro de su nivel («1 de 3»), que separa a dos homónimas del MISMO nivel y de
- *    paso dice cuántas hay. El orden es el que emitió el servidor (R8), no uno del navegador;
- *  - el CONTEXTO —«cierre de bodega», o el nombre del mensajero—, que separa el mismo nombre
- *    repetido en dos niveles del mismo modal.
- *
- * El `indice + 1` se hace AQUÍ, en el módulo de textos, y no en el componente: es el ordinal de
- * una frase, no un importe, y el componente del desglose no hace ni una operación (R14).
- *
- * El nombre VISIBLE de la cascada sigue siendo sólo el de la tienda: esto nombra la región para
- * quien no la ve, no añade texto a la pantalla.
- *
- * Elección de redacción del `frontend_dev`.
- */
-export function nombreAccesibleDeTienda(
-  tiendaNombre: string,
-  indice: number,
-  cuantasTiendas: number,
-  contexto: string,
-): string {
-  return `${tiendaNombre} (${indice + 1} de ${cuantasTiendas}) · ${contexto}`;
+export function marcaDeVariasTiendas(partes: readonly ParteDeTienda[]): string | null {
+  return partes.length >= 2 ? totalDeVariasTiendasNota(partes.length) : null;
 }
 
 // ---------------------------------------------------------------------------

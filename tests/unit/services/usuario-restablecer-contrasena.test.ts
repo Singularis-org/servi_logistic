@@ -42,7 +42,7 @@ function usuario(overrides: Partial<UsuarioPublico> = {}): UsuarioPublico {
     cedula: "1710034065",
     tipoIdentificacionId: "tipo-1",
     rolId: "rol-1",
-    fulfillment: false,
+    seRecogeEnTienda: true,
     createdAt: new Date("2026-01-01"),
     updatedAt: new Date("2026-01-01"),
     ...overrides,
@@ -386,6 +386,49 @@ describe("287/R37/R38 — ni correo, ni aviso, ni nada que dependa de un proveed
     // El numero sigue siendo un literal exacto: relajarlo a `toBeGreaterThan` desarmaria la
     // trampa y dejaria pasar en silencio el sexto parametro, que es lo unico que este caso
     // existe para no dejar pasar.
-    expect(UsuarioService.length).toBe(5);
+    //
+    // SLT-42 (2026-11-04): de CINCO a SEIS, mirado igual. El sexto es `IReglasPaisEmpresa`, tampoco
+    // un emisor: solo LEE el pais de la empresa (zona, telefono, tipos de documento) para validar el
+    // alta y la edicion; `restablecerContrasena` no lo usa.
+    //
+    // SLT-221 (design §3.4, tarea T2.4, 2026-11-20): de SEIS a SIETE. El septimo es
+    // `correoDeCambio`, y ESTE SI lleva un emisor (`sender: IEmailSender`): manda la confirmacion
+    // de un CAMBIO DE CORREO que pide el maestro, que es otro flujo. R37 no prohibe emisores en el
+    // constructor; prohibe que el RESTABLECIMIENTO avise al usuario. Por eso el numero no basta y
+    // el caso de abajo prueba esa intencion directamente: con el emisor inyectado,
+    // `restablecerContrasena` no lo toca.
+    expect(UsuarioService.length).toBe(7);
+  });
+
+  it("R37: con `correoDeCambio` inyectado (SLT-221), el restablecimiento no lo toca", async () => {
+    // Todo acceso al colaborador queda anotado: leer `sender`, `repo`, `baseUrl` o cualquier
+    // otra propiedad. Un Proxy y no espias sueltos, para que tambien cuente una lectura que no
+    // termine en llamada (p. ej. armar el enlace con `baseUrl` antes de enviar).
+    const tocados: PropertyKey[] = [];
+    const enviar = vi.fn().mockResolvedValue({ ok: true });
+    const correoDeCambio = new Proxy(
+      { repo: {}, sender: { enviar }, baseUrl: "https://ejemplo.invalid", contacto: null, ttlHoras: 24 },
+      {
+        get(objetivo, prop, receptor) {
+          tocados.push(prop);
+          return Reflect.get(objetivo, prop, receptor);
+        },
+      },
+    );
+    const service = new UsuarioService(
+      repoUsuarios(),
+      undefined,
+      undefined,
+      revocador(),
+      undefined,
+      undefined,
+      correoDeCambio as never,
+    );
+
+    const r = await service.restablecerContrasena(OBJETIVO_ID, MAESTRO);
+
+    expect(r.status).toBe("ok");
+    expect(enviar).not.toHaveBeenCalled();
+    expect(tocados, "R37: el restablecimiento no debe usar el emisor del cambio de correo").toEqual([]);
   });
 });

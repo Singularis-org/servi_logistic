@@ -1,5 +1,6 @@
 // Feature 15 — Tipos y validacion de fila de la carga masiva (R18, R22, R23, R30).
 import { z } from "zod";
+import { MENSAJE_OBLIGATORIO } from "@/lib/validacion/zod-es";
 import { normalizarMontoCobrar, type MontoAjustado } from "@/lib/utils/monto-cobrar";
 
 export type RowResultado = "creada" | "duplicada" | "error";
@@ -128,9 +129,13 @@ export function findMissingHeaders(headers: string[], columnasGeo?: readonly str
   return cabecerasObligatorias(columnasGeo).filter((h) => !present.has(h));
 }
 
+// SLT-208: la clave AUSENTE lleva su mensaje en el propio schema. Antes salía del `localeError` global
+// que instala `instrumentation.ts`; en el build de CI (`next start` en Linux) ese mapa no alcanzaba a
+// esta ruta y el integrador recibía el texto de zod en inglés («Invalid input: expected string,
+// received undefined»). El mensaje de la clave VACÍA (`<campo> es obligatorio`) no cambia.
 function requiredNonEmpty(label: string) {
   return z
-    .string()
+    .string({ error: (iss) => (iss.input === undefined ? MENSAJE_OBLIGATORIO : undefined) })
     .trim()
     .min(1, `${label} es obligatorio`);
 }

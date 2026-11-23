@@ -12,6 +12,7 @@ import type {
   OrdenAsignabilidadRow,
 } from "@/lib/interfaces/services/IAsignabilidadCoordenadasService";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // Feature 92 (R8) — el gate de asignabilidad en el TERCER writer de
 // `mensajero_asignado_id`: `AsignacionSateliteService.asignar` (rol adminSatelite).
@@ -84,6 +85,7 @@ describe("R8 — AsignacionSateliteService.asignar", () => {
       repo as unknown as IOrdenRepository,
       gate({ o1: estado }),
       fakeIntentosEnLote() /* 276: la puerta del tope; 0 intentos = no interfiere */,
+      reglasPaisFijas(),
     );
 
     const r = await service.asignar({ ordenIds: ["o1", "o2"], mensajeroId: "m1" }, ADMIN_SATELITE);
@@ -111,6 +113,7 @@ describe("R8 — AsignacionSateliteService.asignar", () => {
       repo as unknown as IOrdenRepository,
       gate({ o1: "geocodificacion_agotada", o2: "direccion_no_geocodificable" }),
       fakeIntentosEnLote() /* 276: la puerta del tope; 0 intentos = no interfiere */,
+      reglasPaisFijas(),
     );
 
     const r = await service.asignar({ ordenIds: ["o1", "o2"], mensajeroId: "m1" }, ADMIN_SATELITE);
@@ -155,6 +158,7 @@ describe("R8 — AsignacionSateliteService.asignar", () => {
       repo as unknown as IOrdenRepository,
       gate({ o1: "geocodificacion_agotada" }),
       fakeIntentosEnLote() /* 276: la puerta del tope; 0 intentos = no interfiere */,
+      reglasPaisFijas(),
     );
 
     const r = await service.asignar(
@@ -182,7 +186,7 @@ describe("R8 — AsignacionSateliteService.asignar", () => {
 
   it("todas asignables -> asigna con normalidad", async () => {
     const repo = fakeRepo();
-    const service = new AsignacionSateliteService(repo as unknown as IOrdenRepository, gate(), fakeIntentosEnLote() /* 276: la puerta del tope; 0 intentos = no interfiere */);
+    const service = new AsignacionSateliteService(repo as unknown as IOrdenRepository, gate(), fakeIntentosEnLote() /* 276: la puerta del tope; 0 intentos = no interfiere */, reglasPaisFijas());
 
     const r = await service.asignar({ ordenIds: ["o1", "o2"], mensajeroId: "m1" }, ADMIN_SATELITE);
 
@@ -197,7 +201,7 @@ describe("R8 — AsignacionSateliteService.asignar", () => {
       findByIdsForTransicion: vi.fn(async () => [ordenRow({ id: "o1", zonaId: "z-otra" })]),
     });
     const g = gate({ o1: "geocodificacion_agotada" });
-    const service = new AsignacionSateliteService(repo as unknown as IOrdenRepository, g, fakeIntentosEnLote() /* 276: la puerta del tope; 0 intentos = no interfiere */);
+    const service = new AsignacionSateliteService(repo as unknown as IOrdenRepository, g, fakeIntentosEnLote() /* 276: la puerta del tope; 0 intentos = no interfiere */, reglasPaisFijas());
 
     const r = await service.asignar({ ordenIds: ["o1"], mensajeroId: "m1" }, ADMIN_SATELITE);
 
@@ -211,7 +215,7 @@ describe("R8 — AsignacionSateliteService.asignar", () => {
   it("rol no autorizado -> forbidden sin llegar al gate", async () => {
     const repo = fakeRepo();
     const g = gate();
-    const service = new AsignacionSateliteService(repo as unknown as IOrdenRepository, g, fakeIntentosEnLote() /* 276: la puerta del tope; 0 intentos = no interfiere */);
+    const service = new AsignacionSateliteService(repo as unknown as IOrdenRepository, g, fakeIntentosEnLote() /* 276: la puerta del tope; 0 intentos = no interfiere */, reglasPaisFijas());
 
     const r = await service.asignar(
       { ordenIds: ["o1"], mensajeroId: "m1" },
@@ -247,6 +251,7 @@ describe("400/R6-R7, R31-R33, R35 — AsignacionSateliteService con ordenes `asi
       repo as unknown as IOrdenRepository,
       gate({ o1: "asignable_sin_ubicacion" }),
       fakeIntentosEnLote(),
+      reglasPaisFijas(),
     );
 
     const r = await service.asignar(
@@ -287,6 +292,7 @@ describe("400/R6-R7, R31-R33, R35 — AsignacionSateliteService con ordenes `asi
       repo as unknown as IOrdenRepository,
       gate({ o1: "asignable_sin_ubicacion", o2: "asignable_sin_ubicacion" }),
       fakeIntentosEnLote(),
+      reglasPaisFijas(),
     );
 
     const r = await service.asignar(
@@ -307,6 +313,7 @@ describe("400/R6-R7, R31-R33, R35 — AsignacionSateliteService con ordenes `asi
       repo as unknown as IOrdenRepository,
       gate({ o1: "asignable_sin_ubicacion", o3: "asignable_sin_ubicacion" }),
       fakeIntentosEnLote(),
+      reglasPaisFijas(),
     );
 
     const r = await service.asignar(
@@ -325,6 +332,7 @@ describe("400/R6-R7, R31-R33, R35 — AsignacionSateliteService con ordenes `asi
       repo as unknown as IOrdenRepository,
       gate({ o1: "asignable_sin_ubicacion", o2: "direccion_no_geocodificable" }),
       fakeIntentosEnLote(),
+      reglasPaisFijas(),
     );
 
     const r = await service.asignar(
@@ -345,6 +353,7 @@ describe("400/R6-R7, R31-R33, R35 — AsignacionSateliteService con ordenes `asi
       repo as unknown as IOrdenRepository,
       gate({ o1: "asignable_sin_ubicacion", o3: "asignable_sin_ubicacion" }),
       fakeIntentosEnLote(),
+      reglasPaisFijas(),
     );
 
     const r = await service.asignar(
@@ -364,6 +373,7 @@ describe("400/R6-R7, R31-R33, R35 — AsignacionSateliteService con ordenes `asi
       repo as unknown as IOrdenRepository,
       gate(),
       fakeIntentosEnLote(),
+      reglasPaisFijas(),
     );
 
     const r = await service.asignar(
@@ -388,6 +398,7 @@ describe("400/R6-R7, R31-R33, R35 — AsignacionSateliteService con ordenes `asi
       repo as unknown as IOrdenRepository,
       gate({ o1: "asignable_sin_ubicacion", o2: "geocodificacion_agotada" }),
       fakeIntentosEnLote(),
+      reglasPaisFijas(),
     );
 
     const r = await service.asignar(
@@ -416,6 +427,7 @@ describe("400/R6-R7, R31-R33, R35 — AsignacionSateliteService con ordenes `asi
         o3: "geocodificacion_en_curso",
       }),
       fakeIntentosEnLote(),
+      reglasPaisFijas(),
     );
 
     const r = await service.asignar(
@@ -485,6 +497,7 @@ describe("407/R1, R6-R8, R10-R11 — AsignacionSateliteService.asignar con la ma
       repo as unknown as IOrdenRepository,
       gateConMarca({ o1: "direccion_no_geocodificable" }),
       fakeIntentosEnLote(),
+      reglasPaisFijas(),
     );
 
     const r = await service.asignar(
@@ -515,6 +528,7 @@ describe("407/R1, R6-R8, R10-R11 — AsignacionSateliteService.asignar con la ma
       repo as unknown as IOrdenRepository,
       new AsignabilidadCoordenadasService(colaVacia()),
       fakeIntentosEnLote(),
+      reglasPaisFijas(),
     );
 
     const conMarca = await service.asignar(
@@ -532,6 +546,7 @@ describe("407/R1, R6-R8, R10-R11 — AsignacionSateliteService.asignar con la ma
       repo3({ findParaAsignabilidad: filasDeProduccion() }) as unknown as IOrdenRepository,
       new AsignabilidadCoordenadasService(colaVacia()),
       fakeIntentosEnLote(),
+      reglasPaisFijas(),
     ).asignar({ ordenIds: ["o1", "o2", "o3"], mensajeroId: "m1" }, ADMIN_SATELITE);
 
     expect(sinMarca.status).toBe("partial");
@@ -547,6 +562,7 @@ describe("407/R1, R6-R8, R10-R11 — AsignacionSateliteService.asignar con la ma
       repo as unknown as IOrdenRepository,
       gateConMarca({ o1: "direccion_no_geocodificable", o2: "geocodificacion_en_curso" }),
       fakeIntentosEnLote(),
+      reglasPaisFijas(),
     );
 
     const r = await service.asignar(
@@ -576,6 +592,7 @@ describe("407/R1, R6-R8, R10-R11 — AsignacionSateliteService.asignar con la ma
       repo as unknown as IOrdenRepository,
       gateConMarca({ o2: "geocodificacion_en_curso" }),
       fakeIntentosEnLote(),
+      reglasPaisFijas(),
     );
 
     const r = await service.asignar(
@@ -595,6 +612,7 @@ describe("407/R1, R6-R8, R10-R11 — AsignacionSateliteService.asignar con la ma
       repo as unknown as IOrdenRepository,
       gateConMarca({ o1: "direccion_no_geocodificable" }),
       fakeIntentosEnLote(),
+      reglasPaisFijas(),
     );
 
     const r = await service.asignar(
@@ -627,6 +645,7 @@ describe("407/R1, R6-R8, R10-R11 — AsignacionSateliteService.asignar con la ma
       repo as unknown as IOrdenRepository,
       gateConMarca({ o1: "asignable_sin_ubicacion", o2: "direccion_no_geocodificable" }),
       fakeIntentosEnLote(),
+      reglasPaisFijas(),
     );
 
     const r = await service.asignar(
@@ -648,6 +667,7 @@ describe("407/R1, R6-R8, R10-R11 — AsignacionSateliteService.asignar con la ma
       repo as unknown as IOrdenRepository,
       gateConMarca(),
       fakeIntentosEnLote(),
+      reglasPaisFijas(),
     );
 
     const r = await service.asignar(
@@ -676,6 +696,7 @@ describe("407/R1, R6-R8, R10-R11 — AsignacionSateliteService.asignar con la ma
         o3: "geocodificacion_encolada",
       }),
       fakeIntentosEnLote(),
+      reglasPaisFijas(),
     );
 
     const r = await service.asignar(
@@ -707,6 +728,7 @@ describe("407/R6-R7 — en el satelite, la marca tampoco desactiva ninguna otra 
       repo as unknown as IOrdenRepository,
       g,
       fakeIntentosEnLote(),
+      reglasPaisFijas(),
     );
 
     const r = await service.asignar(CON_MARCA, { usuarioId: "u", rol: "maestro" });
@@ -723,6 +745,7 @@ describe("407/R6-R7 — en el satelite, la marca tampoco desactiva ninguna otra 
       repo as unknown as IOrdenRepository,
       g,
       fakeIntentosEnLote(),
+      reglasPaisFijas(),
     );
 
     const r = await service.asignar(CON_MARCA, ADMIN_SATELITE);
@@ -745,6 +768,7 @@ describe("407/R6-R7 — en el satelite, la marca tampoco desactiva ninguna otra 
       repo as unknown as IOrdenRepository,
       g,
       fakeIntentosEnLote(),
+      reglasPaisFijas(),
     );
 
     const r = await service.asignar(CON_MARCA, ADMIN_SATELITE);
@@ -766,6 +790,7 @@ describe("407/R6-R7 — en el satelite, la marca tampoco desactiva ninguna otra 
       repo as unknown as IOrdenRepository,
       g,
       fakeIntentosEnLote(),
+      reglasPaisFijas(),
     );
 
     const r = await service.asignar(CON_MARCA, ADMIN_SATELITE);
@@ -785,6 +810,7 @@ describe("407/R6-R7 — en el satelite, la marca tampoco desactiva ninguna otra 
       g,
       // 276: el umbral por defecto es 3 intentos vigentes.
       fakeIntentosEnLote({ o1: 3 }),
+      reglasPaisFijas(),
     );
 
     const r = await service.asignar(CON_MARCA, ADMIN_SATELITE);

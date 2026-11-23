@@ -19,7 +19,11 @@ import { jsPDF } from "jspdf";
 import { EMPRESA } from "@/lib/config/marca";
 import { fuenteEtiqueta } from "@/lib/pdf/etiquetas-fuente";
 import { cubreCodePoint, registrarFuente } from "@/lib/pdf/etiquetas-fuente-registro";
-import { fechaCortaCR, fechaLargaCR, horaCRLegible } from "@/lib/whatsapp-envios/informes/formato";
+import {
+  fechaCortaEnZona,
+  fechaLargaEnZona,
+  horaLegibleEnZona,
+} from "@/lib/whatsapp-envios/informes/formato";
 import type { GrupoPicking, ModeloPicking } from "@/lib/whatsapp-envios/informes/picking/modelo";
 
 export type FuentePdf = "embebida" | "helvetica" | "helvetica-bold";
@@ -115,7 +119,7 @@ export const ROTULOS_HELVETICA = {
   // SL-15 (R8): sin el nombre de la empresa; su membrete, si lo hay, va delante (`encabezado`).
   marca: "Picking",
   subtitulo: "Lo que está En preparación, agrupado por producto",
-  horaSufijo: " · hora de Costa Rica",
+  horaSufijo: " · hora local",
   cifraOrdenes: "ÓRDENES",
   cifraUnidades: "UNIDADES",
   cabeceraProducto: "Producto",
@@ -286,8 +290,8 @@ function encabezado(m: Maquetador, modelo: ModeloPicking, tienda: string, membre
   }
   m.texto("subtitulo", ROTULOS_HELVETICA.subtitulo, MARGEN, y - 1, 8, "helvetica", GRIS);
   const derecha = ANCHO - MARGEN;
-  m.texto("fecha", fechaLargaCR(modelo.ahora), derecha, 18, 10, "helvetica-bold", TINTA, true);
-  m.texto("hora", `${horaCRLegible(modelo.ahora)}${ROTULOS_HELVETICA.horaSufijo}`, derecha, 23, 8, "helvetica", GRIS, true);
+  m.texto("fecha", fechaLargaEnZona(modelo.ahora, modelo.zona), derecha, 18, 10, "helvetica-bold", TINTA, true);
+  m.texto("hora", `${horaLegibleEnZona(modelo.ahora, modelo.zona)}${ROTULOS_HELVETICA.horaSufijo}`, derecha, 23, 8, "helvetica", GRIS, true);
   m.texto("cifra-titulo", ROTULOS_HELVETICA.cifraOrdenes, derecha - 28, 30, 7, "helvetica", GRIS, true);
   m.texto("cifra-ordenes", String(modelo.totales.ordenes), derecha - 28, 37, 16, "helvetica-bold", TINTA, true);
   m.texto("cifra-titulo", ROTULOS_HELVETICA.cifraUnidades, derecha, 30, 7, "helvetica", GRIS, true);
@@ -517,7 +521,7 @@ export function maquetarPicking(modelo: ModeloPicking, medir: MedirTexto): Maque
     m,
     "nota",
     "Ordenado de más a menos unidades. «×2» = esa remisión lleva dos unidades del producto. " +
-      `Es la foto de las ${horaCRLegible(modelo.ahora)}: lo que entre después sale en el siguiente envío.`,
+      `Es la foto de las ${horaLegibleEnZona(modelo.ahora, modelo.zona)}: lo que entre después sale en el siguiente envío.`,
     "helvetica",
     GRIS,
   );
@@ -526,7 +530,7 @@ export function maquetarPicking(modelo: ModeloPicking, medir: MedirTexto): Maque
   // R21 — pie en CADA pagina, en una segunda pasada: el total de paginas ya se conoce.
   const total = m.paginas.length;
   const prefijo = membrete === null ? "" : `${membrete} · `;
-  const sello = `${prefijo}${ROTULOS_HELVETICA.marca} ${tienda} · ${fechaCortaCR(modelo.ahora)} ${horaCRLegible(modelo.ahora)}`;
+  const sello = `${prefijo}${ROTULOS_HELVETICA.marca} ${tienda} · ${fechaCortaEnZona(modelo.ahora, modelo.zona)} ${horaLegibleEnZona(modelo.ahora, modelo.zona)}`;
   m.paginas.forEach((ops, i) => {
     const pagina = `${ROTULOS_HELVETICA.pagina} ${i + 1} de ${total}`;
     // El sello se recorta al hueco que deja «Página X de Y», que se ve SIEMPRE entero (m2).

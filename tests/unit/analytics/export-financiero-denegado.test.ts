@@ -15,6 +15,7 @@ import {
 } from "@/app/(app)/analitica/_components/export-financiero/ExportarVistaFinanciera";
 import { FILTRO_FINANCIERO_POR_DEFECTO } from "@/app/(app)/analitica/_components/financiero/rango";
 
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 // Feature 184 — analitica financiera: export de la serie (T4.3, BLINDADO). R6, R7, R8 y R9.
 //
 // ⚠ AVISO DE NUMERACION: «184» en los comentarios de este arbol suele referirse a la ficha
@@ -100,7 +101,7 @@ describe("Feature 184 — analitica financiera: export de la serie (R6) · el de
     const { resultado } = await prepararExportFinanciero(
       METRICA_DE_DINERO,
       METRICA_DE_DINERO,
-      bordeReal({
+      bordeReal({ reglasPais: reglasPaisFijas(),
         getActor: async () => TIENDA,
         logger: espia.logger,
         service: SERVICIO_QUE_NO_DEBE_LLAMARSE,
@@ -130,7 +131,7 @@ describe("Feature 184 — analitica financiera: export de la serie (R7) · el in
     const { resultado } = await prepararExportFinanciero(
       METRICA_DE_DINERO,
       METRICA_DE_DINERO,
-      bordeReal({
+      bordeReal({ reglasPais: reglasPaisFijas(),
         getActor: async () => TIENDA,
         logger: espia.logger,
         service: SERVICIO_QUE_NO_DEBE_LLAMARSE,
@@ -179,7 +180,7 @@ describe("Feature 184 — analitica financiera: export de la serie (R7) · el in
     await prepararExportFinanciero(
       METRICA_DE_DINERO,
       METRICA_DE_DINERO,
-      bordeReal({ getActor: async () => MAESTRO, logger: espia.logger, service: servicio }),
+      bordeReal({ reglasPais: reglasPaisFijas(), getActor: async () => MAESTRO, logger: espia.logger, service: servicio }),
     );
 
     expect(espia.secuencia).toEqual([]);
@@ -194,7 +195,7 @@ describe("Feature 184 — analitica financiera: export de la serie (R8) · un fi
       METRICA_DE_DINERO,
       METRICA_DE_DINERO,
       bordeReal(
-        {
+        { reglasPais: reglasPaisFijas(),
           getActor: async () => MAESTRO,
           logger: espia.logger,
           service: SERVICIO_QUE_NO_DEBE_LLAMARSE,
@@ -225,7 +226,7 @@ describe("Feature 184 — analitica financiera: export de la serie (R9) · el er
     const { resultado } = await prepararExportFinanciero(
       METRICA_DE_DINERO,
       METRICA_DE_DINERO,
-      bordeReal({
+      bordeReal({ reglasPais: reglasPaisFijas(),
         getActor: async () => MAESTRO,
         logger: espia.logger,
         service: SERVICIO_DOMINIO_INVALIDO,
@@ -240,7 +241,7 @@ describe("Feature 184 — analitica financiera: export de la serie (R9) · el er
     const delBorde = await consultarMetricaFinanciera(
       METRICA_DE_DINERO,
       FILTRO_FINANCIERO_POR_DEFECTO,
-      {
+      { reglasPais: reglasPaisFijas(),
         now: AHORA,
         getActor: async () => MAESTRO,
         logger: espia.logger,

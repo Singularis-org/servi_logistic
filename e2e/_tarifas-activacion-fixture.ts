@@ -1,5 +1,6 @@
 import { expect, type Locator, type Page } from "@playwright/test";
 
+import { abrirCon } from "./_escenarios/pulsar";
 import { baseReparto } from "./_escenarios/reparto";
 
 /**
@@ -19,7 +20,7 @@ export async function abrirTarifas(page: Page): Promise<void> {
 
 export async function irAZona(page: Page, zona: string): Promise<void> {
   const fila = zonasDe(page).getByRole("button", { name: new RegExp(zona) });
-  await fila.click();
+  await abrirCon(fila, zonasDe(page).locator('[aria-current="true"]').filter({ hasText: zona }));
   await expect(fila).toHaveAttribute("aria-current", "true");
   await expect(panelDe(page).getByRole("heading", { name: zona })).toBeVisible();
   await expect(page.getByTestId("tarifas-esqueleto")).toHaveCount(0);
@@ -29,8 +30,7 @@ export type Pestana = "Cobro a la tienda" | "Pago al mensajero" | "Pago a la sat
 
 export async function irAPestana(page: Page, pestana: Pestana): Promise<void> {
   const tab = panelDe(page).getByRole("tab", { name: pestana });
-  await tab.click();
-  await expect(tab).toHaveAttribute("aria-selected", "true");
+  await abrirCon(tab, panelDe(page).getByRole("tab", { name: pestana, selected: true }));
 }
 
 /** Un `Select` de Base UI: la lista vive en un portal, fuera del panel. */
@@ -85,8 +85,8 @@ export async function digitarYGuardar(
 
 /** Pulsa «Activar tarifas nuevas» y confirma con faltantes. Devuelve el diálogo ya cerrado. */
 export async function activarConFaltantes(page: Page): Promise<void> {
-  await page.getByRole("button", { name: "Activar tarifas nuevas", exact: true }).click();
   const dialogo = page.getByRole("dialog", { name: "Activar tarifas nuevas" });
+  await abrirCon(page.getByRole("button", { name: "Activar tarifas nuevas", exact: true }), dialogo);
   const activar = dialogo.getByRole("button", { name: "Activar con lo que falta", exact: true });
   await expect(activar).toBeDisabled();
   await dialogo.getByRole("checkbox", { name: "Entiendo que lo que falta quedará en 0 en cobros y pagos." }).click();
@@ -94,6 +94,70 @@ export async function activarConFaltantes(page: Page): Promise<void> {
   await activar.click();
   await expect(dialogo).toHaveCount(0);
   await expect(page.getByText(/^En vigor desde el \d{2}-\d{2}-\d{4}$/)).toBeVisible();
+}
+
+/** SLT-55: la sección de valor propio de la pantalla de Tarifas. */
+export const mensajerosDe = (page: Page): Locator => page.getByRole("region", { name: "Mensajeros con valor propio" });
+
+export interface ValorPropioDigitado {
+  concepto: string;
+  valor: string;
+  /** Sin él, el modo que ya tenga la fila. */
+  modo?: "Monto" | "%";
+}
+
+/**
+ * Digita en el diálogo abierto, con su `Select` de modo DENTRO del `Modal`, y guarda. Vuelve con el diálogo
+ * cerrado y la sección ya con lo guardado (`router.refresh()` llega después del cierre).
+ */
+async function digitarEnDialogo(
+  page: Page,
+  dialogo: Locator,
+  filas: readonly ValorPropioDigitado[],
+  guardar: "Guardar borrador" | "Guardar cambios",
+): Promise<void> {
+  for (const f of filas) {
+    if (f.modo !== undefined) {
+      const opcion = page.getByRole("option", { name: f.modo === "%" ? /^%$/ : /^Monto/ });
+      await abrirCon(dialogo.getByRole("combobox", { name: `Modo de ${f.concepto}`, exact: true }), opcion);
+      await opcion.click();
+      await expect(page.getByRole("listbox")).toHaveCount(0);
+    }
+    await dialogo.getByRole("textbox", { name: `Valor de ${f.concepto}`, exact: true }).fill(f.valor);
+  }
+  const boton = dialogo.getByRole("button", { name: guardar, exact: true });
+  await expect(boton).toBeEnabled();
+  await boton.click();
+  await expect(dialogo).toHaveCount(0);
+}
+
+/** Añade por la sección un mensajero con su valor propio, eligiéndolo en el selector del diálogo. */
+export async function digitarValorPropio(
+  page: Page,
+  mensajero: { nombre: string },
+  filas: readonly ValorPropioDigitado[],
+  guardar: "Guardar borrador" | "Guardar cambios" = "Guardar borrador",
+): Promise<void> {
+  const dialogo = page.getByRole("dialog", { name: "Añadir mensajero con valor propio" });
+  await abrirCon(mensajerosDe(page).getByRole("button", { name: "Añadir mensajero", exact: true }), dialogo);
+  const opcion = page.getByRole("option", { name: mensajero.nombre, exact: true });
+  await abrirCon(dialogo.getByRole("combobox", { name: "Mensajero", exact: true }), opcion);
+  await opcion.click();
+  await expect(page.getByRole("listbox")).toHaveCount(0);
+  await digitarEnDialogo(page, dialogo, filas, guardar);
+  await expect(mensajerosDe(page).getByRole("row").filter({ hasText: mensajero.nombre })).toHaveCount(1);
+}
+
+/** Cambia por la sección el valor propio de un mensajero que ya lo tiene. */
+export async function editarValorPropio(
+  page: Page,
+  mensajero: { nombre: string },
+  filas: readonly ValorPropioDigitado[],
+  guardar: "Guardar borrador" | "Guardar cambios" = "Guardar cambios",
+): Promise<void> {
+  const dialogo = page.getByRole("dialog", { name: `Valor propio de ${mensajero.nombre}` });
+  await abrirCon(mensajerosDe(page).getByRole("button", { name: `Editar valor propio de ${mensajero.nombre}`, exact: true }), dialogo);
+  await digitarEnDialogo(page, dialogo, filas, guardar);
 }
 
 /**
@@ -152,7 +216,11 @@ export async function congeladoDelCierre(cierreId: string) {
       resultado: true,
       pagoMensajero: true,
       ingresoBodegaRechazo: true,
-      pagosCongelados: { orderBy: { actor: "asc" }, select: { actor: true, concepto: true, valor: true, importe: true } },
+      // Sin `tarifaValorId`: quitar el valor lo pone en NULL a propósito (SLT-52 R9), y lo que no debe moverse es el dinero.
+      pagosCongelados: {
+        orderBy: { actor: "asc" },
+        select: { actor: true, concepto: true, modo: true, valor: true, nivel: true, base: true, importe: true },
+      },
     },
   });
   return JSON.parse(JSON.stringify({ ...cierre, gestiones })) as {
@@ -172,9 +240,39 @@ export async function congeladoDelCierre(cierreId: string) {
       resultado: string;
       pagoMensajero: string | null;
       ingresoBodegaRechazo: string | null;
-      pagosCongelados: { actor: string; concepto: string; valor: string; importe: string }[];
+      pagosCongelados: {
+        actor: string;
+        concepto: string;
+        modo: string;
+        valor: string;
+        nivel: string;
+        base: string | null;
+        importe: string;
+      }[];
     }[];
   };
+}
+
+/**
+ * SLT-55 R24: lo que la aprobación de un cierre dejó en las tres wallets, en texto y ordenado, para compararlo tal
+ * cual antes y después de cambiar un valor.
+ */
+export async function movimientosDelCierre(cierreId: string): Promise<string[]> {
+  const db = baseReparto();
+  const donde = { origenTipo: "cierre_dia", origenId: cierreId } as const;
+  const seleccion = { tipo: true, categoria: true, monto: true } as const;
+  const [mensajero, empresa, tienda] = await Promise.all([
+    db.pagoMensajeroMovimiento.findMany({ where: donde, select: seleccion }),
+    db.walletMovimiento.findMany({ where: donde, select: seleccion }),
+    db.walletTiendaMovimiento.findMany({ where: donde, select: seleccion }),
+  ]);
+  const texto = (libro: string, m: { tipo: string; categoria: string; monto: { toString(): string } }): string =>
+    `${libro}:${m.tipo}:${m.categoria}=${m.monto.toString()}`;
+  return [
+    ...mensajero.map((m) => texto("mensajero", m)),
+    ...empresa.map((m) => texto("empresa", m)),
+    ...tienda.map((m) => texto("tienda", m)),
+  ].sort();
 }
 
 /** Cuántas activaciones tiene la empresa, por detrás. Una es activada; ninguna, no. */

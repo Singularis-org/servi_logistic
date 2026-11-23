@@ -1,3 +1,4 @@
+import { PLATAFORMA_ANULO } from "@/components/shared/wallet/detalle-movimiento-panel-labels";
 import { esAccesoTotal } from "@/lib/auth/acceso-total";
 import type {
   AnulacionDeDocumento,
@@ -7,8 +8,9 @@ import type {
 } from "@/lib/interfaces/repositories/ILibroCajaAutoriaRepository";
 import { tipoDeDocumentoOriginal } from "@/lib/services/WalletService";
 import type { AnulacionDeFilaDTO } from "@/lib/types/estado-cuenta";
-import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
-import { horaCostaRica } from "@/lib/utils/hora-cr";
+import { fechaCalendario, horaDePared } from "@/lib/utils/calendario-zona";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
+import { zonaDeLaEmpresa } from "@/lib/services/zona-de-la-empresa";
 import { movimientoDeLaAnotacion } from "@/lib/utils/anotacion-de-fila";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { RegistroDTO } from "@/lib/types/estado-cuenta";
@@ -23,6 +25,14 @@ import type {
   AutoriaLibroCajaServiceResult,
   ILibroCajaAutoriaService,
 } from "@/lib/interfaces/services/ILibroCajaAutoriaService";
+
+/**
+ * SLT-143: el contra-asiento de la anulación de un egreso con origen `gasto` (el único con que se anula un pago
+ * a la plataforma, 458-B): `ingreso_ajuste` con el egreso original en `origen_id`.
+ */
+function esContraAsientoDeEgreso(m: MovimientoDeCajaParaAutoria): m is MovimientoDeCajaParaAutoria & { origenId: string } {
+  return m.categoria === "ingreso_ajuste" && m.origenTipo === "gasto" && m.origenId !== null;
+}
 
 const NADIE: AQuienDTO = { nombre: null, beneficiario: null, cuenta: null, esEmpresa: false };
 
@@ -53,12 +63,22 @@ function aCuenta(c: CuentaNombrada | undefined): AQuienDTO {
  * El texto lo compone la pantalla con sus rotulos: aqui solo hay datos.
  */
 export class LibroCajaAutoriaService implements ILibroCajaAutoriaService {
-  constructor(private readonly repo: ILibroCajaAutoriaRepository) {}
+  constructor(
+    private readonly repo: ILibroCajaAutoriaRepository,
+    /** SLT-42 (R22, R28): la zona del pais de la empresa, para el dia y la hora de cada fila. */
+    private readonly reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">,
+  ) {}
 
   async resolver(input: AutoriaLibroCajaInput, actor: Actor): Promise<AutoriaLibroCajaServiceResult> {
     if (!esAccesoTotal(actor.rol)) return { status: "forbidden" }; // R82: antes de leer
 
     const movs = await this.repo.movimientos(input.movimientoIds);
+    // SLT-42 (R22, R28): el dia y la hora de cada fila, en la zona del pais; sin filas no se lee.
+    const zona = movs.length === 0 ? null : await zonaDeLaEmpresa(this.reglasPais, "LibroCajaAutoriaService.resolver");
+    const diaYHora = (instante: Date) => ({
+      fecha: fechaCalendario(instante, zona as string),
+      hora: horaDePared(instante, zona as string),
+    });
     const ids = (origen: string) => [
       ...new Set(movs.flatMap((m) => (m.origenTipo === origen && m.origenId !== null ? [m.origenId] : []))),
     ];
@@ -78,6 +98,15 @@ export class LibroCajaAutoriaService implements ILibroCajaAutoriaService {
     // de su ORIGINAL (la misma regla que el filtro «A quién»).
     const anotaciones = await this.repo.anotaciones([
       ...new Set(movs.filter((m) => m.origenTipo === "gasto" || m.origenTipo === "manual").map(movimientoDeLaAnotacion)),
+    ]);
+    // SLT-143 (design §5, §5.1; R13, R36): los pagos a la plataforma de la página y los que anulan los
+    // contra-asientos (su `origen_id`). Sin ninguno, no se lee.
+    const marcas = await this.repo.marcasDeLaPlataforma([
+      ...new Set(
+        movs.flatMap((m) =>
+          m.categoria === "egreso_pago_plataforma" ? [m.id] : esContraAsientoDeEgreso(m) ? [m.origenId] : [],
+        ),
+      ),
     ]);
 
     const aQuien = (m: MovimientoDeCajaParaAutoria): AQuienDTO => {
@@ -117,6 +146,13 @@ export class LibroCajaAutoriaService implements ILibroCajaAutoriaService {
     };
 
     const registro = (m: MovimientoDeCajaParaAutoria): RegistroDTO => {
+      // SLT-143 (R13, R36): antes de mirar `registradoPor`, que es el superadmin: ni su nombre ni su id salen.
+      if (m.categoria === "egreso_pago_plataforma" && marcas.registrados.has(m.id)) {
+        return { nombre: null, automatico: { accion: "plataforma", por: null } };
+      }
+      if (esContraAsientoDeEgreso(m) && marcas.anulados.has(m.origenId)) {
+        return { nombre: null, automatico: { accion: "plataforma_anulacion", por: null } };
+      }
       if (m.registradoPor !== null) return { nombre: nombres.get(m.registradoPor) ?? null, automatico: null };
       const o = m.origenId;
       switch (m.origenTipo) {
@@ -220,17 +256,16 @@ export class LibroCajaAutoriaService implements ILibroCajaAutoriaService {
           a = o === null ? undefined : anulaciones.incentivos.get(o);
           break;
       }
-      return a === undefined
-        ? null
-        : { motivo: a.motivo, por: a.por, fecha: fechaCalendarioCR(a.fecha), hora: horaCostaRica(a.fecha.toISOString()) };
+      if (a === undefined) return null;
+      // SLT-143 (R36): la constancia lleva al superadmin; la empresa ve «la plataforma». Una anulación de la
+      // empresa (SL-45) no está en `anulados` y conserva el nombre.
+      const por = m.categoria === "egreso_pago_plataforma" && marcas.anulados.has(m.id) ? PLATAFORMA_ANULO : a.por;
+      return { motivo: a.motivo, por, ...diaYHora(a.fecha) };
     };
 
-    // Ficha 458-E (revision B1, R58): CUANDO se registro — el `created_at` de la fila en dia y hora de
-    // Costa Rica, no la fecha del movimiento (que la pantalla ya pinta aparte).
-    const registradoEl = (m: MovimientoDeCajaParaAutoria): RegistradoElDTO => ({
-      fecha: fechaCalendarioCR(m.createdAt),
-      hora: horaCostaRica(m.createdAt.toISOString()),
-    });
+    // Ficha 458-E (revision B1, R58): CUANDO se registro — el `created_at` de la fila en dia y hora del
+    // pais de la empresa (SLT-42), no la fecha del movimiento (que la pantalla ya pinta aparte).
+    const registradoEl = (m: MovimientoDeCajaParaAutoria): RegistradoElDTO => diaYHora(m.createdAt);
 
     const porId = new Map(movs.map((m) => [m.id, m]));
     const filas: AutoriaDeFilaDTO[] = input.movimientoIds.flatMap((id) => {

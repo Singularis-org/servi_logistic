@@ -8,6 +8,7 @@
 // Resuelve `{id}` con las MISMAS reglas del endpoint de consulta (R19): mismo zod (importado,
 // no reescrito), mismo service de resolucion, misma precedencia `num_guia` > `num_remision`,
 // mismos 404 y 422. Controller puro: HTTP + zod + service.
+import { construirReglasPaisEmpresa } from "@/lib/services/ReglasPaisEmpresaService";
 import { NextResponse } from "next/server";
 import {
   withErrorHandler,
@@ -61,11 +62,13 @@ function buildPdfService(): IApiPdfEtiquetaService {
   const repo = new OrdenRepository(prisma);
   const signedUrls = new SupabaseSignedUrlProvider(undefined, bucket);
   const lotePdf = new EtiquetasLotePdfService(
-    new EtiquetaGuiaService(repo),
+    new EtiquetaGuiaService(repo, construirReglasPaisEmpresa(prisma)),
     new SupabaseFileStorage(undefined, bucket),
     signedUrls,
     ttl,
     etiquetasConfig.MAX_ETIQUETAS_POR_PDF,
+    undefined, // el `build` de produccion, el de por defecto
+    construirReglasPaisEmpresa(prisma), // SL-21 R14/R21: la moneda del pais de la empresa
   );
   return new ApiPdfEtiquetaService(repo, lotePdf, signedUrls, ttl);
 }

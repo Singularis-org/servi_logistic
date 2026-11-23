@@ -56,7 +56,7 @@ const ORIGEN_MANUAL_NOTA = "Devolución a origen registrada manualmente por el m
 /** La marca que el mensajero SÍ puede leer (R7/R9), la misma de su tabla en vivo. */
 const TIENDA_LABEL = "La tienda";
 const TIENDA_NOTA =
-  "Esta gestión la registró la tienda desde «Ayuda solicitada», no vos: el motivo y la foto son suyos. Cuenta en tu cierre igual.";
+  "Esta gestión la registró la tienda desde «Ayuda solicitada», no tú: el motivo y la foto son suyos. Cuenta en tu cierre igual.";
 
 /** El texto autosuficiente del motivo (408/R11): la variante que se lee SIN distintivo al lado. */
 const MOTIVO_LARGO =

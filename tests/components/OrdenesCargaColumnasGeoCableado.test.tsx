@@ -42,6 +42,12 @@ vi.mock("@/lib/repositories/CatalogoGeograficoRepository", () => ({
   },
 }));
 vi.mock("@/lib/db/prisma-client", () => ({ getPrismaClient: vi.fn(() => ({})) }));
+// SLT-42 (T5.7): la pagina lee la zona del pais de la empresa de la sesion; aqui, la de Costa Rica
+// (el mismo doble que `OrdenesPage.test.tsx`).
+vi.mock("@/lib/actions/_shared/zona-del-borde", async () => {
+  const { ZONA_DE_CR } = await import("@/tests/fabricas/reglas-pais");
+  return { zonaDelBorde: async () => ZONA_DE_CR };
+});
 
 // Los dos pasos del modal, doblados: este archivo prueba que la prop LLEGA, no que hacen con ella.
 vi.mock("@/app/(app)/ordenes/_components/OrdenesCargaUpload", () => ({

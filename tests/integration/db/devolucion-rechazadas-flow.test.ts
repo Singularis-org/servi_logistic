@@ -20,6 +20,7 @@ import type { OrderStatusValue } from "@/lib/types/order-status";
 import { filasCatalogoEstados, idEstado, sembrarCatalogoEstados } from "@/tests/fixtures/catalogo-estados";
 import { WalletIndemnizacionFeedService } from "@/lib/services/WalletIndemnizacionFeedService";
 import { sinRetenidas } from "@/tests/fixtures/retenidas-doble";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // Feature 139 (T4.1, R5 + R13-R18) — RECORRIDO COMPLETO de la devolucion de RECHAZADAS, de punta a
 // punta y con los SERVICES REALES encadenados (no se re-testea cada uno por separado: eso ya lo
@@ -304,9 +305,11 @@ function makeDb() {
 
   // `tx === client`: el doble no simula rollback (ningun caso de este recorrido lo ejercita; la
   // atomicidad de la aprobacion la cubre el unit test del repo). SIN `$queryRaw`: el emisor de
-  // webhooks del choke point es no-op y la guardia 140 resuelve por la cache del catalogo.
+  // webhooks del choke point es no-op y la guardia 140 resuelve por la cache del catalogo. El cliente de
+  // fuera si lo lleva: es la lectura del tope de la empresa (SLT-77), y aqui toda empresa esta en 3.
   const prisma = {
     ...client,
+    $queryRaw: async () => [{ tope: 3 }],
     $transaction: async (cb: (tx: unknown) => Promise<unknown>) => cb(client),
   };
 
@@ -397,7 +400,12 @@ function makeServices(db: Db) {
         Object.fromEntries(ids.map((id) => [id, "0.00"])),
       ),
     },
-    sinRetenidas()), // FICHA 462: 7.o argumento requerido; este flujo no mide la marca
+    sinRetenidas(),
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    reglasPaisFijas(),), // FICHA 462: 7.o argumento requerido; este flujo no mide la marca
     envioSatelite: new EnvioDevolucionCentralService(ordenRepo),
     recepcionCentral: new RecepcionBodegaCentralService(ordenRepo),
     envioTienda: new DevolucionOrigenService(ordenRepo),

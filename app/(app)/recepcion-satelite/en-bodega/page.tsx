@@ -11,7 +11,8 @@ import {
 import { obtenerCatalogoFiltrosOrdenes } from "@/lib/actions/filtros-ordenes";
 import { listarLiberadasHoy } from "@/lib/actions/liberacion-reprogramada";
 import { recepcionSateliteConfig } from "@/lib/config/recepcion-satelite";
-import { fechaCalendarioCR, mananaCalendarioCR } from "@/lib/utils/fecha-cr";
+import { zonaDelBorde } from "@/lib/actions/_shared/zona-del-borde";
+import { fechaCalendario, manana } from "@/lib/utils/calendario-zona";
 
 import { RecepcionSateliteModule } from "../_components/RecepcionSateliteModule";
 
@@ -116,12 +117,15 @@ export default async function RecepcionSateliteEnBodegaPage() {
     catalogoResult.status === "ok" ? catalogoResult.catalogo : null;
 
   // Feature 246 (T4.3, R5/R29): las MISMAS dos fechas calendario que en `/ordenes`, resueltas
-  // aquí, en el servidor, con el día de Costa Rica. La decisión D4 exige que la elección del día
+  // aquí, en el servidor, con el día de la empresa. La decisión D4 exige que la elección del día
   // signifique lo mismo desde las dos bodegas, y eso empieza por que la etiqueta salga del mismo
   // sitio. El caso de la medianoche (D6) está nombrado en `SelectorDiaReparto`.
+  // SLT-42 (R22, R28): el día es el de la zona del país de la empresa de la sesión.
+  const zona = await zonaDelBorde();
+  const ahora = new Date();
   const fechasDiaReparto = {
-    hoy: fechaCalendarioCR(),
-    manana: mananaCalendarioCR(),
+    hoy: fechaCalendario(ahora, zona),
+    manana: manana(ahora, zona),
   };
 
   return (

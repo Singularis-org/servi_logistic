@@ -36,6 +36,7 @@ import { crearTarifaSchema } from "../../../lib/types/tarifa";
 import { crearZonaSchema } from "../../../lib/types/zona";
 import { fechaCalendarioCR, mananaCalendarioCR } from "../../../lib/utils/fecha-cr";
 import type { EmpresaCreada, UsuarioCreado } from "../empresa-y-usuarios";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 /**
  * SL-43 T5 (design D1.2; R11, R15–R17) — EL NÚCLEO DEL ESCENARIO DE REPARTO, sacado de
@@ -122,6 +123,8 @@ export interface OpcionesReparto {
    * que marca como zona especial (SL-38): sin órdenes en él, la tarifa de las demás no cambia.
    */
   distritosExtra?: { central?: string[]; satelite?: string[] };
+  /** Nombre de la tienda (el que pinta la tarjeta). SLT-156 (m3): los E2E del móvil lo piden largo. */
+  nombreTienda?: string;
 }
 
 /** Una orden por crear (`crearOrden`, `crearOrdenes`). Sin remisión ni destinatario, se inventan. */
@@ -130,13 +133,18 @@ export interface NuevaOrden {
   montoCobrar?: number;
   destinatario?: string;
   numRemision?: string;
+  /** SLT-156 (m3): dirección y producto largos para los E2E del móvil. Por defecto, los de siempre. */
+  direccion?: string;
+  producto?: string;
 }
 
 /** Datos extra del alta de un usuario (los que pide `crearUsuario`). */
 export interface ExtraUsuario {
+  /** Nombre visible; sin él, el alta inventa uno. */
+  nombre?: string;
   zonaId?: string;
   vehiculoId?: string;
-  fulfillment?: boolean;
+  seRecogeEnTienda?: boolean;
 }
 
 export interface AltasEscenario {
@@ -155,7 +163,9 @@ export type GestionEscenario =
   | { resultado: "entregado"; pagos?: { metodo: "efectivo" | "SINPE" | "transferencia"; monto: number }[] }
   | { resultado: "devolucion_a_origen_por_rechazo"; motivo?: string }
   | { resultado: "reprogramado"; fecha?: string; motivo?: string }
-  | { resultado: "novedad"; causa?: "not_found" | "wrong_number" | "wrong_address"; motivo?: string };
+  | { resultado: "novedad"; causa?: "not_found" | "wrong_number" | "wrong_address"; motivo?: string }
+  // SLT-102 T6.1: el incidente (feature 158) por el mismo `gestionar` del portal; no recauda.
+  | { resultado: "incidente"; causa?: "danado" | "perdido" | "robado"; motivo?: string };
 
 export type DestinoReparto =
   | "en_bodega_central"
@@ -234,13 +244,15 @@ export function servicios() {
       new ZonaRepository(prisma),
       new AsignabilidadCoordenadasService(new JobRepository(prisma)),
       historial(prisma, ordenRepo),
+      reglasPaisFijas(),
     ),
     // lib/actions/recepcion-satelite.ts
-    recepcion: new RecepcionSateliteService(ordenRepo, historial(prisma, ordenRepo)),
+    recepcion: new RecepcionSateliteService(ordenRepo, historial(prisma, ordenRepo), undefined, reglasPaisFijas()),
     asignacion: new AsignacionSateliteService(
       ordenRepo,
       new AsignabilidadCoordenadasService(new JobRepository(prisma)),
       historial(prisma, ordenRepo),
+      reglasPaisFijas(),
     ),
     // lib/actions/mis-asignaciones.ts, con la evidencia contra el Storage que diga el entorno
     misAsignaciones: new MisAsignacionesService(
@@ -251,11 +263,14 @@ export function servicios() {
       new RutaOptimizadaRepository(prisma),
       new OrdenMensajeroMetaRepository(prisma),
       historial(prisma, ordenRepo),
+      reglasPaisFijas(),
     ),
     // lib/actions/corregir-fecha-reprogramacion.ts, SIN su liberador (ver `corregirFechaReprogramacion`)
     correccionFecha: new CorreccionFechaReprogramacionService(
       new CorreccionFechaReprogramacionRepository(prisma),
       ordenRepo,
+      undefined,
+      reglasPaisFijas(),
     ),
   };
 }
@@ -266,7 +281,9 @@ async function dosDistritos(db: PrismaClient): Promise<[Geo, Geo]> {
     where: {
       activo: true,
       NOT: [{ nombre: { contains: "(" } }, { canton: { nombre: { contains: "(" } } }],
-      canton: { activo: true, provincia: { activo: true } },
+      // Solo Costa Rica: `e2e/geografia-superadmin.spec.ts` deja un pais Islandia en la misma base, y
+      // un distrito suyo no lo acepta la zona de una empresa de CR («distritoIds no existen»).
+      canton: { activo: true, paisId: "CR", provincia: { activo: true } },
     },
     select: { id: true, nombre: true, cantonId: true, canton: { select: { nombre: true, provincia: { select: { nombre: true } } } } },
     orderBy: { id: "asc" },
@@ -349,7 +366,10 @@ export function escenarioReparto(deps: DepsEscenarioReparto) {
     const [zonaCentral, zonaSatelite, tienda] = await Promise.all([
       crearZona(empresa, maestro, geoCentral, true, tarifaMensajero, opts.nombresZona?.central, opts.distritosExtra?.central),
       crearZona(empresa, maestro, geoSatelite, false, tarifaMensajero, opts.nombresZona?.satelite, opts.distritosExtra?.satelite),
-      deps.altas.usuario(empresa, "tienda", "adminTienda", { fulfillment: true }),
+      deps.altas.usuario(empresa, "tienda", "adminTienda", {
+        seRecogeEnTienda: false,
+        ...(opts.nombreTienda ? { nombre: opts.nombreTienda } : {}),
+      }),
     ]);
     const adminSatelite = await deps.altas.usuario(empresa, "admin-satelite", "adminSatelite", { zonaId: zonaSatelite.id });
 
@@ -398,6 +418,8 @@ export function escenarioReparto(deps: DepsEscenarioReparto) {
       numRemision: o.numRemision ?? `E2E-${sufijo()}`,
       destinatario: o.destinatario ?? `Destinatario E2E ${sufijo()}`,
       montoCobrar: o.montoCobrar ?? 0,
+      direccion: o.direccion ?? "100 m norte de la iglesia",
+      producto: o.producto ?? "Caja E2E",
     }));
     const s = servicios();
     const res = await conEmpresa(r.empresa.organizacionId, () =>
@@ -408,11 +430,11 @@ export function escenarioReparto(deps: DepsEscenarioReparto) {
             num_remision: o.numRemision,
             destinatario: o.destinatario,
             telefono: "88880000",
-            producto: "Caja E2E",
+            producto: o.producto,
             provincia: geo.provincia,
             canton_distrito: `${geo.canton} (${geo.distrito})`,
             // Con dirección: la carga encola su geocodificación, que es lo que la asignación mira.
-            direccion: "100 m norte de la iglesia",
+            direccion: o.direccion,
             notas: "",
             monto_cobrar: o.montoCobrar > 0 ? String(o.montoCobrar) : "",
           };
@@ -614,6 +636,14 @@ export function escenarioReparto(deps: DepsEscenarioReparto) {
           resultado: g.resultado,
           causaDevolucion: g.causa ?? "not_found",
           motivo: g.motivo ?? "No aparece",
+          evidencias: evidencia(),
+        };
+      case "incidente":
+        return {
+          ...base,
+          resultado: g.resultado,
+          causaIncidente: g.causa ?? "perdido",
+          motivo: g.motivo ?? "Se perdió en ruta",
           evidencias: evidencia(),
         };
     }

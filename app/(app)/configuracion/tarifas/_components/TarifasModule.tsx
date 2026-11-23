@@ -28,7 +28,9 @@ import { TEXTOS } from "./tarifas-textos";
 import { TarifasActivarDialog } from "./TarifasActivarDialog";
 import { TarifasEstado } from "./TarifasEstado";
 import { TarifasGrupos } from "./TarifasGrupos";
+import { filasDeMensajeros, TarifasMensajeros } from "./TarifasMensajeros";
 import { filasDePrecios, TarifasTiendas, type FilaPrecioTienda } from "./TarifasTiendas";
+import { TarifasTopeIntentos } from "./TarifasTopeIntentos";
 import { TarifasValores } from "./TarifasValores";
 import { TarifasZonas } from "./TarifasZonas";
 
@@ -75,7 +77,7 @@ export function TarifasModule({ pantalla, zonaInicialId, zonaInicial, nombresDeG
   const distritoPlural = etiquetas.distrito.plural.toLowerCase();
   const distritoSingular = etiquetas.distrito.singular.toLowerCase();
 
-  const { activacion, zonas, vehiculos, tiendas, preciosTienda, puedeEscribir } = pantalla;
+  const { activacion, zonas, vehiculos, tiendas, preciosTienda, mensajeros, valoresMensajero, topeIntentos, puedeEscribir } = pantalla;
   const activada = activacion !== null;
 
   const [zonaId, setZonaId] = useState<string | null>(zonaInicialId);
@@ -213,6 +215,7 @@ export function TarifasModule({ pantalla, zonaInicialId, zonaInicial, nombresDeG
     () => filasDePrecios(preciosTienda, tiendas, zonas, nombresDeGrupo),
     [preciosTienda, tiendas, zonas, nombresDeGrupo],
   );
+  const filasMensajero = useMemo(() => filasDeMensajeros(valoresMensajero, mensajeros), [valoresMensajero, mensajeros]);
 
   const estadoBanda = (
     <TarifasEstado
@@ -234,6 +237,9 @@ export function TarifasModule({ pantalla, zonaInicialId, zonaInicial, nombresDeG
       />
     ) : null;
 
+  // SLT-77 R12: el tope no depende de las zonas; una empresa recien creada, sin ninguna, tambien lo ve.
+  const seccionTope = <TarifasTopeIntentos tope={topeIntentos} puedeEscribir={puedeEscribir} />;
+
   if (zona === null && zonas[0] !== undefined) {
     // La zona abierta ya no existe (se borro en otra sesion): no es «no hay zonas».
     const primera = zonas[0];
@@ -246,6 +252,7 @@ export function TarifasModule({ pantalla, zonaInicialId, zonaInicial, nombresDeG
             {TEXTOS.reintentar}
           </Button>
         </Alert>
+        {seccionTope}
       </div>
     );
   }
@@ -267,6 +274,7 @@ export function TarifasModule({ pantalla, zonaInicialId, zonaInicial, nombresDeG
           }
           className="rounded-xl border border-border bg-card"
         />
+        {seccionTope}
         {dialogoActivar}
       </div>
     );
@@ -435,6 +443,16 @@ export function TarifasModule({ pantalla, zonaInicialId, zonaInicial, nombresDeG
         onEditar={editarPrecio}
         onCambio={recargar}
       />
+
+      <TarifasMensajeros
+        filas={filasMensajero}
+        mensajeros={mensajeros}
+        activada={activada}
+        puedeEscribir={puedeEscribir}
+        onCambio={recargar}
+      />
+
+      {seccionTope}
 
       {dialogoActivar}
 

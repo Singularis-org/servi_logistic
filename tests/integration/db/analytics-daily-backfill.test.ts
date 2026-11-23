@@ -1,3 +1,4 @@
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import type { PrismaClient } from "@prisma/client";
 import { planificarBackfill } from "@/lib/analytics/backfill-rango";
@@ -58,7 +59,7 @@ describeSiHayBase("backfill historico contra Postgres (feature 125)", () => {
     modo: ModoBackfill = "escritura",
     previo?: ReadonlyMap<string, { fecha: string; filasEscritas: number }>,
   ) {
-    const plan = planificarBackfill({ desde, hasta, ahora: new Date() });
+    const plan = planificarBackfill({ desde, hasta, ahora: new Date(), zona: ZONA_CR });
     if (!plan.ok) throw new Error(plan.motivo);
     const lineas: LineaFecha[] = [];
     const servicio = new AnaliticaBackfillService(crearServicio(tx), {

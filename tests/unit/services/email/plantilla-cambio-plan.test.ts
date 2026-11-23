@@ -3,8 +3,13 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { lineasDeCambioDelPlan } from "@/lib/planes/mensajes";
-import { plantillaCambioPlan, type CambioPlanParams } from "@/lib/services/email/plantillas/cambio-plan";
+import { lineaNoAplicada, lineasDeCambioDelPlan, textoMotivoNoAplicada } from "@/lib/planes/mensajes";
+import {
+  plantillaCambioPlan,
+  plantillaCambioPlanNoAplicado,
+  type CambioPlanParams,
+} from "@/lib/services/email/plantillas/cambio-plan";
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 
 // SL-24 · T12 (design §16.4; R41, R42, R45) — el correo del cambio de un plan. Los literales del spec
 // (R45 y la línea del reemplazo de §16.2) se escriben aquí a mano; los demás textos son la propuesta
@@ -22,20 +27,23 @@ const BASE: CambioPlanParams = {
   cambios: {
     nombre: { antes: "Básico", despues: "Básico plus" },
     topes: {
-      antes: { ordenesPorCiclo: 100, porRol: { adminTienda: 3 }, apiKeys: null },
-      despues: { ordenesPorCiclo: 50, porRol: { adminTienda: 3, mensajero: 10 }, apiKeys: 2 },
+      antes: { porRol: { adminTienda: 3 }, apiKeys: null },
+      despues: { porRol: { adminTienda: 3, mensajero: 10 }, apiKeys: 2 },
     },
     modulos: { antes: ["analitica"], despues: ["ranking"] },
     precio: {
       antes: { tipo: "sin_precio" },
-      despues: { tipo: "monto", mensual: "25000.00", anual: { tipo: "descuento", porcentaje: "10.00" } },
+      despues: { tipo: "monto", mensual: "25000.00" },
     },
+    // SLT-86 (R31): cada descuento del período va en su clave del rastro.
+    descuento_anual: { antes: null, despues: { tipo: "porcentaje", porcentaje: "10.00" } },
   },
   vigenteDesde: RIGE,
   reemplazaA: null,
   topesPasados: [],
   tipo: "guardado",
   contacto: null,
+  zona: ZONA_DE_CR,
 };
 
 const correo = (extra: Partial<CambioPlanParams> = {}) => plantillaCambioPlan({ ...BASE, ...extra });
@@ -50,12 +58,12 @@ describe("SL-24 — plantillaCambioPlan (R41)", () => {
     expect(m.text).toContain("Esto es lo que cambia:");
     for (const linea of [
       "Nombre del plan: Básico → Básico plus",
-      "Órdenes por ciclo: 100 → 50",
       "Usuarios activos con el rol Mensajero: sin límite → 10",
       "API keys activas: sin límite → 2",
       "Se incluye el módulo Ranking.",
       "Deja de incluirse el módulo Analítica.",
-      "Costo base: sin precio → 25000.00 al mes, con 10.00 % de descuento en el pago anual", // SLT-66 R9
+      "Costo base: sin precio → 25000.00 / mes", // SLT-66 R9; SLT-86: «{mensual} / mes»
+      "Descuento anual: sin descuento → 10.00 %", // SLT-86 R31
     ]) {
       expect(m.text).toContain(linea);
       expect(m.html).toContain(linea);
@@ -63,12 +71,25 @@ describe("SL-24 — plantillaCambioPlan (R41)", () => {
     // Un tope que no cambia no se lista.
     expect(m.text).not.toContain("Admin de tienda");
     expect(m.text).not.toContain("reemplaza");
+    // SLT-86 (R8): el correo ya no habla de órdenes.
+    expect(m.text).not.toContain("Órdenes por ciclo");
   });
 
   it("la fecha es el día de la plataforma: las 00:00 a −06:00 son ese día, no el anterior", () => {
     // 06:00 UTC = 00:00 en la plataforma; 05:59 UTC sería el día anterior.
     expect(correo({ vigenteDesde: new Date("2026-11-15T06:00:00.000Z") }).text).toContain("15 nov 2026");
     expect(correo({ vigenteDesde: new Date("2026-11-15T05:59:00.000Z") }).text).toContain("14 nov 2026");
+  });
+
+  it("SLT-42 R22: la fecha se pinta en la zona del país de la empresa que cambia de plan", () => {
+    // 2026-11-15T05:30Z: las 23:30 del 14 en Costa Rica (UTC-6) y las 00:30 del 15 en Bogotá (UTC-5).
+    const instante = new Date("2026-11-15T05:30:00.000Z");
+    expect(correo({ vigenteDesde: instante }).text).toContain("14 nov 2026");
+    expect(correo({ vigenteDesde: instante, zona: "America/Bogota" }).text).toContain("15 nov 2026");
+    const cancelado = correo({ tipo: "cancelado", cambios: {}, vigenteDesde: instante, zona: "America/Bogota" });
+    expect(cancelado.text).toContain("15 nov 2026");
+    const reemplazo = correo({ reemplazaA: instante, zona: "America/Bogota" });
+    expect(reemplazo.text).toContain("15 nov 2026");
   });
 
   it("guardado inmediato: sin fecha, dice que ya rige", () => {
@@ -80,12 +101,10 @@ describe("SL-24 — plantillaCambioPlan (R41)", () => {
   it("con topes pasados, dice cuál, con su uso y el tope (mensajeTopesPasados de T3)", () => {
     const m = correo({
       topesPasados: [
-        { empresa: "Mensajería Uno", tope: "ordenes", usados: 80, maximo: 50 },
         { empresa: "Mensajería Uno", tope: "adminTienda", usados: 4, maximo: 3 },
       ],
     });
     expect(m.text).toContain("Con el plan nuevo, tu empresa ya pasa estos topes:");
-    expect(m.text).toContain("Mensajería Uno ya tiene 80 órdenes en el ciclo en curso y el plan permite 50.");
     expect(m.text).toContain("Mensajería Uno ya tiene 4 usuarios activos con el rol Admin de tienda y el plan permite 3.");
   });
 
@@ -106,12 +125,81 @@ describe("SL-24 — plantillaCambioPlan (R41)", () => {
   });
 });
 
+// SLT-214 (R25): las líneas de los beneficios en el correo a los maestros. Literales del spec, a mano.
+describe("SLT-214 — beneficios en el correo del cambio de plan (R25)", () => {
+  it("R25: el correo lista «Se agrega: …» y «Se quita: …» bajo «Esto es lo que cambia:»", () => {
+    const m = correo({
+      cambios: {
+        beneficios: {
+          antes: [
+            { icono: "soporte", texto: "Soporte por correo" },
+            { icono: "equipo", texto: "Equipo dedicado" },
+          ],
+          despues: [
+            { icono: "equipo", texto: "equipo dedicado" },
+            { icono: "reloj_24h", texto: "Atención 24 horas" },
+          ],
+        },
+      },
+    });
+    expect(m.text).toContain("Esto es lo que cambia:");
+    for (const linea of ["Se agrega: Atención 24 horas", "Se quita: Soporte por correo"]) {
+      expect(m.text).toContain(linea);
+      expect(m.html).toContain(linea);
+    }
+    // R4: «Equipo dedicado» y «equipo dedicado» son el mismo beneficio: ni entra ni sale.
+    expect(m.text).not.toContain("Equipo dedicado");
+    expect(m.text).not.toContain("Cambian los íconos o el orden de los beneficios.");
+  });
+
+  it("R25: si solo cambian íconos u orden, el correo trae una sola línea «Cambian los íconos o el orden de los beneficios.»", () => {
+    const m = correo({
+      cambios: {
+        beneficios: {
+          antes: [
+            { icono: "soporte", texto: "Soporte por correo" },
+            { icono: "equipo", texto: "Equipo dedicado" },
+          ],
+          despues: [
+            { icono: "equipo", texto: "Equipo dedicado" },
+            { icono: "rayo", texto: "Soporte por correo" },
+          ],
+        },
+      },
+    });
+    expect(m.text).toContain("Esto es lo que cambia:");
+    expect(m.text).toContain("Cambian los íconos o el orden de los beneficios.");
+    expect(m.html).toContain("Cambian los íconos o el orden de los beneficios.");
+    expect(m.text.split("Cambian los íconos o el orden de los beneficios.")).toHaveLength(2);
+    expect(m.text).not.toContain("Se agrega:");
+    expect(m.text).not.toContain("Se quita:");
+  });
+});
+
 describe("SL-24 — recordatorios (R42)", () => {
   it("a 7 días", () => {
     const m = correo({ tipo: "recordatorio_7" });
     expect(m.subject).toBe("El plan Básico cambia en 7 días");
     expect(m.text).toContain("Faltan 7 días: el plan Básico de Mensajería Uno cambia a partir del 15 nov 2026.");
-    expect(m.text).toContain("Órdenes por ciclo: 100 → 50");
+    expect(m.text).toContain("Descuento anual: sin descuento → 10.00 %");
+  });
+
+  it("SLT-128 R22: a 3 días, con el asunto y la intro literales del spec y las líneas de cambio", () => {
+    const m = correo({ tipo: "recordatorio_3" });
+    expect(m.subject).toBe("El plan Básico cambia en 3 días");
+    expect(m.text).toContain("Faltan 3 días: el plan Básico de Mensajería Uno cambia a partir del 15 nov 2026.");
+    expect(m.html).toContain("Faltan 3 días: el plan Básico de Mensajería Uno cambia a partir del 15 nov 2026.");
+    expect(m.text).toContain("Esto es lo que cambia:");
+    expect(m.text).toContain("Descuento anual: sin descuento → 10.00 %");
+    expect(m.text).not.toContain("Faltan 7 días");
+  });
+
+  it("SLT-128 R22: el de 3 días también dice qué topes ya pasa la empresa", () => {
+    const m = correo({
+      tipo: "recordatorio_3",
+      topesPasados: [{ empresa: "Mensajería Uno", tope: "adminTienda", usados: 4, maximo: 3 }],
+    });
+    expect(m.text).toContain("Con el plan nuevo, tu empresa ya pasa estos topes:");
   });
 
   it("a 1 día", () => {
@@ -155,5 +243,60 @@ describe("SL-24 — marca, país y escapado", () => {
 
   it("lineasDeCambioDelPlan sin diferencias no da ninguna línea", () => {
     expect(lineasDeCambioDelPlan({})).toEqual([]);
+  });
+
+  it("SLT-118 R35: el cambio de la periodicidad de órdenes del plan sale como «Facturación de órdenes: quincenal → mensual»", () => {
+    const m = correo({ cambios: { periodicidadOrdenes: { antes: "quincenal", despues: "mensual" } } });
+    expect(m.text).toContain("Esto es lo que cambia:");
+    expect(m.text).toContain("Facturación de órdenes: quincenal → mensual");
+    expect(m.html).toContain("Facturación de órdenes: quincenal → mensual");
+    expect(correo().text).not.toContain("Facturación de órdenes");
+  });
+});
+
+describe("SLT-128 — el correo a la lista de alertas de una recepción no aplicada (§14.4; R28)", () => {
+  const m = plantillaCambioPlanNoAplicado({
+    to: "ops@servi.example",
+    empresaNombre: "Mensajería B",
+    planNombre: "Básico",
+    fecha: "1 dic 2026",
+    motivo: "cobro_quincenal_ordenes_mensuales",
+    contacto: "hola@ejemplo.example",
+  });
+
+  it("R28: el asunto nombra el plan y la empresa", () => {
+    expect(m.to).toBe("ops@servi.example");
+    expect(m.subject).toBe("El cambio del plan Básico no se aplicó a Mensajería B");
+  });
+
+  it("R28: el cuerpo lleva la fecha, el motivo literal y «Sigue con su versión anterior.», en texto y HTML", () => {
+    for (const cuerpo of [m.text, m.html]) {
+      expect(cuerpo).toContain("1 dic 2026");
+      expect(cuerpo).toContain("cobra por quincena y el plan nuevo factura las órdenes por mes");
+      expect(cuerpo).toContain("Sigue con su versión anterior.");
+    }
+    expect(m.text).toContain("hola@ejemplo.example");
+  });
+
+  it("R28: los textos literales del spec (motivo y línea del detalle)", () => {
+    expect(textoMotivoNoAplicada("cobro_quincenal_ordenes_mensuales")).toBe(
+      "cobra por quincena y el plan nuevo factura las órdenes por mes",
+    );
+    expect(lineaNoAplicada("B", "cobro_quincenal_ordenes_mensuales")).toBe(
+      "B no recibió el cambio: cobra por quincena y el plan nuevo factura las órdenes por mes. Sigue con su versión anterior.",
+    );
+  });
+
+  it("los datos variables se escapan en el HTML", () => {
+    const x = plantillaCambioPlanNoAplicado({
+      to: "ops@servi.example",
+      empresaNombre: "<b>B</b>",
+      planNombre: "A & B",
+      fecha: "1 dic 2026",
+      motivo: "cobro_quincenal_ordenes_mensuales",
+      contacto: null,
+    });
+    expect(x.html).toContain("&lt;b&gt;B&lt;/b&gt;");
+    expect(x.html).not.toContain("<b>B</b>");
   });
 });

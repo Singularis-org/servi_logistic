@@ -11,6 +11,15 @@ import type {
 import type { IFileStorage, UploadInput } from "@/lib/interfaces/external/IFileStorage";
 import type { ISignedUrlProvider } from "@/lib/interfaces/external/ISignedUrlProvider";
 import type { EtiquetaGuiaDTO } from "@/lib/types/etiqueta-guia";
+import type { FormatoMoneda } from "@/lib/config/moneda";
+import { PaisSinMoneda } from "@/lib/db/errores-pais";
+import { datosDeEtiqueta } from "@/lib/pdf/etiquetas-dibujo";
+import { fuenteEtiqueta } from "@/lib/pdf/etiquetas-fuente";
+import { registrarFuente } from "@/lib/pdf/etiquetas-fuente-registro";
+import { LIENZO_BASE_MM } from "@/lib/pdf/etiquetas-maqueta";
+import { jsPDF } from "jspdf";
+import { leerEtiqueta } from "../pdf/etiquetas-verificacion";
+import { MONEDA_CR, MONEDA_DE_PRUEBA, reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 const ACTOR: Actor = { usuarioId: "tienda-77", rol: "apiKey" };
 /** Tope de etiquetas por PDF inyectado en los tests (BLOQ-1). */
@@ -76,6 +85,7 @@ describe("EtiquetasLotePdfService.generarYAlmacenar", () => {
       3600,
       MAX_ETIQUETAS,
       buildStub,
+      reglasPaisFijas(),
     );
     await svc.generarYAlmacenar(["ord-1"], ACTOR);
     expect(storage.upload).toHaveBeenCalledTimes(1);
@@ -93,6 +103,7 @@ describe("EtiquetasLotePdfService.generarYAlmacenar", () => {
       3600,
       MAX_ETIQUETAS,
       buildStub,
+      reglasPaisFijas(),
     );
     const uploadMock = storage.upload as ReturnType<typeof vi.fn>;
     const a = await svc.generarYAlmacenar(["ord-1"], ACTOR);
@@ -117,6 +128,7 @@ describe("EtiquetasLotePdfService.generarYAlmacenar", () => {
       1800,
       MAX_ETIQUETAS,
       buildStub,
+      reglasPaisFijas(),
     );
     const out = await svc.generarYAlmacenar(["ord-1"], ACTOR);
     expect(out).not.toBeNull();
@@ -138,6 +150,7 @@ describe("EtiquetasLotePdfService.generarYAlmacenar", () => {
       3600,
       MAX_ETIQUETAS,
       buildStub,
+      reglasPaisFijas(),
     );
     const out = await svc.generarYAlmacenar(["ord-1"], ACTOR);
     expect(out).toBeNull();
@@ -154,6 +167,7 @@ describe("EtiquetasLotePdfService.generarYAlmacenar", () => {
       3600,
       MAX_ETIQUETAS,
       buildStub,
+      reglasPaisFijas(),
     );
     const out = await svc.generarYAlmacenar(["ord-1"], ACTOR);
     expect(out).toBeNull();
@@ -177,7 +191,8 @@ describe("EtiquetasLotePdfService.generarYAlmacenar", () => {
       fakeSignedUrls(),
       3600,
       MAX_ETIQUETAS,
-      // sin `build`: se usa el default `buildEtiquetasLotePdf`
+      undefined, // sin `build`: se usa el default `buildEtiquetasLotePdf`
+      reglasPaisFijas(),
     );
 
     await svc.generarYAlmacenar(ordenIds, ACTOR);
@@ -202,6 +217,7 @@ describe("EtiquetasLotePdfService.generarYAlmacenar", () => {
       3600,
       MAX_ETIQUETAS,
       buildStub,
+      reglasPaisFijas(),
     );
 
     await expect(svc.generarYAlmacenar(["ord-1"], ACTOR)).rejects.toBeInstanceOf(
@@ -222,6 +238,7 @@ describe("EtiquetasLotePdfService.generarYAlmacenar", () => {
       3600,
       MAX_ETIQUETAS,
       buildStub,
+      reglasPaisFijas(),
     );
 
     const err = await svc.generarYAlmacenar(["ord-1"], ACTOR).catch((e: unknown) => e);
@@ -244,6 +261,7 @@ describe("EtiquetasLotePdfService.generarYAlmacenar", () => {
       3600,
       MAX_ETIQUETAS,
       buildStub,
+      reglasPaisFijas(),
     );
 
     const out = await svc.generarYAlmacenar(["ord-1"], ACTOR);
@@ -265,6 +283,7 @@ describe("EtiquetasLotePdfService.generarYAlmacenar", () => {
       3600,
       MAX_ETIQUETAS,
       buildStub,
+      reglasPaisFijas(),
     );
     await expect(svc.generarYAlmacenar(["ord-1"], ACTOR)).rejects.toThrow("storage caido");
   });
@@ -285,6 +304,7 @@ describe("EtiquetasLotePdfService.generarYAlmacenarPorOrden (feature 141)", () =
       3600,
       MAX_ETIQUETAS,
       buildStub,
+      reglasPaisFijas(),
     );
 
     const out = await svc.generarYAlmacenarPorOrden(["ord-1", "ord-2"], ACTOR);
@@ -312,6 +332,7 @@ describe("EtiquetasLotePdfService.generarYAlmacenarPorOrden (feature 141)", () =
       3600,
       MAX_ETIQUETAS,
       buildStub,
+      reglasPaisFijas(),
     );
 
     const out = await svc.generarYAlmacenarPorOrden(["ord-1", "ord-2"], ACTOR);
@@ -339,6 +360,7 @@ describe("EtiquetasLotePdfService.generarYAlmacenarPorOrden (feature 141)", () =
       3600,
       MAX_ETIQUETAS,
       buildStub,
+      reglasPaisFijas(),
     );
 
     const out = await svc.generarYAlmacenarPorOrden(["ord-1", "ord-2"], ACTOR);
@@ -356,6 +378,7 @@ describe("EtiquetasLotePdfService.generarYAlmacenarPorOrden (feature 141)", () =
       3600,
       MAX_ETIQUETAS,
       buildStub,
+      reglasPaisFijas(),
     );
 
     expect(await svc.generarYAlmacenarPorOrden(["ord-1"], ACTOR)).toEqual([]);
@@ -372,6 +395,7 @@ describe("EtiquetasLotePdfService.generarYAlmacenarPorOrden (feature 141)", () =
       3600,
       MAX_ETIQUETAS,
       buildStub,
+      reglasPaisFijas(),
     );
 
     expect(await svc.generarYAlmacenarPorOrden(["ord-1"], ACTOR)).toEqual([]);
@@ -388,6 +412,7 @@ describe("EtiquetasLotePdfService.generarYAlmacenarPorOrden (feature 141)", () =
       3600,
       MAX_ETIQUETAS,
       buildStub,
+      reglasPaisFijas(),
     );
 
     await expect(
@@ -409,6 +434,7 @@ describe("EtiquetasLotePdfService.generarYAlmacenarPorOrden (feature 141)", () =
       3600,
       MAX_ETIQUETAS,
       buildStub,
+      reglasPaisFijas(),
     );
 
     const out = await svc.generarYAlmacenarPorOrden(
@@ -432,6 +458,7 @@ describe("EtiquetasLotePdfService.generarYAlmacenarPorOrden (feature 141)", () =
       3600,
       MAX_ETIQUETAS,
       buildStub,
+      reglasPaisFijas(),
     );
 
     await svc.generarYAlmacenarPorOrden(["ord-1", "ord-2"], ACTOR);
@@ -455,8 +482,132 @@ describe("EtiquetasLotePdfService.generarYAlmacenarPorOrden (feature 141)", () =
       3600,
       MAX_ETIQUETAS,
       buildStub,
+      reglasPaisFijas(),
     );
 
     await expect(svc.generarYAlmacenarPorOrden(["ord-1"], ACTOR)).rejects.toThrow("storage caido");
+  });
+});
+
+// --- SL-21 (R14): el importe de la etiqueta por API sale en la moneda del pais de la empresa ---
+//
+// El servicio lee la moneda por el puerto (`reglasPais.moneda()`) DESPUES de saber que hay etiquetas
+// y ANTES de `build`, y se la pasa al generador. `MONEDA_DE_PRUEBA` difiere de la de Costa Rica en
+// todo (codigo, simbolo, miles, decimales), asi que un test no pasa por casualidad con la de CR.
+
+/** Un doble del puerto cuya `moneda()` es espiable. */
+function reglasConMoneda(moneda: FormatoMoneda | null) {
+  const reglas = reglasPaisFijas({ moneda });
+  const espia = vi.fn(() => reglas.moneda());
+  return { reglas: { ...reglas, moneda: espia }, espia };
+}
+
+function servicioCon(
+  etiquetas: EtiquetaGuiaDTO[],
+  reglas: ReturnType<typeof reglasPaisFijas> | undefined,
+  storage: IFileStorage = fakeStorage(),
+  build = buildStub,
+) {
+  return new EtiquetasLotePdfService(
+    fakeEtiquetaService({ status: "ok", etiquetas, omitidas: [] }),
+    storage,
+    fakeSignedUrls(),
+    3600,
+    MAX_ETIQUETAS,
+    build,
+    reglas,
+  );
+}
+
+/** El segundo argumento con el que se llamo a `build` en cada llamada. */
+function monedasRecibidas(): unknown[] {
+  return buildStub.mock.calls.map((c) => (c as unknown as [EtiquetaGuiaDTO[], FormatoMoneda])[1]);
+}
+
+describe("SL-21 R14 · EtiquetasLotePdfService con la moneda del pais", () => {
+  it("consolidado: `build` recibe la moneda del pais, leida UNA vez", async () => {
+    const { reglas, espia } = reglasConMoneda(MONEDA_DE_PRUEBA);
+    await servicioCon([etiqueta(1), etiqueta(2)], reglas).generarYAlmacenar(["ord-1", "ord-2"], ACTOR);
+    expect(monedasRecibidas()).toEqual([MONEDA_DE_PRUEBA]);
+    expect(espia).toHaveBeenCalledTimes(1);
+  });
+
+  it("por orden: cada `build` recibe la moneda del pais, leida UNA vez para todo el lote", async () => {
+    const { reglas, espia } = reglasConMoneda(MONEDA_DE_PRUEBA);
+    await servicioCon([etiqueta(1), etiqueta(2)], reglas).generarYAlmacenarPorOrden(["ord-1", "ord-2"], ACTOR);
+    expect(monedasRecibidas()).toEqual([MONEDA_DE_PRUEBA, MONEDA_DE_PRUEBA]);
+    expect(espia).toHaveBeenCalledTimes(1);
+  });
+
+  it("R16: con Costa Rica, `build` recibe la moneda de CR", async () => {
+    await servicioCon([etiqueta(1)], reglasPaisFijas()).generarYAlmacenar(["ord-1"], ACTOR);
+    expect(monedasRecibidas()).toEqual([MONEDA_CR]);
+  });
+
+  it("consolidado: pais sin moneda -> `PaisSinMoneda` sin construir ni subir nada", async () => {
+    const storage = fakeStorage();
+    const { reglas } = reglasConMoneda(null);
+    await expect(
+      servicioCon([etiqueta(1)], reglas, storage).generarYAlmacenar(["ord-1"], ACTOR),
+    ).rejects.toBeInstanceOf(PaisSinMoneda);
+    expect(buildStub).not.toHaveBeenCalled();
+    expect(storage.upload).not.toHaveBeenCalled();
+  });
+
+  it("por orden: pais sin moneda -> `PaisSinMoneda` sin construir ni subir nada", async () => {
+    const storage = fakeStorage();
+    const { reglas } = reglasConMoneda(null);
+    await expect(
+      servicioCon([etiqueta(1), etiqueta(2)], reglas, storage).generarYAlmacenarPorOrden(["ord-1", "ord-2"], ACTOR),
+    ).rejects.toBeInstanceOf(PaisSinMoneda);
+    expect(buildStub).not.toHaveBeenCalled();
+    expect(storage.upload).not.toHaveBeenCalled();
+  });
+
+  it("un lote sin etiquetas no lee la moneda (aunque el pais no la tenga)", async () => {
+    const { reglas, espia } = reglasConMoneda(null);
+    expect(await servicioCon([], reglas).generarYAlmacenar(["ord-1"], ACTOR)).toBeNull();
+    expect(await servicioCon([], reglas).generarYAlmacenarPorOrden(["ord-1"], ACTOR)).toEqual([]);
+    expect(espia).not.toHaveBeenCalled();
+  });
+
+  it("sin las reglas del pais lanza nombrando la operacion, en vez de pintar la moneda de otro pais", async () => {
+    await expect(servicioCon([etiqueta(1)], undefined).generarYAlmacenar(["ord-1"], ACTOR)).rejects.toThrow(
+      /generarYAlmacenar requiere las reglas del pais de la empresa/,
+    );
+    await expect(
+      servicioCon([etiqueta(1)], undefined).generarYAlmacenarPorOrden(["ord-1"], ACTOR),
+    ).rejects.toThrow(/generarYAlmacenarPorOrden requiere las reglas del pais de la empresa/);
+    expect(buildStub).not.toHaveBeenCalled();
+  });
+
+  it("el dato `montoCobrar` de la etiqueta se pinta en la moneda recibida; sin ella, en la de CR", () => {
+    const e = { ...etiqueta(1), montoCobrar: 1234567 };
+    const monto = (moneda?: FormatoMoneda) =>
+      datosDeEtiqueta(e, moneda).find((d) => d.id === "montoCobrar")?.valor;
+    expect(monto(MONEDA_DE_PRUEBA)).toBe("€1 234 567");
+    expect(monto(MONEDA_CR)).toBe("₡1.234.567");
+    expect(monto()).toBe("₡1.234.567"); // el generador del navegador, sin pais (SLT-235)
+  });
+
+  it("con el generador REAL, el PDF que se sube lleva el importe en la moneda del pais", async () => {
+    const storage = fakeStorage();
+    const e = { ...etiqueta(1), montoCobrar: 1234567 };
+    const svc = new EtiquetasLotePdfService(
+      fakeEtiquetaService({ status: "ok", etiquetas: [e], omitidas: [] }),
+      storage,
+      fakeSignedUrls(),
+      3600,
+      MAX_ETIQUETAS,
+      undefined, // sin `build`: el default `buildEtiquetasLotePdf`
+      reglasPaisFijas({ moneda: MONEDA_DE_PRUEBA }),
+    );
+    await svc.generarYAlmacenar(["ord-1"], ACTOR);
+    const input = (storage.upload as ReturnType<typeof vi.fn>).mock.calls[0][0] as UploadInput;
+    const doc = new jsPDF({ unit: "mm", format: [LIENZO_BASE_MM, LIENZO_BASE_MM] });
+    registrarFuente(doc, fuenteEtiqueta);
+    const textos = leerEtiqueta(doc, input.bytes, 0, LIENZO_BASE_MM, fuenteEtiqueta).textos.map((t) => t.texto);
+    expect(textos).toContain("€1 234 567");
+    expect(textos.some((t) => t.includes("₡"))).toBe(false);
   });
 });

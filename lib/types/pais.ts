@@ -1,8 +1,10 @@
 import { z } from "zod";
 
+import type { FormatoMoneda } from "@/lib/config/moneda";
 import { paisDelCatalogo } from "@/lib/constants/paises-iso-3166-1";
 import { normalizarNombreGeografico, type NivelGeografico } from "@/lib/types/geografia-nodo";
 import type { ReglaDeCodigoDePais } from "@/lib/utils/codigo-geografico";
+import type { ReglaDocumento } from "@/lib/utils/documento";
 
 // SL-20 (design §2.1, §5, §7; R1, R19, R20, R23, R41) — el país: su schema de alta, su DTO y los
 // nombres de sus tres niveles.
@@ -177,6 +179,38 @@ export interface PaisDTO extends ReglaDeCodigoDePais {
   nivel3Plural: string;
   /** Enmienda 2026-10-26, decisión 6 (R44): hay cobertura. Con `false` no se acepta en un alta nueva de empresa (R45). */
   disponible: boolean;
+  /**
+   * SLT-42 (R1; design §4.2): prefijo internacional en dígitos, sin `+`. `null` mientras el país no
+   * lo tenga (R6): un país dado de alta por la pantalla de SL-20 nace sin él.
+   */
+  prefijoTelefonico: string | null;
+  /** SLT-42 (R1): cuántos dígitos tiene un número nacional. `null` = aún sin dato (R6). */
+  telefonoDigitosNacionales: number | null;
+  /** SLT-42 (R1): identificador IANA. `null` = aún sin dato; lo que la necesite falla (R28). */
+  zonaHoraria: string | null;
+  /**
+   * SL-21 (R1, R5; design §5.1): la moneda del país, armada por el repositorio con sus cinco
+   * columnas. `null` = aún sin dato; lo que la necesite falla con `PaisSinMoneda` (R6).
+   */
+  moneda: FormatoMoneda | null;
+  /** SL-21 (R1, R7): el nombre del impuesto («IVA»). `null` = aún sin dato (`PaisSinImpuesto`). */
+  impuestoNombre: string | null;
+}
+
+/**
+ * SLT-42 (R2, R11; design §4.2) — un tipo de documento del catálogo de un país, con su regla de
+ * formato (`ReglaDocumento`, la entrada de `validarDocumento`). `activo` viaja tal cual: decidir qué
+ * hacer con uno inactivo es de quien lo usa (R11 lo rechaza en un alta).
+ */
+export interface TipoDocumentoDTO extends ReglaDocumento {
+  id: string;
+  /** Compatibilidad: único global y aún lo envían los formularios (`<PAIS>_<clave>` fuera de CR). */
+  value: string;
+  paisId: string;
+  /** Única dentro del país. */
+  clave: string;
+  nombre: string;
+  activo: boolean;
 }
 
 /**

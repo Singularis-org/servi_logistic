@@ -50,6 +50,8 @@
 //
 // MODULO PURO: sin Prisma, sin React, sin `next/*`, sin reloj y sin DB.
 
+import { desfaseEnMs } from "@/lib/utils/calendario-zona";
+
 export interface AvisoRepartoMananaConfig {
   /**
    * Hora de pared de Costa Rica a la que corre la emision, 0-23. Ver la medicion de arriba antes
@@ -68,17 +70,23 @@ export const avisoRepartoMananaConfig: AvisoRepartoMananaConfig = {
   RUTA_CRON: "/api/cron/aviso-reparto-manana",
 };
 
-/** Costa Rica es UTC-6 fijo, sin horario de verano. Es la unica constante de la conversion. */
-export const OFFSET_CR_HORAS = 6;
+const MS_POR_HORA = 60 * 60 * 1000;
 
 /**
- * R10 — la hora UTC que corresponde a una hora CR. `(hora + 6) mod 24`.
+ * R10 — la hora UTC que corresponde a una hora de pared de `zona` en `instante`:
+ * `(hora + desfase) mod 24`.
+ *
+ * SLT-42 (design §4.3) — el desfase ya no es una constante de Costa Rica: sale de
+ * `desfaseEnMs(instante, zona)`, la zona del pais de la empresa. Depende del instante porque con
+ * horario de verano cambia a lo largo del año. El horario de `vercel.json` sigue fijo en UTC (P6,
+ * deuda para cuando entre un pais con otra zona).
  *
  * Se declara como FUNCION y no como segundo numero a propósito: un numero tendria que mantenerse
  * a mano y podria divergir del primero, que es el fallo que esta ficha existe para no cometer.
  */
-export function horaUtcDeHoraCR(horaCR: number): number {
-  return (horaCR + OFFSET_CR_HORAS) % 24;
+export function horaUtcDeHoraLocal(horaLocal: number, zona: string, instante: Date): number {
+  const desfaseHoras = desfaseEnMs(instante, zona) / MS_POR_HORA;
+  return (((horaLocal + desfaseHoras) % 24) + 24) % 24;
 }
 
 /**

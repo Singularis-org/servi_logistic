@@ -20,6 +20,7 @@ import {
   llamadasIntentos,
   type IntentosSvcDoble,
 } from "@/tests/fixtures/intentos-entrega";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // Feature 148 — unit del SERVICIO UNICO del manifiesto (T15). Dobles a mano, sin
 // Prisma ni HTTP: el service se instancia con repos falsos por constructor.
@@ -113,7 +114,7 @@ function build(
   );
   const zonaRepo = fakeZonaRepo(opts.central === undefined ? { id: "z-c", nombre: CENTRAL_NOMBRE } : opts.central);
   const intentos = opts.intentos ?? fakeIntentosEnLote();
-  const service = new ManifiestoService(repo, zonaRepo, intentos, () => AHORA);
+  const service = new ManifiestoService(repo, zonaRepo, intentos, () => AHORA, reglasPaisFijas());
   return { service, repo, lectura, prohibidas, zonaRepo, intentos };
 }
 
@@ -326,6 +327,18 @@ describe("R8/R9 — origen, destino y responsable por flujo (design.md §4)", ()
     expect(fila.origen).toBe("Cartago");
     expect(fila.destino).toBe(CENTRAL_NOMBRE);
     expect(fila.responsable).toBe(ACTOR_NOMBRE);
+  });
+
+  // SLT-197 R982 (D1): el retiro de una satelite va de su zona a la central, sin mensajero, y
+  // responde quien retiro. Literales a mano.
+  it("SLT-197 R982 retiro_satelite: ZONA -> CENTRAL, responsable quien retiro", async () => {
+    const fila = await unaFila(
+      "retiro_satelite",
+      row({ zonaNombre: "Cartago", mensajeroAsignadoNombre: null }),
+    );
+    expect(fila.origen).toBe("Cartago");
+    expect(fila.destino).toBe("Bodega Central GAM");
+    expect(fila.responsable).toBe("Ana Maestra");
   });
 
   it("envio_tienda: CENTRAL -> TIENDA, responsable el actor", async () => {

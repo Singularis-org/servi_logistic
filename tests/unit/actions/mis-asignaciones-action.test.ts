@@ -9,6 +9,7 @@ import {
 import type { IMisAsignacionesService } from "@/lib/interfaces/services/IMisAsignacionesService";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import { ForbiddenError } from "@/lib/errors";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // ⚠️ Feature 193 (R10), decision humana del 2026-08-10: la gestion EXIGE la ubicacion del
 // mensajero (o un motivo tecnico). Los FormData validos de abajo se AMPLIAN con las dos
@@ -65,24 +66,24 @@ const actorMensajero = async () => MENSAJERO;
 describe("R12: unauthenticated antes de tocar el service", () => {
   it("listar sin actor -> unauthenticated", async () => {
     const service = buildService();
-    const r = await listarMisAsignaciones({ service, getActor: noActor });
+    const r = await listarMisAsignaciones({ service, reglasPais: reglasPaisFijas(), getActor: noActor });
     expect(r.status).toBe("unauthenticated");
     expect(service.listarMisAsignaciones).not.toHaveBeenCalled();
   });
 
   it("recoger sin actor -> unauthenticated", async () => {
-    const r = await recogerAsignaciones({ ordenIds: ["o1"] }, { service: buildService(), getActor: noActor });
+    const r = await recogerAsignaciones({ ordenIds: ["o1"] }, { service: buildService(), reglasPais: reglasPaisFijas(), getActor: noActor });
     expect(r.status).toBe("unauthenticated");
   });
 
   it("escoger sin actor -> unauthenticated", async () => {
-    const r = await escogerParaGestion({ ordenId: "o1" }, { service: buildService(), getActor: noActor });
+    const r = await escogerParaGestion({ ordenId: "o1" }, { service: buildService(), reglasPais: reglasPaisFijas(), getActor: noActor });
     expect(r.status).toBe("unauthenticated");
   });
 
   it("gestionar sin actor -> unauthenticated", async () => {
     const fd = new FormData();
-    const r = await gestionar(fd, { service: buildService(), getActor: noActor });
+    const r = await gestionar(fd, { service: buildService(), reglasPais: reglasPaisFijas(), getActor: noActor });
     expect(r.status).toBe("unauthenticated");
   });
 });
@@ -92,21 +93,21 @@ describe("R12: unauthenticated antes de tocar el service", () => {
 describe("recoger / escoger", () => {
   it("recoger valido delega en el service con los ordenIds", async () => {
     const service = buildService();
-    const r = await recogerAsignaciones({ ordenIds: ["o1", "o2"] }, { service, getActor: actorMensajero });
+    const r = await recogerAsignaciones({ ordenIds: ["o1", "o2"] }, { service, reglasPais: reglasPaisFijas(), getActor: actorMensajero });
     expect(r.status).toBe("ok");
     expect(service.recogerAsignaciones).toHaveBeenCalledWith({ ordenIds: ["o1", "o2"] }, MENSAJERO);
   });
 
   it("recoger con lista vacia -> validation_error (zod), sin service", async () => {
     const service = buildService();
-    const r = await recogerAsignaciones({ ordenIds: [] }, { service, getActor: actorMensajero });
+    const r = await recogerAsignaciones({ ordenIds: [] }, { service, reglasPais: reglasPaisFijas(), getActor: actorMensajero });
     expect(r.status).toBe("validation_error");
     expect(service.recogerAsignaciones).not.toHaveBeenCalled();
   });
 
   it("escoger valido delega con el ordenId", async () => {
     const service = buildService();
-    const r = await escogerParaGestion({ ordenId: "o1" }, { service, getActor: actorMensajero });
+    const r = await escogerParaGestion({ ordenId: "o1" }, { service, reglasPais: reglasPaisFijas(), getActor: actorMensajero });
     expect(r.status).toBe("ok");
     expect(service.escogerParaGestion).toHaveBeenCalledWith("o1", MENSAJERO);
   });
@@ -130,7 +131,7 @@ describe("gestionar — validacion de borde (R22/R24/R25/R27/R29)", () => {
 
   it("R22: entrega valida delega con montoRecibido number, metodo y bytes de evidencia", async () => {
     const service = buildService();
-    const r = await gestionar(fdEntrega(), { service, getActor: actorMensajero });
+    const r = await gestionar(fdEntrega(), { service, reglasPais: reglasPaisFijas(), getActor: actorMensajero });
     expect(r.status).toBe("ok");
     const [input] = (service.gestionar as ReturnType<typeof vi.fn>).mock.calls[0];
     expect(input.resultado).toBe("entregado");
@@ -142,7 +143,7 @@ describe("gestionar — validacion de borde (R22/R24/R25/R27/R29)", () => {
 
   it("R22: entrega sin foto -> validation_error, sin service", async () => {
     const service = buildService();
-    const r = await gestionar(fdEntrega({}, false), { service, getActor: actorMensajero });
+    const r = await gestionar(fdEntrega({}, false), { service, reglasPais: reglasPaisFijas(), getActor: actorMensajero });
     expect(r.status).toBe("validation_error");
     expect(service.gestionar).not.toHaveBeenCalled();
   });
@@ -158,14 +159,14 @@ describe("gestionar — validacion de borde (R22/R24/R25/R27/R29)", () => {
   // "montoCobrar null + monto 100 -> validation_error"): R22 sigue trazado.
   it("R22: entrega con monto negativo -> validation_error, sin service", async () => {
     const service = buildService();
-    const r = await gestionar(fdEntrega({ montoRecibido: "-1" }), { service, getActor: actorMensajero });
+    const r = await gestionar(fdEntrega({ montoRecibido: "-1" }), { service, reglasPais: reglasPaisFijas(), getActor: actorMensajero });
     expect(r.status).toBe("validation_error");
     expect(service.gestionar).not.toHaveBeenCalled();
   });
 
   it("R22: entrega con monto 0 (sin cobro) -> delega en el service", async () => {
     const service = buildService();
-    const r = await gestionar(fdEntrega({ montoRecibido: "0" }), { service, getActor: actorMensajero });
+    const r = await gestionar(fdEntrega({ montoRecibido: "0" }), { service, reglasPais: reglasPaisFijas(), getActor: actorMensajero });
     expect(r.status).toBe("ok");
     const [input] = (service.gestionar as ReturnType<typeof vi.fn>).mock.calls[0];
     expect(input.montoRecibido).toBe(0);
@@ -180,7 +181,7 @@ describe("gestionar — validacion de borde (R22/R24/R25/R27/R29)", () => {
     fd.set("resultado", "reprogramado");
     fd.set("fechaReprogramacion", "2000-01-01");
     fd.set("motivo", "x");
-    const r = await gestionar(fd, { service, getActor: actorMensajero });
+    const r = await gestionar(fd, { service, reglasPais: reglasPaisFijas(), getActor: actorMensajero });
     expect(r.status).toBe("validation_error");
     expect(service.gestionar).not.toHaveBeenCalled();
   });
@@ -194,7 +195,7 @@ describe("gestionar — validacion de borde (R22/R24/R25/R27/R29)", () => {
     fd.set("resultado", "reprogramado");
     fd.set("fechaReprogramacion", fechaFuturaISO());
     fd.set("motivo", "cliente no estaba");
-    const r = await gestionar(fd, { service, getActor: actorMensajero });
+    const r = await gestionar(fd, { service, reglasPais: reglasPaisFijas(), getActor: actorMensajero });
     expect(r.status).toBe("ok");
     const [input] = (service.gestionar as ReturnType<typeof vi.fn>).mock.calls[0];
     expect(input.resultado).toBe("reprogramado");
@@ -208,7 +209,7 @@ describe("gestionar — validacion de borde (R22/R24/R25/R27/R29)", () => {
     fd.set("ubicacionLng", "-84.0907");
     fd.set("resultado", "novedad");
     fd.set("motivo", "");
-    const r = await gestionar(fd, { service, getActor: actorMensajero });
+    const r = await gestionar(fd, { service, reglasPais: reglasPaisFijas(), getActor: actorMensajero });
     expect(r.status).toBe("validation_error");
   });
 
@@ -220,7 +221,7 @@ describe("gestionar — validacion de borde (R22/R24/R25/R27/R29)", () => {
     fd.set("ubicacionLng", "-84.0907");
     fd.set("resultado", "devolucion_a_origen_por_rechazo");
     fd.set("motivo", "cliente rechazo");
-    const r = await gestionar(fd, { service, getActor: actorMensajero });
+    const r = await gestionar(fd, { service, reglasPais: reglasPaisFijas(), getActor: actorMensajero });
     expect(r.status).toBe("validation_error");
     expect(service.gestionar).not.toHaveBeenCalled();
   });
@@ -234,7 +235,7 @@ describe("gestionar — validacion de borde (R22/R24/R25/R27/R29)", () => {
     fd.set("resultado", "devolucion_a_origen_por_rechazo");
     fd.set("motivo", "cliente rechazo");
     fd.set("evidencia", imagenFile());
-    const r = await gestionar(fd, { service, getActor: actorMensajero });
+    const r = await gestionar(fd, { service, reglasPais: reglasPaisFijas(), getActor: actorMensajero });
     expect(r.status).toBe("ok");
     const [input] = (service.gestionar as ReturnType<typeof vi.fn>).mock.calls[0];
     expect(input.resultado).toBe("devolucion_a_origen_por_rechazo");
@@ -277,7 +278,7 @@ describe("menor-1: withErrorHandler envuelve los cuerpos de las actions", () => 
     // el test AFIRMA no cambia.
     fd.set("evidencia", imagenFile());
 
-    const r = await gestionar(fd, { service, getActor: actorMensajero });
+    const r = await gestionar(fd, { service, reglasPais: reglasPaisFijas(), getActor: actorMensajero });
     // Ficha 440: se resuelve, no se rechaza. Que la promesa RESUELVA es la mitad que importa:
     // una Server Action que lanza no tiene frontera que la recoja y revienta en el `await` del
     // cliente.
@@ -299,7 +300,7 @@ describe("menor-1: withErrorHandler envuelve los cuerpos de las actions", () => 
     fd.set("ubicacionLng", "-84.0907");
     fd.set("resultado", "novedad");
     fd.set("motivo", "x");
-    const r = await gestionar(fd, { service, getActor: noActor });
+    const r = await gestionar(fd, { service, reglasPais: reglasPaisFijas(), getActor: noActor });
     expect(r.status).toBe("unauthenticated");
     expect(service.gestionar).not.toHaveBeenCalled();
   });
@@ -307,7 +308,7 @@ describe("menor-1: withErrorHandler envuelve los cuerpos de las actions", () => 
   it("validation_error (zod invalido) sigue devolviendose a traves de withErrorHandler", async () => {
     const service = buildService();
     // recoger con lista vacia: ZodError -> VALIDATION_ERROR normalizado.
-    const r = await recogerAsignaciones({ ordenIds: [] }, { service, getActor: actorMensajero });
+    const r = await recogerAsignaciones({ ordenIds: [] }, { service, reglasPais: reglasPaisFijas(), getActor: actorMensajero });
     expect(r.status).toBe("validation_error");
     expect(service.recogerAsignaciones).not.toHaveBeenCalled();
   });
@@ -383,7 +384,7 @@ describe("ficha 440: INTERNAL es un desenlace, no una excepcion", () => {
         throw baseAbortada();
       }),
     });
-    const r = await listarMisAsignaciones({ service, getActor: actorMensajero });
+    const r = await listarMisAsignaciones({ service, reglasPais: reglasPaisFijas(), getActor: actorMensajero });
     expect(r.status).toBe("error");
   });
 
@@ -396,12 +397,12 @@ describe("ficha 440: INTERNAL es un desenlace, no una excepcion", () => {
         throw baseAbortada();
       }),
     });
-    const r = await listarMisAsignaciones({ service, getActor: actorMensajero });
+    const r = await listarMisAsignaciones({ service, reglasPais: reglasPaisFijas(), getActor: actorMensajero });
     expect(r.status).not.toBe("unauthenticated");
   });
 
   it("listar: sin sesion SIGUE siendo `unauthenticated` (el caso nuevo no se lo come)", async () => {
-    const r = await listarMisAsignaciones({ service: buildService(), getActor: noActor });
+    const r = await listarMisAsignaciones({ service: buildService(), reglasPais: reglasPaisFijas(), getActor: noActor });
     expect(r.status).toBe("unauthenticated");
   });
 
@@ -411,7 +412,7 @@ describe("ficha 440: INTERNAL es un desenlace, no una excepcion", () => {
         throw baseAbortada();
       }),
     });
-    const r = await recogerAsignaciones({ ordenIds: ["o1"] }, { service, getActor: actorMensajero });
+    const r = await recogerAsignaciones({ ordenIds: ["o1"] }, { service, reglasPais: reglasPaisFijas(), getActor: actorMensajero });
     expect(r.status).toBe("error");
   });
 
@@ -421,7 +422,7 @@ describe("ficha 440: INTERNAL es un desenlace, no una excepcion", () => {
         throw baseAbortada();
       }),
     });
-    const r = await escogerParaGestion({ ordenId: "o1" }, { service, getActor: actorMensajero });
+    const r = await escogerParaGestion({ ordenId: "o1" }, { service, reglasPais: reglasPaisFijas(), getActor: actorMensajero });
     expect(r.status).toBe("error");
   });
 
@@ -432,7 +433,7 @@ describe("ficha 440: INTERNAL es un desenlace, no una excepcion", () => {
         throw baseAbortada();
       }),
     });
-    const r = await gestionar(fdDevolucionValido(), { service, getActor: actorMensajero });
+    const r = await gestionar(fdDevolucionValido(), { service, reglasPais: reglasPaisFijas(), getActor: actorMensajero });
     expect(r.status).toBe("error");
   });
 
@@ -452,7 +453,7 @@ describe("ficha 440: INTERNAL es un desenlace, no una excepcion", () => {
         throw baseAbortada();
       }),
     });
-    const r = await gestionar(fdDevolucionValido(), { service, getActor: actorMensajero });
+    const r = await gestionar(fdDevolucionValido(), { service, reglasPais: reglasPaisFijas(), getActor: actorMensajero });
     const serializado = JSON.stringify(r);
     expect(serializado).not.toContain("transaction is aborted");
     expect(serializado).not.toContain("25P02");
@@ -470,7 +471,7 @@ describe("ficha 440: INTERNAL es un desenlace, no una excepcion", () => {
       }),
     });
     await expect(
-      escogerParaGestion({ ordenId: "o1" }, { service, getActor: actorMensajero }),
+      escogerParaGestion({ ordenId: "o1" }, { service, reglasPais: reglasPaisFijas(), getActor: actorMensajero }),
     ).rejects.toThrow(/AppErrorCode inesperado FORBIDDEN/);
   });
 });
@@ -503,7 +504,7 @@ describe("SLT-59 R44/R28 — gestionar reduce la ruta del actor tras un `ok`, be
       orden.push("reducir");
     });
 
-    const r = await gestionar(fdEntregaValida(), { service, getActor: actorMensajero, reducirRuta });
+    const r = await gestionar(fdEntregaValida(), { service, reglasPais: reglasPaisFijas(), getActor: actorMensajero, reducirRuta });
 
     expect(r.status).toBe("ok");
     expect(reducirRuta).toHaveBeenCalledTimes(1);
@@ -519,7 +520,7 @@ describe("SLT-59 R44/R28 — gestionar reduce la ruta del actor tras un `ok`, be
     const service = buildService({ gestionar: vi.fn(async () => resultado) });
     const reducirRuta = vi.fn(async () => {});
 
-    const r = await gestionar(fdEntregaValida(), { service, getActor: actorMensajero, reducirRuta });
+    const r = await gestionar(fdEntregaValida(), { service, reglasPais: reglasPaisFijas(), getActor: actorMensajero, reducirRuta });
 
     expect(r.status).toBe(resultado.status);
     expect(reducirRuta).not.toHaveBeenCalled();
@@ -533,7 +534,7 @@ describe("SLT-59 R44/R28 — gestionar reduce la ruta del actor tras un `ok`, be
     });
     const reducirRuta = vi.fn(async () => {});
 
-    const r = await gestionar(fdEntregaValida(), { service, getActor: actorMensajero, reducirRuta });
+    const r = await gestionar(fdEntregaValida(), { service, reglasPais: reglasPaisFijas(), getActor: actorMensajero, reducirRuta });
 
     expect(r.status).toBe("error");
     expect(reducirRuta).not.toHaveBeenCalled();
@@ -545,7 +546,7 @@ describe("SLT-59 R44/R28 — gestionar reduce la ruta del actor tras un `ok`, be
     const fd = fdEntregaValida();
     fd.set("montoRecibido", "-1");
 
-    const r = await gestionar(fd, { service, getActor: actorMensajero, reducirRuta });
+    const r = await gestionar(fd, { service, reglasPais: reglasPaisFijas(), getActor: actorMensajero, reducirRuta });
 
     expect(r.status).toBe("validation_error");
     expect(reducirRuta).not.toHaveBeenCalled();
@@ -557,11 +558,13 @@ describe("SLT-59 R44/R28 — gestionar reduce la ruta del actor tras un `ok`, be
 
     const sinFallo = await gestionar(fdEntregaValida(), {
       service,
+      reglasPais: reglasPaisFijas(),
       getActor: actorMensajero,
       reducirRuta: vi.fn(async () => {}),
     });
     const conFallo = await gestionar(fdEntregaValida(), {
       service,
+      reglasPais: reglasPaisFijas(),
       getActor: actorMensajero,
       reducirRuta: vi.fn(async () => {
         throw new Error("findByMensajero: conexion perdida");

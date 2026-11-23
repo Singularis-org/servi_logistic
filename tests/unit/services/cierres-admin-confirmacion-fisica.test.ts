@@ -10,6 +10,8 @@ import type { ISignedUrlProvider } from "@/lib/interfaces/external/ISignedUrlPro
 import type { IZonaRepository } from "@/lib/interfaces/repositories/IZonaRepository";
 import type { IOrdenRepository } from "@/lib/interfaces/repositories/IOrdenRepository";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
+import { dobleCierresAdmin } from "@/tests/fixtures/dobles/cierres-admin-repository";
 
 // Feature 238 (T2.2/T2.3/T2.4, R7-R16) — LA COBERTURA EXACTA DE LOS PAQUETES QUE VUELVEN.
 //
@@ -49,34 +51,11 @@ function ok(gestionId: string, numGuia: number = GUIA[gestionId] ?? 9999) {
   return { origen: "gestion" as const, gestionId, numGuia };
 }
 
-function fakeRepo(overrides: Partial<ICierresAdminRepository> = {}): ICierresAdminRepository {
-  return {
-    findCierresByAlcance: vi.fn(async () => []),
-    findHistoricoPaginado: vi.fn(async () => ({ items: [], total: 0 })),
-    findColaPaginada: vi.fn(async () => ({ items: [], total: 0 })),
-    findHistoricoCompleto: vi.fn(async () => []),
-    findColaCompleta: vi.fn(async () => []),
-    findCierreByIdEnAlcance: vi.fn(async () => null),
-    resolverCierre: vi.fn(async () => "updated" as const),
-    forzarSolicitudVencido: vi.fn(async () => "updated" as const),
-    findGestionesIncidenteDelCierre: vi.fn(async () => []),
-    findGestionesRetornablesDelCierre: vi.fn(async () => []),
-    // Ficha 451 / SLT-72 (T2.1): las barridas del cierre. Doble VACIO: sin barridas, el camino de esta suite queda intacto.
-    findBarridasDelCierre: vi.fn(async () => []),
-    findGestionesPorAlcanceCompleto: vi.fn(async () => []),
-    findCatalogoFiltros: vi.fn(async () => ({ zonas: [], mensajeros: [], mensajerosFiltro: [] })),
-    // Merge 238 <- dev (2026-08-19): la correccion del desglose de pago amplio el contrato del
-    // repositorio. Esta suite no toca esa ruta; los stubs estan por completitud del doble y
-    // devuelven lo NEUTRO (nada que editar, nada de alcance) para que un uso accidental no pase
-    // por verde.
-    findGestionEditableEnCierre: vi.fn(async () => null),
+function fakeRepo(overrides: Partial<ICierresAdminRepository> = {}) {
+  return dobleCierresAdmin({
     actualizarPagosGestion: vi.fn(async () => ({ status: "fuera_de_alcance" as const })),
-    // FICHA 398: la correccion en sitio del resultado. Doble MUDO: este archivo no la ejercita,
-    // y devolver `conflict` deja constancia de que nadie la esta midiendo aqui.
-    corregirResultadoGestionEnCierre: vi.fn(async () => ({ status: "conflict" as const })),
-    ajustarPagoMensajeroEnCierre: vi.fn(async () => ({ status: "conflict" as const })),
     ...overrides,
-  };
+  });
 }
 
 function newService(repo: ICierresAdminRepository) {
@@ -102,7 +81,12 @@ function newService(repo: ICierresAdminRepository) {
     sumarPremiosVivosPorCierre: vi.fn(async (ids: string[]) =>
       Object.fromEntries(ids.map((id) => [id, "0.00"])),
     ),
-  }, sinRetenidas()); // FICHA 462: 7.o argumento requerido; este archivo no mide la marca
+  }, sinRetenidas(),
+  undefined,
+  undefined,
+  undefined,
+  undefined,
+  reglasPaisFijas(),); // FICHA 462: 7.o argumento requerido; este archivo no mide la marca
 }
 
 function resolverCall(repo: ICierresAdminRepository) {
@@ -289,7 +273,7 @@ describe("238/R12/R13 — la guia leida", () => {
 
     const errores = erroresDe(r);
     expect(errores[G_DEV]).toEqual([
-      "Este paquete no tiene número de guía y no se puede confirmar. Avisá a un administrador.",
+      "Este paquete no tiene número de guía y no se puede confirmar. Avisa a un administrador.",
     ]);
     // R13: NO se omite del conjunto esperado. Omitirla la aprobaria sin que nadie la tuviera
     // delante, que es la falla silenciosa que este mensaje evita.
@@ -542,7 +526,7 @@ describe("451/R11-R15 — cobertura exacta de las barridas, error POR FILA", () 
     // (a) Enviada con cualquier guia: el motivo es la falta de guia.
     const conEntrada = await service.aprobarCierre("c1", MAESTRO, [], [okB(O_B1, 1)]);
     expect(erroresDe(conEntrada)).toEqual({
-      [O_B1]: ["Este paquete no tiene número de guía y no se puede confirmar. Avisá a un administrador."],
+      [O_B1]: ["Este paquete no tiene número de guía y no se puede confirmar. Avisa a un administrador."],
     });
     // (b) Sin enviarla: sigue en el conjunto esperado (si se omitiera, esto aprobaria).
     const sinEntrada = await service.aprobarCierre("c1", MAESTRO, [], []);

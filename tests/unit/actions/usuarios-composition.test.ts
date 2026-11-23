@@ -3,7 +3,11 @@ import { describe, expect, it, vi } from "vitest";
 import { SessionRepository } from "@/lib/repositories/SessionRepository";
 // FICHA 379 (T10): el quinto cable, con el mismo riesgo estructural que el cuarto.
 import { CierreBodegaRepository } from "@/lib/repositories/CierreBodegaRepository";
-import type { Actor } from "@/lib/interfaces/services/IUsuarioService";
+// SLT-42: el sexto cable, las reglas del pais de la empresa.
+import { ReglasPaisEmpresaService } from "@/lib/services/ReglasPaisEmpresaService";
+import type { Actor, CorreoDeCambio } from "@/lib/interfaces/services/IUsuarioService";
+// SLT-221: el septimo cable, el correo de confirmacion del cambio de correo.
+import { UserRepository } from "@/lib/repositories/UserRepository";
 
 /**
  * FEATURE 287 (T8, R20) — **EL COMPOSITION ROOT *PASA* EL REVOCADOR DE SESIONES.**
@@ -121,5 +125,44 @@ describe("287/T8 · `buildUsuarioService` cablea el revocador de sesiones (R20)"
     ).toBe("function");
     // El cuarto sigue siendo el suyo: nadie se ha corrido de sitio.
     expect(args[3]).toBeInstanceOf(SessionRepository);
+  });
+
+  // SLT-42: sin las reglas del pais, el alta y la edicion del telefono o del tipo LANZAN (a proposito:
+  // guardar sin validar seria peor). El sexto parametro es opcional, asi que solo esto lo delata.
+  it("SLT-42 (R10, R14): el objeto construido trae las reglas del pais en la sexta posicion", async () => {
+    argumentosCapturados.length = 0;
+    const { restablecerContrasenaUsuario } = await import("@/lib/actions/usuarios");
+
+    await restablecerContrasenaUsuario("usr-1", { getActor: async () => MAESTRO });
+
+    expect(argumentosCapturados).toHaveLength(1);
+    const args = argumentosCapturados[0];
+    expect(args.length, "SLT-42: el composition root no paso las reglas del pais").toBeGreaterThanOrEqual(6);
+    expect(args[5]).toBeInstanceOf(ReglasPaisEmpresaService);
+    expect(args[4]).toBeInstanceOf(CierreBodegaRepository);
+  });
+
+  // SLT-221 (T2.6): sin el correo de confirmacion, pedir, cancelar y consultar el cambio de correo
+  // LANZAN. El septimo parametro es opcional, asi que solo esto lo delata.
+  it("SLT-221: el objeto construido trae el correo de cambio en la septima posicion, con el repo real", async () => {
+    argumentosCapturados.length = 0;
+    const { restablecerContrasenaUsuario } = await import("@/lib/actions/usuarios");
+
+    await restablecerContrasenaUsuario("usr-1", { getActor: async () => MAESTRO });
+
+    expect(argumentosCapturados).toHaveLength(1);
+    const args = argumentosCapturados[0];
+    expect(args.length, "SLT-221: el composition root no paso el correo de cambio").toBeGreaterThanOrEqual(7);
+    const correo = args[6] as CorreoDeCambio;
+    // El repo es EL `UserRepository` que el test de integracion midio, y el mismo del primer argumento.
+    expect(correo.repo).toBeInstanceOf(UserRepository);
+    expect(correo.repo).toBe(args[0]);
+    expect(typeof correo.repo.aplicarCambioCorreo).toBe("function");
+    expect(typeof correo.sender.enviar).toBe("function");
+    expect("baseUrl" in correo && "contacto" in correo).toBe(true);
+    // R1621 (D8): 72 h sin la variable. Literal a proposito: es el contrato, no su fuente.
+    expect(process.env.AUTH_CAMBIO_CORREO_TTL_HORAS ?? "").toBe("");
+    expect(correo.ttlHoras).toBe(72);
+    expect(args[5]).toBeInstanceOf(ReglasPaisEmpresaService);
   });
 });

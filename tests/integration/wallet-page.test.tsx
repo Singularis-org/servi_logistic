@@ -159,6 +159,17 @@ import { verDeudaPlataformaAction } from "@/lib/actions/deuda-plataforma";
 import { registrarEgresoAdministrativoAction } from "@/lib/actions/wallet-egresos";
 import { money } from "@/app/(app)/wallet/_components/wallet-labels";
 
+// SLT-42 (T5.4): la zona del pais de la empresa es la de CR, como antes. Las reglas reales leen el pais
+// de la empresa en curso con el cliente global, que no ve la empresa de una transaccion revertida ni
+// tiene empresa fuera de `conEmpresa`; la zona por pais la miden `hora-por-pais-wallet` y `demo-qa`.
+vi.mock("@/lib/services/ReglasPaisEmpresaService", async (importOriginal) => {
+  const { reglasPaisFijas } = await import("@/tests/fabricas/reglas-pais");
+  return {
+    ...(await importOriginal<typeof import("@/lib/services/ReglasPaisEmpresaService")>()),
+    construirReglasPaisEmpresa: () => reglasPaisFijas(),
+  };
+});
+
 const resolveActorMock = vi.mocked(resolveActorFromSession);
 const listarMock = vi.mocked(listarMovimientosAction);
 const resumenMock = vi.mocked(verResumenCajaAction);
@@ -254,7 +265,7 @@ const RESUMEN_OK = {
       ingreso_comision_cod: "0.00",
       // SL-39 (R8): las tres de IVA salen de aquí y van a `iva`.
       ingreso_ajuste: "0.00",
-      ingreso_cobro_tienda: "0.00", // ficha 461: la exige el `Record` total
+      ingreso_cobro_tienda: "0.00", ingreso_fulfillment: "0.00", /* SLT-94 */ // ficha 461: la exige el `Record` total
     },
     totalIngresos: "1500.00",
     // Ficha 339 (T1.3/T6.2): un importe por egreso propio CON FILA que el desglose no abre.
@@ -265,7 +276,7 @@ const RESUMEN_OK = {
       egreso_ajuste: "0.00",
       egreso_reverso_cobro_tienda: "0.00", // ficha 461: la exige el `Record` total
       egreso_reverso_flete_devolucion: "0.00", // ficha 458-B: la exige el `Record` total
-      egreso_pago_plataforma: "0.00", // SL-45: la exige el `Record` total
+      egreso_pago_plataforma: "0.00", egreso_reverso_fulfillment: "0.00", /* SLT-94 */ // SL-45: la exige el `Record` total
     },
     otrosEgresos: "0.00",
     totalEgresos: "0.00",
@@ -274,7 +285,7 @@ const RESUMEN_OK = {
       ingreso_iva_flete: "0.00",
       ingreso_iva_flete_devolucion: "0.00",
       ingreso_iva_comision_cod: "0.00",
-      egreso_reverso_iva_flete_devolucion: "0.00",
+      egreso_reverso_iva_flete_devolucion: "0.00", ingreso_iva_fulfillment: "0.00", egreso_reverso_iva_fulfillment: "0.00", /* SLT-94 */
     },
     totalIva: "0.00",
     // Ficha 339 (R9): la UNICA clave no-STRING de la composicion, y no es una cantidad: es la
@@ -497,13 +508,13 @@ describe("WalletPage — pre-fetch del maestro (R18/R21)", () => {
     //
     // SL-39 (R20): `iva` es otro mapa de importes y recibe el mismo bucle, con su no-vacuidad.
     const { ingresos, egresos, iva, hayOtrosEgresos, ...totales } = props.composicion;
-    // Control de no-vacuidad: SL-39 (R8) — los cinco ingresos que son ganancia, sin los de IVA.
-    expect(Object.keys(ingresos)).toHaveLength(5);
+    // Control de no-vacuidad: SL-39 (R8) — los ingresos que son ganancia, sin los de IVA (SLT-94: + fulfillment, 6).
+    expect(Object.keys(ingresos)).toHaveLength(6);
     for (const [categoria, valor] of Object.entries(ingresos)) {
       expect(typeof valor, `composicion.ingresos.${categoria}`).toBe("string");
     }
-    // SL-39 (R7): las cuatro categorías de IVA, cada una STRING.
-    expect(Object.keys(iva)).toHaveLength(4);
+    // SL-39 (R7): las categorías de IVA, cada una STRING (SLT-94: + IVA del fulfillment y su devolución, 6).
+    expect(Object.keys(iva)).toHaveLength(6);
     for (const [categoria, valor] of Object.entries(iva)) {
       expect(typeof valor, `composicion.iva.${categoria}`).toBe("string");
     }

@@ -2,6 +2,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { ReactElement } from "react";
 import { render, screen, cleanup } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { SWRConfig } from "swr";
 
 import { GestionarOrdenPanel } from "@/app/(app)/mis-asignaciones/_components/GestionarOrdenPanel";
@@ -180,6 +181,7 @@ describe("GestionarOrdenPanel — hilo de notas", () => {
   it("la lista de asignaciones no pide el hilo de todas las órdenes", async () => {
     montar(
       <RepartoModule
+        kpis={null}
         porGestionar={[
           orden({ id: "g1", numGuia: 1001, secuenciaRuta: 1 }),
           orden({ id: "g2", numGuia: 1002, destinatario: "Beto Ruiz", secuenciaRuta: 2 }),
@@ -193,8 +195,16 @@ describe("GestionarOrdenPanel — hilo de notas", () => {
       />,
     );
 
-    // Tres asignaciones, UNA sola lectura: la de la orden abierta en el panel. Si el hilo
-    // viajara en el listado (o el módulo lo pidiera por card), aquí habría tres.
+    // SLT-156 (R504): la lista va sola, sin panel, así que no se lee NINGÚN hilo.
+    expect(screen.queryByRole("region", { name: "Notas con la tienda" })).toBeNull();
+    expect(listarMock).not.toHaveBeenCalled();
+
+    // Al abrir UNA orden en modo foco, UNA sola lectura: la suya. Si el hilo viajara en el
+    // listado (o el módulo lo pidiera por card), aquí habría tres.
+    const user = userEvent.setup();
+    const [gestionar] = screen.getAllByRole("button", { name: /^Gestionar la orden / });
+    await user.click(gestionar!);
+    await user.click(await screen.findByRole("button", { name: "Aceptar" }));
     await screen.findByRole("region", { name: "Notas con la tienda" });
     expect(listarMock).toHaveBeenCalledTimes(1);
     expect(listarMock).toHaveBeenCalledWith({ ordenId: "g1" });

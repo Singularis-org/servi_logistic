@@ -1,6 +1,8 @@
 // Feature 46 (R9) — hora de Costa Rica para comparar `fecha_reprogramacion` por DIA.
-// America/Costa_Rica es UTC-6 fijo (sin horario de verano), asi que el offset es una
-// constante y no hace falta la API de zonas horarias.
+//
+// SLT-42: estas funciones son ENVOLTORIOS de `calendario-zona.ts` con la zona de Costa Rica, que
+// queda solo para la UI hasta SLT-81 (lista de excepciones de R29). El servidor llama a
+// `calendario-zona.ts` con la zona del pais de la empresa; aqui no se calcula nada propio.
 //
 // `fecha_reprogramacion` es `@db.Date` y la feature 36 la almacena a medianoche UTC
 // (`new Date(`${fecha}T00:00:00.000Z`)`). Por eso `startOfDayCR` devuelve la fecha
@@ -9,7 +11,21 @@
 // (ambos lados usan la misma convencion "fecha a medianoche UTC") sin off-by-one por el
 // desfase de -6h.
 
-const CR_OFFSET_MS = 6 * 60 * 60 * 1000; // UTC-6
+import {
+  diasNaturalesDesde,
+  esFechaCalendarioValida as esFechaCalendarioValidaZona,
+  fechaCalendario,
+  inicioDeUltimosNDiasEnUtc,
+  inicioDelDiaComoFecha,
+  inicioDelDiaEnUtc,
+  inicioDelDiaSiguienteEnUtc,
+  inicioDelMesEnUtc,
+  manana,
+  periodoMensual,
+  ultimosNDias,
+} from "@/lib/utils/calendario-zona";
+
+export const ZONA_CR = "America/Costa_Rica";
 
 /**
  * Devuelve la medianoche UTC de la fecha CALENDARIO de Costa Rica correspondiente a
@@ -29,11 +45,7 @@ const CR_OFFSET_MS = 6 * 60 * 60 * 1000; // UTC-6
  * cerro la ficha 166, y hay guardias que lo vigilan.
  */
 export function startOfDayCR(now: Date = new Date()): Date {
-  // Corre el reloj -6h para que los campos UTC representen la hora de pared de CR.
-  const crWall = new Date(now.getTime() - CR_OFFSET_MS);
-  return new Date(
-    Date.UTC(crWall.getUTCFullYear(), crWall.getUTCMonth(), crWall.getUTCDate(), 0, 0, 0, 0),
-  );
+  return inicioDelDiaComoFecha(now, ZONA_CR);
 }
 
 /**
@@ -45,11 +57,7 @@ export function startOfDayCR(now: Date = new Date()): Date {
  * `"2026-07-14"`.
  */
 export function fechaCalendarioCR(now: Date = new Date()): string {
-  const crWall = new Date(now.getTime() - CR_OFFSET_MS);
-  const anio = crWall.getUTCFullYear();
-  const mes = String(crWall.getUTCMonth() + 1).padStart(2, "0");
-  const dia = String(crWall.getUTCDate()).padStart(2, "0");
-  return `${anio}-${mes}-${dia}`;
+  return fechaCalendario(now, ZONA_CR);
 }
 
 /**
@@ -70,21 +78,14 @@ export function fechaCalendarioCR(now: Date = new Date()): string {
  * hace el mismo viaje por su cuenta pero contra el calendario de CR (06:00Z), que es otra
  * convencion y por eso no se colapsa con esta.
  */
-export function esFechaCalendarioValida(value: string): boolean {
-  const dia = new Date(`${value}T00:00:00.000Z`);
-  if (Number.isNaN(dia.getTime())) return false;
-  return dia.toISOString().slice(0, 10) === value;
-}
-
-/** Milisegundos de un dia; CR no tiene horario de verano, asi que sumar 24h == +1 dia. */
-const UN_DIA_MS = 24 * 60 * 60 * 1000;
+export const esFechaCalendarioValida = esFechaCalendarioValidaZona;
 
 /**
  * Fecha CALENDARIO de Costa Rica de MAÑANA como `YYYY-MM-DD`. Default del campo
  * "Nueva fecha" al reprogramar (feature 36): la reprogramacion mas temprana posible.
  */
 export function mananaCalendarioCR(now: Date = new Date()): string {
-  return fechaCalendarioCR(new Date(now.getTime() + UN_DIA_MS));
+  return manana(now, ZONA_CR);
 }
 
 /**
@@ -97,10 +98,7 @@ export function ultimosNDiasCalendarioCR(
   dias: number,
   now: Date = new Date(),
 ): { desde: string; hasta: string } {
-  return {
-    desde: fechaCalendarioCR(new Date(now.getTime() - (dias - 1) * UN_DIA_MS)),
-    hasta: fechaCalendarioCR(now),
-  };
+  return ultimosNDias(dias, now, ZONA_CR);
 }
 
 /**
@@ -116,7 +114,7 @@ export function ultimosNDiasCalendarioCR(
  * `fecha` debe venir ya validada como `YYYY-MM-DD` (ver `ordenFilterSchema`).
  */
 export function inicioDelDiaCREnUtc(fecha: string): Date {
-  return new Date(`${fecha}T06:00:00.000Z`);
+  return inicioDelDiaEnUtc(fecha, ZONA_CR);
 }
 
 /**
@@ -127,7 +125,7 @@ export function inicioDelDiaCREnUtc(fecha: string): Date {
  * perderia el dia entero salvo su primer instante.
  */
 export function inicioDelDiaSiguienteCREnUtc(fecha: string): Date {
-  return new Date(inicioDelDiaCREnUtc(fecha).getTime() + UN_DIA_MS);
+  return inicioDelDiaSiguienteEnUtc(fecha, ZONA_CR);
 }
 
 /**
@@ -136,8 +134,7 @@ export function inicioDelDiaSiguienteCREnUtc(fecha: string): Date {
  * hace `N - 1` dias, de modo que "ultimos 7 dias" cubra 7 dias CALENDARIO incluido hoy.
  */
 export function inicioDeUltimosNDiasCREnUtc(dias: number, now: Date = new Date()): Date {
-  const fecha = fechaCalendarioCR(new Date(now.getTime() - (dias - 1) * UN_DIA_MS));
-  return inicioDelDiaCREnUtc(fecha);
+  return inicioDeUltimosNDiasEnUtc(dias, now, ZONA_CR);
 }
 
 /**
@@ -152,7 +149,7 @@ export function inicioDeUltimosNDiasCREnUtc(dias: number, now: Date = new Date()
  * `2026-09-01T05:59:00Z` (23:59 CR del 31 ago) -> `2026-08-01T06:00:00Z`.
  */
 export function inicioDelMesCREnUtc(now: Date = new Date()): Date {
-  return inicioDelDiaCREnUtc(`${periodoMensualCR(now)}-01`);
+  return inicioDelMesEnUtc(now, ZONA_CR);
 }
 
 /**
@@ -163,10 +160,7 @@ export function inicioDelMesCREnUtc(now: Date = new Date()): Date {
  * del 30 jun) -> `"2026-06"`.
  */
 export function periodoMensualCR(now: Date = new Date()): string {
-  const crWall = new Date(now.getTime() - CR_OFFSET_MS);
-  const anio = crWall.getUTCFullYear();
-  const mes = String(crWall.getUTCMonth() + 1).padStart(2, "0");
-  return `${anio}-${mes}`;
+  return periodoMensual(now, ZONA_CR);
 }
 
 /**
@@ -186,8 +180,5 @@ export function periodoMensualCR(now: Date = new Date()): string {
  * leer. Y se deriva EN EL SERVIDOR: la pantalla no resta fechas (R20).
  */
 export function diasNaturalesCRDesde(desde: Date, now: Date = new Date()): number {
-  const dias = Math.round(
-    (startOfDayCR(now).getTime() - startOfDayCR(desde).getTime()) / UN_DIA_MS,
-  );
-  return dias > 0 ? dias : 0;
+  return diasNaturalesDesde(desde, now, ZONA_CR);
 }

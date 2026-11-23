@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Estado de cuenta de una bodega</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>body{margin:0}</style>
+</helmet>
+<div style="width:1440px;height:1100px;position:relative;display:flex;background:#F7F7F5;font-family:Archivo,system-ui,sans-serif;color:#111111;font-variant-numeric:tabular-nums">
+  <div aria-hidden="true" style="width:240px;background:#1C1C1A;flex-shrink:0"></div>
+  <main style="flex:1;min-width:0;display:flex;flex-direction:column">
+    <div aria-hidden="true" style="height:64px;border-bottom:1px solid #e7e5e4;background:#ffffff;flex-shrink:0"></div>
+    <div style="padding:20px 32px;display:flex;flex-direction:column;gap:14px">
+      <a href="#volver" style="font-size:14px;color:#1d4ed8">← Volver a las bodegas satélite</a>
+      <header style="display:flex;flex-direction:column;gap:4px">
+        <h1 style="margin:0;font-size:24px;font-weight:700">Estado de cuenta de Limón</h1>
+        <p style="margin:0;font-size:14px;color:#44403c">Lo que la bodega declaró, lo que llegó a la central y lo que todavía tiene en sus manos.</p>
+      </header>
+
+      <div style="display:grid;grid-template-columns:1.3fr repeat(4,minmax(0,1fr));gap:12px">
+        <div style="background:#FFF8D9;border:1px solid #FFD000;border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:6px">
+          <span style="font-size:13px;color:#44403c">Por entregar hoy</span>
+          <span style="font-size:22px;font-weight:700">₡549.463,27</span>
+          <span style="font-size:12px;color:#44403c">Limón tiene ₡549.463,27 por entregar</span>
+        </div>
+        <div style="background:#ffffff;border:1px solid #e7e5e4;border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:6px"><span style="font-size:13px;color:#44403c">Por entregar al inicio</span><span style="font-size:18px;font-weight:700">₡15.000,00</span></div>
+        <div style="background:#ffffff;border:1px solid #e7e5e4;border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:6px"><span style="font-size:13px;color:#44403c">Declarado en el periodo</span><span style="font-size:18px;font-weight:700">₡787.263,27</span></div>
+        <div style="background:#ffffff;border:1px solid #e7e5e4;border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:6px"><span style="font-size:13px;color:#44403c">Recibido en el periodo</span><span style="font-size:18px;font-weight:700">₡334.100,00</span></div>
+        <div style="background:#ffffff;border:1px solid #e7e5e4;border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:6px"><span style="font-size:13px;color:#44403c">Por entregar al final</span><span style="font-size:18px;font-weight:700">₡468.163,27</span></div>
+      </div>
+
+      <div role="tablist" aria-label="Secciones de la bodega" style="display:flex;gap:24px;border-bottom:1px solid #e7e5e4">
+        <sc-for list="{{tabs}}" as="t" hint-placeholder-count="2">
+          <button type="button" role="tab" onClick="{{t.pick}}" style="{{t.style}}">{{t.label}}</button>
+        </sc-for>
+      </div>
+
+      <sc-if value="{{enConc}}" hint-placeholder-val="{{ true }}">
+        <div style="display:flex;flex-direction:column;gap:12px">
+          <div role="status" style="display:flex;flex-direction:column;gap:2px;padding:10px 14px;border-radius:10px;background:#fef3c7;color:#92400e;font-size:14px">
+            <strong style="font-weight:600">Una consolidación llegó incompleta</strong>
+            <span>Se consolidaron ₡349.100,00 y se recibieron ₡334.100,00. La diferencia de ₡15.000,00 sigue contando como pendiente.</span>
+          </div>
+          <section aria-label="Consolidaciones de Limón" style="background:#ffffff;border:1px solid #e7e5e4;border-radius:12px;padding:4px 16px">
+            <div style="display:grid;grid-template-columns:120px 1fr 1fr 1fr 170px 1.3fr 220px;gap:8px;font-size:12px;color:#44403c;padding:10px 0;border-bottom:1px solid #e7e5e4">
+              <span>Consolidada</span><span style="text-align:right">Debe llegar</span><span style="text-align:right">Recibido</span><span style="text-align:right">Falta</span><span style="padding-left:16px">Estado</span><span>Conciliado por</span><span></span>
+            </div>
+            <div style="display:grid;grid-template-columns:120px 1fr 1fr 1fr 170px 1.3fr 220px;gap:8px;font-size:14px;padding:12px 0;border-bottom:1px solid #f5f5f4;align-items:center;background:#fafaf9">
+              <span>07/11 19:55</span><span style="text-align:right;font-weight:600">₡438.163,27</span><span style="text-align:right">—</span><span style="text-align:right;color:#92400e;font-weight:600">₡438.163,27</span>
+              <span style="padding-left:16px"><span style="font-size:12px;font-weight:500;padding:2px 10px;border-radius:999px;background:#fef3c7;color:#92400e">Pendiente de conciliar</span></span>
+              <span style="color:#44403c">—</span>
+              <span style="display:flex;gap:8px;justify-content:flex-end"><button type="button" onClick="{{abrir}}" style="font:inherit;font-size:13px;font-weight:500;height:32px;padding:0 12px;border-radius:8px;border:0;background:#111111;color:#ffffff;cursor:pointer">Marcar recibido</button></span>
+            </div>
+            <div style="padding:14px 4px 16px;border-bottom:1px solid #f5f5f4;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px">
+              <div style="border:1px solid #e7e5e4;border-radius:10px;padding:14px 16px;display:flex;flex-direction:column;gap:8px;font-size:14px">
+                <h4 style="margin:0;font-size:12px;font-weight:600;color:#44403c;letter-spacing:0.04em">LO QUE VA A LA CENTRAL</h4>
+                <div style="display:flex;justify-content:space-between"><span>Efectivo</span><span>₡389.764,07</span></div>
+                <div style="display:flex;justify-content:space-between"><span>SINPE</span><span>₡140.000,00</span></div>
+                <div style="display:flex;justify-content:space-between;border-top:1px dashed #e7e5e4;padding-top:8px"><span>Recaudado</span><span>₡529.764,07</span></div>
+                <div style="display:flex;justify-content:space-between;color:#44403c"><span>− Pago a mensajeros</span><span>₡88.000,80</span></div>
+                <div style="display:flex;justify-content:space-between;color:#44403c"><span>− Gana la bodega satélite</span><span>₡3.600,00</span></div>
+                <div style="display:flex;justify-content:space-between;font-weight:700;border-top:1px solid #e7e5e4;padding-top:8px"><span>Debe llegar a la central</span><span>₡438.163,27</span></div>
+              </div>
+              <div style="border:1px solid #e7e5e4;border-radius:10px;padding:14px 16px;display:flex;flex-direction:column;gap:8px;font-size:14px">
+                <h4 style="margin:0;font-size:12px;font-weight:600;color:#44403c;letter-spacing:0.04em">CONCILIACIÓN</h4>
+                <div style="display:flex;justify-content:space-between"><span>Debe llegar</span><span>₡438.163,27</span></div>
+                <div style="display:flex;justify-content:space-between;color:#44403c"><span>− Recibido</span><span>—</span></div>
+                <div style="display:flex;justify-content:space-between;font-weight:700;border-top:1px solid #e7e5e4;padding-top:8px"><span>Falta por recibir</span><span>₡438.163,27</span></div>
+                <a href="#cierre" style="margin-top:auto;color:#1d4ed8;font-size:14px">Ver el cierre de bodega completo</a>
+              </div>
+            </div>
+            <div style="display:grid;grid-template-columns:120px 1fr 1fr 1fr 170px 1.3fr 220px;gap:8px;font-size:14px;padding:12px 0;border-bottom:1px solid #f5f5f4;align-items:center">
+              <span>06/11 20:02</span><span style="text-align:right;font-weight:600">₡349.100,00</span><span style="text-align:right">₡334.100,00</span><span style="text-align:right;color:#92400e;font-weight:600">₡15.000,00</span>
+              <span style="padding-left:16px"><span style="font-size:12px;font-weight:500;padding:2px 10px;border-radius:999px;background:#fff7ed;color:#9a3412">Recibido incompleto</span></span>
+              <span style="color:#44403c">Carlos R. · 07/11 <br><span style="font-size:12px">«faltaron ₡15.000, entran el lunes»</span></span>
+              <span style="display:flex;gap:8px;justify-content:flex-end"><button type="button" style="font:inherit;font-size:13px;font-weight:500;height:32px;padding:0 12px;border-radius:8px;border:1px solid #e7e5e4;background:#ffffff;cursor:pointer">Corregir</button></span>
+            </div>
+            <div style="display:grid;grid-template-columns:120px 1fr 1fr 1fr 170px 1.3fr 220px;gap:8px;font-size:14px;padding:12px 0;align-items:center">
+              <span>05/11 19:48</span><span style="text-align:right;font-weight:600">₡414.980,50</span><span style="text-align:right">₡414.980,50</span><span style="text-align:right;color:#44403c">₡0,00</span>
+              <span style="padding-left:16px"><span style="font-size:12px;font-weight:500;padding:2px 10px;border-radius:999px;background:#d1fae5;color:#047857">Recibido</span></span>
+              <span style="color:#44403c">Carlos R. · 06/11</span>
+              <span></span>
+            </div>
+          </section>
+          <p style="margin:0;font-size:13px;color:#44403c"><strong style="color:#111111">Marcar recibido asienta el dinero en la caja.</strong> Después no se puede desmarcar: si el monto no es el correcto, usa «Corregir».</p>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{enMov}}" hint-placeholder-val="{{ false }}">
+        <section aria-label="Movimientos" style="background:#ffffff;border:1px solid #e7e5e4;border-radius:12px;padding:4px 16px">
+          <!-- Barra existente del estado de cuenta compartido (BuscadorFiltros + DescargarDatasetButton) -->
+          <div style="display:flex;gap:8px;align-items:center;padding:12px 0;border-bottom:1px solid #e7e5e4">
+            <div style="position:relative;width:300px;height:32px">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#78716c" stroke-width="2" stroke-linecap="round" aria-hidden="true" style="position:absolute;left:10px;top:8px"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
+              <input type="search" aria-label="Buscar" placeholder="Buscar por descripción o quién registró" style="font:inherit;font-size:14px;width:100%;height:32px;box-sizing:border-box;padding:0 10px 0 32px;border:1px solid #e7e5e4;border-radius:8px">
+            </div>
+            <button type="button" style="font:inherit;font-size:14px;height:32px;padding:0 10px;border-radius:8px;border:1px solid #e7e5e4;background:#ffffff;cursor:pointer"><span style="color:#44403c">Periodo:</span> Noviembre 2026 <span aria-hidden="true" style="color:#78716c">▾</span></button>
+            <button type="button" style="font:inherit;font-size:14px;height:32px;padding:0 10px;border-radius:8px;border:1px solid #e7e5e4;background:#ffffff;cursor:pointer"><span style="color:#44403c">Tipo de movimiento:</span> Todo <span aria-hidden="true" style="color:#78716c">▾</span></button>
+            <span style="flex:1"></span>
+            <button type="button" style="font:inherit;font-size:14px;font-weight:500;height:32px;padding:0 12px;border-radius:8px;border:1px solid #e7e5e4;background:#ffffff;cursor:pointer">Descargar ▾</button>
+          </div>
+          <div style="display:grid;grid-template-columns:120px 1.6fr 1fr 1fr 1fr;gap:8px;font-size:12px;color:#44403c;padding:10px 0;border-bottom:1px solid #e7e5e4"><span>Fecha</span><span>Movimiento</span><span style="text-align:right">Declarado</span><span style="text-align:right">Recibido</span><span style="text-align:right">Por entregar</span></div>
+          <div style="display:grid;grid-template-columns:120px 1.6fr 1fr 1fr 1fr;gap:8px;font-size:14px;padding:10px 0;border-bottom:1px solid #f5f5f4"><span>07/11 19:55</span><span>Consolidación declarada</span><span style="text-align:right">₡438.163,27</span><span style="text-align:right">—</span><span style="text-align:right">₡549.463,27</span></div>
+          <div style="display:grid;grid-template-columns:120px 1.6fr 1fr 1fr 1fr;gap:8px;font-size:14px;padding:10px 0;border-bottom:1px solid #f5f5f4"><span>07/11 18:30</span><span>Recibido en la central</span><span style="text-align:right">—</span><span style="text-align:right">₡334.100,00</span><span style="text-align:right">₡111.300,00</span></div>
+          <div style="display:grid;grid-template-columns:120px 1.6fr 1fr 1fr 1fr;gap:8px;font-size:14px;padding:10px 0"><span>06/11 20:02</span><span>Consolidación declarada</span><span style="text-align:right">₡349.100,00</span><span style="text-align:right">—</span><span style="text-align:right">₡445.400,00</span></div>
+        </section>
+      </sc-if>
+    </div>
+  </main>
+
+  <sc-if value="{{dialogo}}" hint-placeholder-val="{{ false }}">
+    <div aria-hidden="true" style="position:absolute;inset:0;background:rgba(17,17,17,0.5)"></div>
+    <section role="dialog" aria-modal="true" aria-labelledby="titulo-marcar" style="position:absolute;left:520px;top:300px;width:440px;box-sizing:border-box;background:#ffffff;border:1px solid #e7e5e4;border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,0.18);padding:20px;display:flex;flex-direction:column;gap:14px">
+      <div style="display:flex;flex-direction:column;gap:4px">
+        <h2 id="titulo-marcar" style="margin:0;font-size:18px;font-weight:600">Marcar recibido</h2>
+        <p style="margin:0;font-size:14px;color:#44403c">Consolidación de Limón del 07/11/2026.</p>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:12px 14px;border-radius:10px;background:#f5f5f4;font-size:14px"><span style="color:#44403c">Declarado por la bodega</span><strong>₡438.163,27</strong></div>
+      <label style="display:flex;flex-direction:column;gap:4px;font-size:14px;font-weight:500">Monto recibido<span style="font-size:13px;font-weight:400;color:#44403c">Viene con lo declarado. Cámbialo solo si contaste una cantidad distinta.</span><input type="text" value="438163.27" style="font:inherit;font-size:14px;height:38px;padding:0 10px;border:1px solid #e7e5e4;border-radius:8px"></label>
+      <label style="display:flex;flex-direction:column;gap:4px;font-size:14px;font-weight:500">Nota<span style="font-size:13px;font-weight:400;color:#44403c">Opcional. Por ejemplo: «faltaron ₡15.000, entran el lunes».</span><textarea rows="2" style="font:inherit;font-size:14px;padding:8px 10px;border:1px solid #e7e5e4;border-radius:8px;resize:vertical"></textarea></label>
+      <div style="display:flex;justify-content:flex-end;gap:8px">
+        <button type="button" onClick="{{cerrar}}" style="font:inherit;font-size:14px;font-weight:500;height:36px;padding:0 14px;border-radius:8px;border:1px solid #e7e5e4;background:#ffffff;cursor:pointer">Cancelar</button>
+        <button type="button" onClick="{{cerrar}}" style="font:inherit;font-size:14px;font-weight:500;height:36px;padding:0 14px;border-radius:8px;border:0;background:#111111;color:#ffffff;cursor:pointer">Marcar recibido</button>
+      </div>
+    </section>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1100}}'>
+class Component extends DCLogic {
+  constructor(p) { super(p); this.state = { tab: 'conc', dialogo: false }; }
+  renderVals() {
+    const tab = this.state.tab;
+    const tabStyle = (on) => 'font:inherit;font-size:14px;font-weight:' + (on ? '600' : '500') + ';color:' + (on ? '#111111' : '#44403c') + ';background:transparent;border:0;border-bottom:2px solid ' + (on ? '#111111' : 'transparent') + ';padding:10px 2px;cursor:pointer';
+    return {
+      tabs: [
+        { label: 'Conciliación 2 sin conciliar', pick: () => this.setState({ tab: 'conc' }), style: tabStyle(tab === 'conc') },
+        { label: 'Movimientos', pick: () => this.setState({ tab: 'mov' }), style: tabStyle(tab === 'mov') }
+      ],
+      enConc: tab === 'conc', enMov: tab === 'mov',
+      dialogo: this.state.dialogo,
+      abrir: () => this.setState({ dialogo: true }),
+      cerrar: () => this.setState({ dialogo: false })
+    };
+  }
+}
+</script>
+</body>
+</html>

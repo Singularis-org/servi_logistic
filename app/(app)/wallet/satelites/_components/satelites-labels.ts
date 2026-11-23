@@ -1,4 +1,3 @@
-import { EMPRESA } from "@/lib/config/marca";
 /**
  * ⭑ FICHA 431 (T21) — textos de `/wallet/satelites`: el dinero consolidado que todavía no ha
  * llegado a la central.
@@ -62,29 +61,24 @@ export function diaCR(iso: string | null): string {
 /** Cabecera de la página. */
 export const SATELITES_PAGINA = {
   titulo: "Wallet · Satélites",
-  descripcion: "Dinero consolidado que todavía no ha llegado a la central",
+  // SLT-209 (Carlos, 2026-11-19).
+  descripcion: "Dinero que las bodegas ya cobraron y todavía no han entregado a la central.",
 } as const;
-
-/**
- * ⚠️ LA NOTA QUE IMPIDE QUE ALGUIEN SUME ESTE NÚMERO A LA CAJA Y CUENTE DOS VECES.
- *
- * Va al pie de la tabla, visible y sin desplegable. El saldo de esta pantalla NO es un movimiento
- * de caja: ese dinero **ya entró** a la caja de la empresa cuando se aprobó el cierre de cada
- * mensajero, y aquí sólo se dice DÓNDE ESTÁ FÍSICAMENTE. Sin la nota, un número de siete cifras
- * llamado «pendiente» dentro del módulo Wallet se lee como plata por cobrar, y quien la sume al
- * balance la habrá contado dos veces.
- */
-export const SALDO_NO_ES_CAJA_TITULO = "El saldo no es un movimiento de caja.";
-export const SALDO_NO_ES_CAJA_NOTA_A =
-  `Ese dinero ya entró a la caja de ${EMPRESA.enFrase} cuando se aprobó el cierre de cada mensajero. Lo que ` +
-  "esta pantalla dice es";
-export const SALDO_NO_ES_CAJA_NOTA_DESTACADO = "dónde está físicamente";
-export const SALDO_NO_ES_CAJA_NOTA_B =
-  ": cuánto queda en manos de cada bodega esperando llegar a la central.";
 
 /** Las tres tarjetas de cabecera, con su rótulo y la línea que explica de qué se compone. */
 export const RESUMEN_SATELITES = {
   pendienteRotulo: "Pendiente de conciliar",
+  /**
+   * ⚠️ LA NOTA QUE IMPIDE QUE ALGUIEN SUME ESTE NÚMERO A LA CAJA Y CUENTE DOS VECES. SLT-209 (Carlos,
+   * 2026-11-19): vive en el (i) de esta tarjeta; antes iba al pie de la tabla. El saldo de esta
+   * pantalla NO es un movimiento de caja: ese dinero entra a la caja de la empresa **al conciliar** la
+   * consolidación de la bodega (SLT-73: aprobar el cierre del mensajero satélite no asienta dinero), y
+   * aquí sólo se dice dónde está. Sin la nota, un número de siete cifras llamado «pendiente» dentro del
+   * módulo Wallet se lee como plata por cobrar, y quien lo sume al balance lo habrá contado dos veces.
+   */
+  pendienteInfo:
+    "Este dinero todavía no está en la caja. Entra a la caja cuando se concilia la entrega de la bodega. " +
+    "Aquí ves cuánto tiene cada bodega por entregar.",
   /** «en 4 consolidaciones de 3 bodegas» — el importe solo no se puede perseguir. */
   pendienteDetalle: (consolidaciones: number, bodegas: number) =>
     `en ${consolidaciones} ${plural(consolidaciones, "consolidación", "consolidaciones")} ` +
@@ -181,7 +175,6 @@ export const SALDOS_SATELITES_ERROR = "No se pudieron cargar los saldos de las b
 
 /** El desglose de UNA bodega. */
 export const DESGLOSE_SATELITE = {
-  pendienteRotulo: "Pendiente de llegar",
   /** El aviso `warning` de la cabecera cuando alguna consolidación llegó incompleta. */
   diferenciaTitulo: (n: number) =>
     n === 1
@@ -204,7 +197,11 @@ export const DESGLOSE_SATELITE = {
 export const DESGLOSE_SATELITE_COLUMNAS = {
   consolidada: "Consolidada",
   declarado: "Declarado",
+  /** SLT-114 (R239, PA2): el título corto del canvas para `paraLaCentral`. */
+  debeLlegar: "Debe llegar",
   recibido: "Recibido",
+  /** SLT-114 (R239, PA2): el título corto del canvas para `faltaPorRecibir`. */
+  falta: "Falta",
   estado: "Estado",
   conciliadoPor: "Conciliado por",
 } as const;
@@ -213,6 +210,17 @@ export const DESGLOSE_SATELITE_COLUMNAS = {
 export const CASCADA_CONSOLIDACION_NOMBRE = {
   expandir: (fecha: string) => `Ver la cuenta de la consolidación del ${fecha}`,
   region: (titulo: string, fecha: string) => `${titulo} · consolidación del ${fecha}`,
+} as const;
+
+/**
+ * SLT-114 (R230, R233, R237) — las pestañas del estado de cuenta de la bodega y el enlace de la fila
+ * desplegada. El conteo es el `total` del listado «Sin conciliar» que da el servidor.
+ */
+export const PESTANAS_ESTADO_CUENTA_BODEGA = {
+  nombre: (bodega: string) => `Pestañas del estado de cuenta de ${bodega}`,
+  movimientos: "Movimientos",
+  sinConciliar: (n: number) => `${n} sin conciliar`,
+  verCierreBodega: "Ver el cierre de bodega completo",
 } as const;
 
 /** Nombres accesibles de la conciliación de UNA bodega, con su nombre dentro. FICHA 458-D (R31): la

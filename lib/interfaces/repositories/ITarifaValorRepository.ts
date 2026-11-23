@@ -21,6 +21,7 @@ export interface FijarValorDatos {
   zonaId: string | null;
   grupoId: string | null;
   tiendaId: string | null;
+  mensajeroId: string | null;
   vehiculoId: string | null;
 }
 
@@ -50,6 +51,11 @@ export interface ITarifaValorRepository {
    * tambien si no existe: `vehiculos` es catalogo de plataforma y en los dos casos no se admite escribir.
    */
   vehiculoEsElegibleONivelOcupado(nivel: NivelConVehiculo): Promise<boolean>;
+  /**
+   * SLT-55 R7, R8: el usuario existe en la empresa con rol `mensajero` y no esta dado de baja, o ya tiene
+   * un valor propio de ese concepto. `false` es `validation_error` en `mensajeroId`.
+   */
+  mensajeroEsElegibleONivelOcupado(nivel: { concepto: TarifaConcepto; mensajeroId: string }): Promise<boolean>;
   /**
    * Upsert por la clave natural (R8) + `tarifa_valor_fijado` con antes/despues, en UNA transaccion.
    * `"nivel_ocupado"`: otra fijacion simultanea creo antes la fila de ese nivel (`tarifa_valor_nivel_key`).

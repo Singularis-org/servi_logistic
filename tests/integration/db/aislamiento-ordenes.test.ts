@@ -20,6 +20,7 @@ import type { RawRow } from "@/lib/parsers/spreadsheet";
 
 import { crearOrganizacion } from "../../fabricas/organizaciones";
 import { HAY_BASE_DE_DATOS, bajoLockDeEscrituraReal, crearPrismaDeTest } from "./_postgres-real";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // SL-17 / T3.1 (design §9.2) — R28, R7, R8 y R9 con DOS empresas con datos, contra Postgres.
 //
@@ -173,7 +174,7 @@ function historial(repo: OrdenRepository): OrdenHistorialService {
 
 function ordenService(): OrdenService {
   const repo = ordenRepo();
-  return new OrdenService(repo, historial(repo));
+  return new OrdenService(repo, historial(repo), undefined, reglasPaisFijas());
 }
 
 function eliminarService(): EliminarOrdenService {
@@ -413,7 +414,7 @@ describeSiHayBase("SL-17 — aislamiento de órdenes entre dos empresas (Postgre
   it("crear desde B con la tienda de A: «tienda no encontrada» por la lectura previa y no escribe nada", async () => {
     const numRemision = `T31-cruzada-${RUN}`;
     // La tienda de A como dueña, con la empresa B en contexto (D15, tasks T3.1). La lectura previa
-    // de `cargarMasiva` (`findUsuarioFulfillment`) no ve la tienda de A desde B y corta con el
+    // de `cargarMasiva` (`findUsuarioSeRecogeEnTienda`) no ve la tienda de A desde B y corta con el
     // error de dominio. Si se quitara, la seguiria parando el trigger de M3: el caso siguiente.
     const actor: Actor = { usuarioId: A.tiendaId, rol: "adminTienda", organizacionId: B.id };
     const antes = await Promise.all([

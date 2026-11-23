@@ -53,6 +53,12 @@ function paisDadoDeAlta(id: string): PaisDTO {
     digitosCodigoNivel2: null,
     digitosCodigoNivel3: null,
     disponible: true,
+    // SLT-42: un país dado de alta por la pantalla nace sin teléfono ni zona.
+    prefijoTelefonico: null,
+    telefonoDigitosNacionales: null,
+    zonaHoraria: null,
+    moneda: null,
+    impuestoNombre: null,
   };
 }
 

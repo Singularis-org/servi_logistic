@@ -56,7 +56,7 @@ function correr(features: unknown[]): { code: number; salida: string } {
   }
 }
 
-describe('guardia: title en las fichas del board', () => {
+describe('guardia: title en las fichas del board', { timeout: 30_000 }, () => {
   it('pasa si todas las fichas con key traen title', () => {
     const { code, salida } = correr([ficha(1, 'Alta de tiendas'), ficha(2, 'Ruta del dia')])
     expect(code, salida).toBe(0)

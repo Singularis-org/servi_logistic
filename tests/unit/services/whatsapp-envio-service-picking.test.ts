@@ -3,6 +3,7 @@ import { WhatsappEnvioService, MSG } from "@/lib/services/WhatsappEnvioService";
 import type { GuardarEnvioInput } from "@/lib/types/envios-whatsapp";
 import { MAESTRO, enviosRepo, plantilla } from "./_dobles-envios-474";
 import { MENSAJES_PICKING } from "@/lib/whatsapp-envios/informes/picking/parametros";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // Ficha 476 (T4.3) — guardar un envio del picking con el informe REAL del catalogo (el service usa
 // `informePorClave` por defecto): R2 (sin tienda → error en `parametros.tiendaId`) y R5 (no llega a
@@ -32,6 +33,7 @@ function montar(envios = enviosRepo()) {
     ),
   };
   const s = new WhatsappEnvioService({
+    reglasPais: reglasPaisFijas(),
     envios,
     plantillas,
     cola: { enqueue: vi.fn(async () => null) },

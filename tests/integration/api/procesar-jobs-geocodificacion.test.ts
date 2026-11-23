@@ -50,15 +50,19 @@ describe("R32 — el drenador resuelve el handler de geocodificacion y no lo re-
     expect([...handlers.keys()].sort()).toEqual([
       "analitica_invalidacion_cache", // feature 128: PUNTUAL, no va en buildRecurrencias
       "analitica_rollup_diario", // feature 124
+      "factura_plataforma_aviso", // SLT-136 (design §7.2): el aviso de UNA factura cerrada (PUNTUAL, con empresa)
+      "factura_plataforma_cerrar", // SLT-118 (design §4.2): el cierre horario (HH:10) de las facturas de la plataforma (RECURRENTE)
       "geocodificacion",
       "liberar_reprogramadas",
       "optimizacion_ruta",
       // SL-24 (design §16.3): aplicar un cambio de plan programado (PUNTUAL) y su barrido horario.
       "plan_aplicar_cambio",
+      "plan_aplicar_cambio_empresa", // SLT-86 (design §5.2): aplica un cambio de empresa con fecha (PUNTUAL)
       // SL-24 · T12 (design §16.4): los correos del cambio, PUNTUALES: el aviso a una empresa y
       // el recordatorio que los reparte.
       "plan_aviso_correo",
       "plan_cambios_vencidos",
+      "plan_niveles_cerrar", // SLT-215 (design §5): el cierre diario (06:20 UTC) de los niveles por volumen (RECURRENTE)
       "plan_recordatorio_cambio",
       // FICHA 410: entrega de un aviso ya creado a las suscripciones push de sus
       // destinatarios. PUNTUAL -lo encola el decorador del repositorio de notificaciones-,
@@ -92,7 +96,11 @@ describe("R32 — el drenador resuelve el handler de geocodificacion y no lo re-
     expect(recurrencias.has("whatsapp_envio_mantenimiento")).toBe(true);
     // SL-24 (design §16.3): el CUARTO, el barrido horario de cambios de plan vencidos.
     expect(recurrencias.has("plan_cambios_vencidos")).toBe(true);
-    expect(recurrencias.size).toBe(4);
+    // SLT-118 (design §4.2): el QUINTO, el cierre horario (HH:10) de las facturas de la plataforma.
+    expect(recurrencias.has("factura_plataforma_cerrar")).toBe(true);
+    // SLT-215 (design §5): el SEXTO, el cierre diario (06:20 UTC) de los niveles por volumen.
+    expect(recurrencias.has("plan_niveles_cerrar")).toBe(true);
+    expect(recurrencias.size).toBe(6);
   });
 
   it("al drenar, el handler se ejecuta, el job se completa y NO se re-encola", async () => {

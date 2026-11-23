@@ -8,10 +8,29 @@ import {
   crearPrismaDeTest,
   crearPrismaDeTestEnEsquema,
   enTransaccionRevertida,
-  fksDeOrden,
+  type FksDeOrden,
   serializarEscriturasReales,
   type TxDeTest,
 } from "./_postgres-real";
+import { crearFksDeOrden } from "./_fixtures/orden-minima";
+import { conEmpresa } from "@/lib/db/contexto-empresa";
+import { conAislamientoPorEmpresa } from "@/lib/db/extension-empresa";
+
+/**
+ * SLT-185 (R1141): las pestanas de las carreras escriben como en produccion: con la envoltura de
+ * `getPrismaClient()` (`conAislamientoPorEmpresa`) y una empresa en contexto. Sin ella, el clon
+ * (`LIKE ... INCLUDING ALL` copia el `DEFAULT current_setting('app.organizacion_id')`) recibe
+ * `organizacion_id` NULL y el `NOT NULL` lo rechaza antes de medir la carrera. El `LIKE` no copia la
+ * clave ajena: la empresa no necesita fila. Al rol `servi_app` (al que baja la envoltura) se le da
+ * acceso al esquema desechable, que se borra entero al final.
+ */
+const EMPRESA_DE_LA_CARRERA = randomUUID();
+const pestanaDeLaApp = (esquema: string) => conAislamientoPorEmpresa(crearPrismaDeTestEnEsquema(esquema), async () => null);
+const enLaEmpresa = <T,>(fn: () => Promise<T>) => conEmpresa(EMPRESA_DE_LA_CARRERA, fn);
+async function abrirEsquemaALaApp(admin: PrismaClient, esquema: string): Promise<void> {
+  await admin.$executeRawUnsafe(`GRANT USAGE ON SCHEMA "${esquema}" TO servi_app`);
+  await admin.$executeRawUnsafe(`GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA "${esquema}" TO servi_app`);
+}
 
 // FICHA 422 (T1.4 — R2, R3, R7, y la unicidad estructural) — EL REPOSITORIO DE LA PREFERENCIA,
 // CONTRA POSTGRES DE VERDAD.
@@ -30,6 +49,23 @@ import {
 // que necesita dos conexiones que commitean de verdad, va en un ESQUEMA DESECHABLE aparte.
 
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
+
+/**
+ * SLT-181 — tienda (usuario modelo) y zona nacen en la tx del caso: nada de leer la primera orden de
+ * la base. Control positivo: si la siembra no llega, el caso cae nombrando la fila.
+ */
+async function sembrarFks(tx: TxDeTest): Promise<FksDeOrden> {
+  const fks = await crearFksDeOrden(tx);
+  expect(
+    await tx.usuario.count({ where: { id: fks.tiendaId } }),
+    "SLT-181: la tienda sembrada no esta en la base",
+  ).toBe(1);
+  expect(
+    await tx.zona.count({ where: { id: fks.zonaId } }),
+    "SLT-181: la zona sembrada no esta en la base",
+  ).toBe(1);
+  return fks;
+}
 
 /** Clona la identidad de un usuario existente para crear uno propio del test. */
 async function crearUsuario(tx: TxDeTest, modeloUsuarioId: string): Promise<string> {
@@ -66,14 +102,13 @@ describeSiHayBase("422/R2 — sin fila, la preferencia es «no puesta», y LEER 
   });
 
   it("⭑ sin fila, `avisosPushDe` devuelve `false`", async () => {
-    const fks = await fksDeOrden(prisma);
-    // ⚠️ FALLA RUIDOSAMENTE si la base esta vacia: sin un usuario del que clonar la identidad el
-    // caso no se puede medir, y un `return` temprano lo reportaria `passed` sin comprobar nada.
-    expect(fks, "la tabla `orden` esta vacia: el caso no se puede medir").not.toBeNull();
-
     const r = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
-      const usuario = await crearUsuario(tx, fks!.tiendaId);
+      const fks = await sembrarFks(tx);
+      // ⚠️ FALLA RUIDOSAMENTE si la base esta vacia: sin un usuario del que clonar la identidad el
+      // caso no se puede medir, y un `return` temprano lo reportaria `passed` sin comprobar nada.
+      expect(fks, "la tabla `orden` esta vacia: el caso no se puede medir").not.toBeNull();
+      const usuario = await crearUsuario(tx, fks.tiendaId);
       const repo = new UsuarioPreferenciaRepository(tx as unknown as PrismaClient);
 
       const quiere = await repo.avisosPushDe(usuario);
@@ -88,12 +123,11 @@ describeSiHayBase("422/R2 — sin fila, la preferencia es «no puesta», y LEER 
   it("⭑ control positivo: con la fila puesta devuelve `true`", async () => {
     // Sin esto, el caso de arriba pasaria en verde con un repositorio que devolviera `false`
     // siempre — que es justo el fallo mudo que rompe la reactivacion entera.
-    const fks = await fksDeOrden(prisma);
-    expect(fks).not.toBeNull();
-
     const r = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
-      const usuario = await crearUsuario(tx, fks!.tiendaId);
+      const fks = await sembrarFks(tx);
+      expect(fks).not.toBeNull();
+      const usuario = await crearUsuario(tx, fks.tiendaId);
       const repo = new UsuarioPreferenciaRepository(tx as unknown as PrismaClient);
       await repo.fijarAvisosPush(usuario, true);
       return repo.avisosPushDe(usuario);
@@ -105,13 +139,12 @@ describeSiHayBase("422/R2 — sin fila, la preferencia es «no puesta», y LEER 
   it("⭑ y la preferencia de OTRA persona no se cuela: el `where` lleva su `usuario_id`", async () => {
     // El `WHERE` se prueba donde vive. Si el repositorio leyera «la primera fila que haya», esto
     // se pone rojo — y en produccion significaria aplicarle a alguien la decision de otro.
-    const fks = await fksDeOrden(prisma);
-    expect(fks).not.toBeNull();
-
     const r = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
-      const ana = await crearUsuario(tx, fks!.tiendaId);
-      const beto = await crearUsuario(tx, fks!.tiendaId);
+      const fks = await sembrarFks(tx);
+      expect(fks).not.toBeNull();
+      const ana = await crearUsuario(tx, fks.tiendaId);
+      const beto = await crearUsuario(tx, fks.tiendaId);
       const repo = new UsuarioPreferenciaRepository(tx as unknown as PrismaClient);
       await repo.fijarAvisosPush(ana, true);
       return { deAna: await repo.avisosPushDe(ana), deBeto: await repo.avisosPushDe(beto) };
@@ -131,12 +164,11 @@ describeSiHayBase("422/R3+R7 — `fijarAvisosPush` es un UPSERT: una fila por pe
   });
 
   it("⭑ dos escrituras seguidas dejan UNA fila, con el ultimo valor", async () => {
-    const fks = await fksDeOrden(prisma);
-    expect(fks).not.toBeNull();
-
     const r = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
-      const usuario = await crearUsuario(tx, fks!.tiendaId);
+      const fks = await sembrarFks(tx);
+      expect(fks).not.toBeNull();
+      const usuario = await crearUsuario(tx, fks.tiendaId);
       const repo = new UsuarioPreferenciaRepository(tx as unknown as PrismaClient);
 
       await repo.fijarAvisosPush(usuario, true); // activo los avisos
@@ -160,12 +192,11 @@ describeSiHayBase("422/R3+R7 — `fijarAvisosPush` es un UPSERT: una fila por pe
     // De esto depende la comprobacion del backfill contra produccion (`updated_at = created_at`
     // demuestra que nada mas toco esas filas). Si el `update` reescribiera `created_at`, aquella
     // medicion seria verde siempre y no significaria nada.
-    const fks = await fksDeOrden(prisma);
-    expect(fks).not.toBeNull();
-
     const r = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
-      const usuario = await crearUsuario(tx, fks!.tiendaId);
+      const fks = await sembrarFks(tx);
+      expect(fks).not.toBeNull();
+      const usuario = await crearUsuario(tx, fks.tiendaId);
       const repo = new UsuarioPreferenciaRepository(tx as unknown as PrismaClient);
       await repo.fijarAvisosPush(usuario, true);
       const recienCreada = await filasDe(tx, usuario);
@@ -184,12 +215,11 @@ describeSiHayBase("422/R3+R7 — `fijarAvisosPush` es un UPSERT: una fila por pe
     // `usuario_id`. El indice REAL lo impide; aqui se mide que lo impide de verdad y no por una
     // rama de codigo. Con un indice normal en vez de unico, `violo` seria `false` y saldrian DOS
     // filas — y ademas el `ON CONFLICT (usuario_id)` del upsert dejaria de existir.
-    const fks = await fksDeOrden(prisma);
-    expect(fks).not.toBeNull();
-
     const r = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
-      const usuario = await crearUsuario(tx, fks!.tiendaId);
+      const fks = await sembrarFks(tx);
+      expect(fks).not.toBeNull();
+      const usuario = await crearUsuario(tx, fks.tiendaId);
 
       await tx.$executeRawUnsafe(
         `INSERT INTO "usuario_preferencia" ("id","usuario_id","avisos_push") VALUES ($1,$2,TRUE)`,
@@ -252,8 +282,9 @@ describeSiHayBase("422 — dos pestanas activando a la vez dejan UNA sola fila",
       `CREATE TABLE "${ESQUEMA_CARRERA}"."usuario_preferencia"
          (LIKE "public"."usuario_preferencia" INCLUDING ALL)`,
     );
-    pestanaA = crearPrismaDeTestEnEsquema(ESQUEMA_CARRERA);
-    pestanaB = crearPrismaDeTestEnEsquema(ESQUEMA_CARRERA);
+    await abrirEsquemaALaApp(admin, ESQUEMA_CARRERA);
+    pestanaA = pestanaDeLaApp(ESQUEMA_CARRERA);
+    pestanaB = pestanaDeLaApp(ESQUEMA_CARRERA);
   });
 
   afterAll(async () => {
@@ -283,7 +314,7 @@ describeSiHayBase("422 — dos pestanas activando a la vez dejan UNA sola fila",
     // Dos conexiones distintas, a la vez, sobre la MISMA persona. Es lo que pasa cuando alguien
     // tiene dos pestanas abiertas y las dos reactivan al entrar.
     await expect(
-      Promise.all([repoA.fijarAvisosPush(usuario, true), repoB.fijarAvisosPush(usuario, true)]),
+      enLaEmpresa(() => Promise.all([repoA.fijarAvisosPush(usuario, true), repoB.fijarAvisosPush(usuario, true)])),
     ).resolves.toBeDefined();
 
     const filas = await admin.$queryRawUnsafe<{ n: bigint }[]>(
@@ -291,7 +322,13 @@ describeSiHayBase("422 — dos pestanas activando a la vez dejan UNA sola fila",
       usuario,
     );
     expect(Number(filas[0].n)).toBe(1);
-    expect(await repoA.avisosPushDe(usuario)).toBe(true);
+    expect(await enLaEmpresa(() => repoA.avisosPushDe(usuario))).toBe(true);
+    // SLT-185 (R1146): la fila se escribio con la empresa del contexto.
+    const empresas = await admin.$queryRawUnsafe<{ organizacion_id: string }[]>(
+      `SELECT "organizacion_id" FROM "${ESQUEMA_CARRERA}"."usuario_preferencia" WHERE "usuario_id" = $1`,
+      usuario,
+    );
+    expect(empresas.map((e) => e.organizacion_id), "SLT-185: empresa en contexto").toEqual([EMPRESA_DE_LA_CARRERA]);
   });
 
   it("⭑ y una carrera entre ACTIVAR y APAGAR tampoco duplica: gana el ultimo, pero hay UNA fila", async () => {
@@ -299,7 +336,7 @@ describeSiHayBase("422 — dos pestanas activando a la vez dejan UNA sola fila",
     const repoA = new UsuarioPreferenciaRepository(pestanaA);
     const repoB = new UsuarioPreferenciaRepository(pestanaB);
 
-    await Promise.all([repoA.fijarAvisosPush(usuario, true), repoB.fijarAvisosPush(usuario, false)]);
+    await enLaEmpresa(() => Promise.all([repoA.fijarAvisosPush(usuario, true), repoB.fijarAvisosPush(usuario, false)]));
 
     const filas = await admin.$queryRawUnsafe<{ n: bigint }[]>(
       `SELECT COUNT(*)::bigint AS n FROM "${ESQUEMA_CARRERA}"."usuario_preferencia" WHERE "usuario_id" = $1`,
@@ -347,8 +384,9 @@ describeSiHayBase("422/R22 — dos pestanas registrando el MISMO endpoint dejan 
       `CREATE TABLE "${ESQUEMA_ENDPOINT}"."push_suscripcion_sin_unico"
          (LIKE "public"."push_suscripcion" INCLUDING DEFAULTS)`,
     );
-    pestanaA = crearPrismaDeTestEnEsquema(ESQUEMA_ENDPOINT);
-    pestanaB = crearPrismaDeTestEnEsquema(ESQUEMA_ENDPOINT);
+    await abrirEsquemaALaApp(admin, ESQUEMA_ENDPOINT);
+    pestanaA = pestanaDeLaApp(ESQUEMA_ENDPOINT);
+    pestanaB = pestanaDeLaApp(ESQUEMA_ENDPOINT);
   });
 
   afterAll(async () => {
@@ -380,10 +418,12 @@ describeSiHayBase("422/R22 — dos pestanas registrando el MISMO endpoint dejan 
     const canalB = new PushSuscripcionRepository(pestanaB);
 
     await expect(
-      Promise.all([
-        canalA.registrar(usuario, { endpoint, p256dh: "K", auth: "A", etiqueta: "Chrome en Android" }),
-        canalB.registrar(usuario, { endpoint, p256dh: "K", auth: "A", etiqueta: "Chrome en Android" }),
-      ]),
+      enLaEmpresa(() =>
+        Promise.all([
+          canalA.registrar(usuario, { endpoint, p256dh: "K", auth: "A", etiqueta: "Chrome en Android" }),
+          canalB.registrar(usuario, { endpoint, p256dh: "K", auth: "A", etiqueta: "Chrome en Android" }),
+        ]),
+      ),
     ).resolves.toBeDefined();
 
     const filas = await admin.$queryRawUnsafe<{ n: bigint }[]>(
@@ -403,11 +443,13 @@ describeSiHayBase("422/R22 — dos pestanas registrando el MISMO endpoint dejan 
     const insertar = (tabla: string) =>
       admin.$executeRawUnsafe(
         `INSERT INTO "${ESQUEMA_ENDPOINT}"."${tabla}"
-           ("id","usuario_id","endpoint","p256dh","auth","updated_at")
-         VALUES ($1,$2,$3,'K','A',CURRENT_TIMESTAMP)`,
+           ("id","usuario_id","endpoint","p256dh","auth","updated_at","organizacion_id")
+         VALUES ($1,$2,$3,'K','A',CURRENT_TIMESTAMP,$4)`,
         randomUUID(),
         usuario,
         endpoint,
+        // SLT-185: la escritura a mano lleva la empresa explicita (`organizacion_id NOT NULL`, SL-17).
+        EMPRESA_DE_LA_CARRERA,
       );
 
     await insertar("push_suscripcion");
@@ -454,12 +496,11 @@ describeSiHayBase("410/R19 intacto — la preferencia NO toca las suscripciones 
     // cerro sesion, sigue viva. La 422 no puede erosionarla. Si alguien resolviera la pregunta
     // abierta P1 en el otro sentido —apagar en un dispositivo retira las suscripciones de todos—,
     // este caso se pone rojo, y aqui vive el `WHERE` que lo decide.
-    const fks = await fksDeOrden(prisma);
-    expect(fks, "la tabla `orden` esta vacia: el caso no se puede medir").not.toBeNull();
-
     const r = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
-      const usuario = await crearUsuario(tx, fks!.tiendaId);
+      const fks = await sembrarFks(tx);
+      expect(fks, "la tabla `orden` esta vacia: el caso no se puede medir").not.toBeNull();
+      const usuario = await crearUsuario(tx, fks.tiendaId);
       const canal = new PushSuscripcionRepository(tx as unknown as PrismaClient);
       const preferencias = new UsuarioPreferenciaRepository(tx as unknown as PrismaClient);
       const telefono = `https://fcm.googleapis.com/fcm/send/422-telefono-${randomUUID()}`;
@@ -494,12 +535,11 @@ describeSiHayBase("410/R19 intacto — la preferencia NO toca las suscripciones 
   it("⭑ y borrar la preferencia SOLA no retira ninguna suscripcion", async () => {
     // La otra mitad: `olvidarPreferenciaDeAvisos` escribe en `usuario_preferencia` y en ningun
     // sitio mas. Si algun dia alguien le anadiera un barrido de dispositivos, aqui se ve.
-    const fks = await fksDeOrden(prisma);
-    expect(fks).not.toBeNull();
-
     const r = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
-      const usuario = await crearUsuario(tx, fks!.tiendaId);
+      const fks = await sembrarFks(tx);
+      expect(fks).not.toBeNull();
+      const usuario = await crearUsuario(tx, fks.tiendaId);
       const canal = new PushSuscripcionRepository(tx as unknown as PrismaClient);
       const preferencias = new UsuarioPreferenciaRepository(tx as unknown as PrismaClient);
       const endpoint = `https://fcm.googleapis.com/fcm/send/422-solo-${randomUUID()}`;

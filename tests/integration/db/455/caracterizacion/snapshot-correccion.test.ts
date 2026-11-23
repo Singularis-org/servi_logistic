@@ -10,6 +10,7 @@ import type { HistorialAccionDTO } from "@/lib/types/historial-accion";
 import { C, R, claveDe } from "../../../../fixtures/codigos-455";
 import { HAY_BASE_DE_DATOS } from "../../_postgres-real";
 import { conEscenario, prepararMundo, type Mundo } from "../../454/_escenario";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 /**
  * FEATURE 455 — FASE 0 · C16 (R23). EL SNAPSHOT DE LA CORRECCION DE RESULTADO (398).
@@ -45,7 +46,7 @@ describeSiHayBase("455/C16 — snapshot de la correccion de resultado (Postgres 
         where: { entidadId: gA, accion: "cierre_dia_gestion_corregida" },
         select: { valorAnterior: true, valorNuevo: true },
       });
-      const pantalla = new HistorialAccionService(new HistorialAccionRepository(e.cliente));
+      const pantalla = new HistorialAccionService(new HistorialAccionRepository(e.cliente), reglasPaisFijas());
       const listado = await pantalla.listar(
         { accion: ["cierre_dia_gestion_corregida"], actorId: [e.maestroId], pageSize: 50 },
         e.actorMaestro,

@@ -15,6 +15,7 @@ import {
   enTransaccionRevertida,
   serializarEscriturasReales,
 } from "./_postgres-real";
+import { crearUsuarioDePrueba } from "./_fixtures/orden-minima";
 
 // Feature 293 (T1.4, design §10) — cobertura de la migracion `*_premio_ranking_devengo`, en DOS
 // niveles:
@@ -74,16 +75,20 @@ function ramaDelCheck(sql: string, tipo: PagoMensajeroMovimientoTipo): string[] 
   return [...(match as RegExpMatchArray)[1].matchAll(/'([^']+)'/g)].map((m) => m[1]);
 }
 
-/** SLT-68: las categorias del incentivo, posteriores a esta migracion. */
-const CATEGORIAS_DE_SLT68: readonly string[] = ["incentivo", "reverso_incentivo"];
+/**
+ * Las categorias posteriores a esta migracion, cada una con su propio CHECK: las del incentivo
+ * (SLT-68, `20261030120100_incentivo_mensajero_checks`) y «pagado por la satelite» (SLT-139,
+ * `20261115120100_pago_satelite_checks`).
+ */
+const CATEGORIAS_POSTERIORES: readonly string[] = ["incentivo", "reverso_incentivo", "pago_satelite"];
 
 // ── El vocabulario tipado ───────────────────────────────────────────────────────────────────
 
 describe("T1.5 — los dos SEED tipados ganan su valor y conservan los previos", () => {
   it("`premio_ranking` entra en el catalogo del libro del mensajero, sin perder los 5 previos", () => {
     expect(PAGO_MENSAJERO_MOVIMIENTO_CATEGORIA_SEED).toContain("premio_ranking");
-    // 6 al cerrar la 293; SLT-68 anadio DESPUES `incentivo` y `reverso_incentivo`.
-    expect(PAGO_MENSAJERO_MOVIMIENTO_CATEGORIA_SEED.filter((v) => !CATEGORIAS_DE_SLT68.includes(v))).toHaveLength(6);
+    // 6 al cerrar la 293; SLT-68 anadio DESPUES `incentivo` y `reverso_incentivo`, y SLT-139 `pago_satelite`.
+    expect(PAGO_MENSAJERO_MOVIMIENTO_CATEGORIA_SEED.filter((v) => !CATEGORIAS_POSTERIORES.includes(v))).toHaveLength(6);
     for (const previa of [
       "pago_devengado",
       "pago_efectivo",
@@ -108,6 +113,9 @@ describe("T1.5 — los dos SEED tipados ganan su valor y conservan los previos",
       "cobro_tienda_completado",
       "abono_tienda",
       "incentivo_mensajero", // SLT-68: el incentivo manual a un mensajero
+      // SLT-187: los dos que llegaron despues sin declararse aqui (el archivo estaba en el baseline).
+      "conciliacion_bodega_ajuste", // SLT-73: `20261031140000_slt73_diferencia_satelite_enums`
+      "orden_fulfillment", // SLT-94: `20261108120000_slt94_fulfillment_enums`
     ];
     expect(WALLET_ORIGEN_TIPO_SEED.filter((v) => !AGREGADOS_DESPUES.includes(v))).toHaveLength(8);
     for (const previo of [
@@ -185,9 +193,9 @@ describe("UP — los siete pasos de design §10, en su orden", () => {
   it("las 6 categorias del catalogo estan en UNA sola rama: ninguna suelta, ninguna repetida", () => {
     const todas = [...ramaDelCheck(upSql, "devengo"), ...ramaDelCheck(upSql, "pago")];
     expect(new Set(todas).size).toBe(todas.length);
-    // Foto de la 293: las categorias que SLT-68 anadio despues viven en el CHECK de su migracion.
+    // Foto de la 293: las categorias que SLT-68 y SLT-139 anadieron despues viven en el CHECK de su migracion.
     expect([...todas].sort()).toEqual(
-      PAGO_MENSAJERO_MOVIMIENTO_CATEGORIA_SEED.filter((v) => !CATEGORIAS_DE_SLT68.includes(v)).sort(),
+      PAGO_MENSAJERO_MOVIMIENTO_CATEGORIA_SEED.filter((v) => !CATEGORIAS_POSTERIORES.includes(v)).sort(),
     );
   });
 
@@ -431,22 +439,9 @@ const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 
 describeSiHayBase("T1.4 [PG] — los dos CHECK, ejercidos contra Postgres", () => {
   let prisma: PrismaClient;
-  let catalogo: { tipoIdentificacionId: string; rolId: string } | null = null;
 
-  beforeAll(async () => {
+  beforeAll(() => {
     prisma = crearPrismaDeTest();
-    const u = await prisma.usuario.findFirst({
-      where: { rol: { value: RolValue.mensajero } },
-      select: { tipoIdentificacionId: true, rolId: true },
-    });
-    if (u === null) {
-      throw new Error(
-        "hay DATABASE_URL pero no hay ningun usuario `mensajero`: sin catalogo no se puede " +
-          "sembrar el mensajero de prueba. Esta suite necesita crear su usuario en el " +
-          "test (SL-31).",
-      );
-    }
-    catalogo = u;
   });
 
   afterAll(async () => {
@@ -472,22 +467,14 @@ describeSiHayBase("T1.4 [PG] — los dos CHECK, ejercidos contra Postgres", () =
     categoria: PagoMensajeroMovimientoCategoria;
     premioDia: Date | null;
   }): Promise<Rechazo | null> {
-    const cat = catalogo as { tipoIdentificacionId: string; rolId: string };
     return enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
-      const sufijo = randomUUID();
-      const mensajero = await tx.usuario.create({
-        data: {
-          nombre: "T1.4",
-          email: `t14-${sufijo}@example.test`,
-          telefono: "88880000",
-          passwordHash: "x",
-          cedula: `t14-${sufijo}`,
-          tipoIdentificacionId: cat.tipoIdentificacionId,
-          rolId: cat.rolId,
-        },
-        select: { id: true },
-      });
+      // SLT-182: rol y `cedula` por CLAVE (`crearUsuarioDePrueba` lanza nombrandolos si faltan);
+      // antes se copiaban del «primer mensajero» de la base, y la base recien migrada no tiene.
+      const mensajero = await crearUsuarioDePrueba(tx, RolValue.mensajero);
+      // Control positivo (R1084): FUERA del `try`, para que no se confunda con un rechazo del motor.
+      const sembrados = await tx.usuario.count({ where: { id: mensajero.id } });
+      if (sembrados !== 1) throw new Error("SLT-182: el mensajero sembrado no esta en la base");
       try {
         await tx.pagoMensajeroMovimiento.create({
           data: {

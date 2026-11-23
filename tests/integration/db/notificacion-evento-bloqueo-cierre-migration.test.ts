@@ -248,6 +248,7 @@ describeSiHayBase("271 / §3.2 — la base aplicada, y el DOWN ejercitado de ver
       "traspaso_ordenes_recibido",
       "traspaso_ordenes_cedido",
       "reprogramadas_esperan_cierre", // ficha 462 (2026-09-25): el cuarto agregado
+      "factura_plataforma_emitida", // SLT-136 (2026-11-17): factura de la plataforma emitida, al maestro
     ]);
   });
 

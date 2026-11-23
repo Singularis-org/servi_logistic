@@ -32,19 +32,46 @@ import { EXCEPCIONES_SQL_DINAMICO, fallosDeExcepcion, hallazgosSqlDinamico } fro
 // empresas demo (`scripts/demo-qa/borrar.ts`, SL-43 D12), que borra sus cargos como dueño y solo de
 // empresas con `es_demo`. No es una vía de escritura de cargos: no inserta ni cambia, solo borra
 // empresas demo enteras.
+//
+// SLT-85 (R25, design §5) — LA TRAZA DE FACTURACIÓN, IGUAL. `cobro_plataforma_traza` la escribe solo
+// el trigger `cobro_plataforma_traza_al_registrar` sobre `cobro_plataforma_movimiento`, y no se edita.
+// El detector mira las dos tablas y cada una tiene su `it`, para que el rojo nombre la tabla.
+//
+// SLT-118 (R22, design §1.3) — LAS FACTURAS DE LA PLATAFORMA, IGUAL. `factura_plataforma` la escriben solo
+// las funciones del dueño en la base (`factura_plataforma_abrir`, `_avanzar`, `_tomar_cambio`, `_cerrar`);
+// la app solo las llama y lee. Llamar a una función (`SELECT factura_plataforma_cerrar(…)`) no es escribir
+// la tabla: el detector exige el nombre exacto de la tabla tras `INSERT INTO`, `UPDATE` o `DELETE FROM`.
 
 const RAIZ = path.resolve(__dirname, "../../..");
 const ARBOLES = ["lib", "app"] as const;
 const EXTENSIONES = /\.(ts|tsx|mts|js|jsx)$/;
 
-const ESCRITURA_PRISMA = /\bcobroPlataformaMovimiento\s*\??\.\s*(create\w*|update\w*|upsert|delete\w*)\b/;
-const ESCRITURA_SQL = /\b(INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+(?:"?public"?\.)?"?cobro_plataforma_movimiento\b/i;
+/** Por tabla que solo escribe la base: el detector de Prisma y el de SQL (con o sin comillas y `public.`). */
+const DETECTORES = {
+  cobro_plataforma_movimiento: [
+    /\bcobroPlataformaMovimiento\s*\??\.\s*(create\w*|update\w*|upsert|delete\w*)\b/,
+    /\b(INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+(?:"?public"?\.)?"?cobro_plataforma_movimiento\b/i,
+  ],
+  // SLT-85 (R25).
+  cobro_plataforma_traza: [
+    /\bcobroPlataformaTraza\s*\??\.\s*(create\w*|update\w*|upsert|delete\w*)\b/,
+    /\b(INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+(?:"?public"?\.)?"?cobro_plataforma_traza\b/i,
+  ],
+  // SLT-118 (R22).
+  factura_plataforma: [
+    /\bfacturaPlataforma\s*\??\.\s*(create\w*|update\w*|upsert|delete\w*)\b/,
+    /\b(INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+(?:"?public"?\.)?"?factura_plataforma\b/i,
+  ],
+} as const satisfies Record<string, readonly RegExp[]>;
+type Tabla = keyof typeof DETECTORES;
+const TODAS = Object.keys(DETECTORES) as Tabla[];
 
-/** Las líneas de `texto` que escriben en la tabla de cargos, con su número de línea. */
-function escriturasEn(texto: string): string[] {
+/** Las líneas de `texto` que escriben en las `tablas` (por defecto, todas), con su número de línea. */
+function escriturasEn(texto: string, tablas: readonly Tabla[] = TODAS): string[] {
+  const detectores = tablas.flatMap((t) => DETECTORES[t]);
   const hallazgos: string[] = [];
   texto.split("\n").forEach((linea, i) => {
-    if (ESCRITURA_PRISMA.test(linea) || ESCRITURA_SQL.test(linea)) hallazgos.push(`${i + 1}: ${linea.trim()}`);
+    if (detectores.some((d) => d.test(linea))) hallazgos.push(`${i + 1}: ${linea.trim()}`);
   });
   return hallazgos;
 }
@@ -80,6 +107,51 @@ describe("SL-40 — contraprueba del detector", () => {
     'DELETE FROM public."cobro_plataforma_movimiento"',
   ])("encuentra la escritura en: %s", (linea) => {
     expect(escriturasEn(`const x = 1;\n${linea}\n`)).toEqual([`2: ${linea}`]);
+    expect(escriturasEn(linea, ["cobro_plataforma_movimiento"])).toEqual([`1: ${linea}`]);
+  });
+
+  // SLT-85 (R25): la traza de facturación.
+  it.each([
+    "await tx.cobroPlataformaTraza.create({ data })",
+    "prisma.cobroPlataformaTraza.createMany({ data: filas })",
+    "prisma.cobroPlataformaTraza.createManyAndReturn({ data: filas })",
+    "prisma.cobroPlataformaTraza.update({ where, data })",
+    "prisma.cobroPlataformaTraza.updateMany({ where, data })",
+    "prisma.cobroPlataformaTraza.upsert({ where, create, update })",
+    "prisma.cobroPlataformaTraza.delete({ where })",
+    "prisma.cobroPlataformaTraza.deleteMany({})",
+    "prisma.cobroPlataformaTraza?.deleteMany({})",
+    'await tx.$executeRaw`INSERT INTO "cobro_plataforma_traza" ("id") VALUES (1)`',
+    "insert into cobro_plataforma_traza (id) values (1)",
+    'UPDATE "cobro_plataforma_traza" SET "tipo_cobro" = NULL',
+    "update public.cobro_plataforma_traza set tipo_cobro = null",
+    'DELETE FROM public."cobro_plataforma_traza"',
+    "delete from cobro_plataforma_traza where true",
+  ])("encuentra la escritura en la traza: %s", (linea) => {
+    expect(escriturasEn(`const x = 1;\n${linea}\n`, ["cobro_plataforma_traza"])).toEqual([`2: ${linea}`]);
+    expect(escriturasEn(linea, ["cobro_plataforma_movimiento"])).toEqual([]);
+  });
+
+  // SLT-118 (R22): las facturas de la plataforma.
+  it.each([
+    "await tx.facturaPlataforma.create({ data })",
+    "prisma.facturaPlataforma.createMany({ data: filas })",
+    "prisma.facturaPlataforma.createManyAndReturn({ data: filas })",
+    "prisma.facturaPlataforma.update({ where, data })",
+    "prisma.facturaPlataforma.updateMany({ where, data })",
+    "prisma.facturaPlataforma.upsert({ where, create, update })",
+    "prisma.facturaPlataforma.delete({ where })",
+    "prisma.facturaPlataforma.deleteMany({})",
+    "prisma.facturaPlataforma?.deleteMany({})",
+    'await tx.$executeRaw`INSERT INTO "factura_plataforma" ("id") VALUES (1)`',
+    "insert into factura_plataforma (id) values (1)",
+    'UPDATE "factura_plataforma" SET "cuota" = 0',
+    "update public.factura_plataforma set estado = 'cerrada'",
+    'DELETE FROM public."factura_plataforma"',
+    "delete from factura_plataforma where true",
+  ])("encuentra la escritura en las facturas: %s", (linea) => {
+    expect(escriturasEn(`const x = 1;\n${linea}\n`, ["factura_plataforma"])).toEqual([`2: ${linea}`]);
+    expect(escriturasEn(linea, ["cobro_plataforma_movimiento", "cobro_plataforma_traza"])).toEqual([]);
   });
 
   it.each([
@@ -87,6 +159,16 @@ describe("SL-40 — contraprueba del detector", () => {
     "prisma.cobroPlataformaMovimiento.findMany({ where })",
     'SELECT * FROM "cobro_plataforma_movimiento"',
     'INSERT INTO "cobro_plataforma_tarifa" ("id") VALUES (true)',
+    "prisma.cobroPlataformaTraza.findMany({ where })",
+    "prisma.cobroPlataformaTraza.groupBy({ by: ['tipo_cobro'] })",
+    'SELECT * FROM "cobro_plataforma_traza" WHERE "orden_id" = $1',
+    'UPDATE "cobro_plataforma_traza_x" SET "a" = 1',
+    "prisma.facturaPlataforma.findMany({ where })",
+    "prisma.facturaPlataforma.aggregate({ _sum: { cuota: true } })",
+    'SELECT * FROM "factura_plataforma" WHERE "estado" = $1',
+    "await tx.$queryRaw`SELECT factura_plataforma_cerrar(${id}, ${ahora}::timestamp)`",
+    "await tx.$executeRaw`SELECT factura_plataforma_tomar_cambio(${id}, ${efecto}::timestamp, ${plan}, ${tipo})`",
+    'UPDATE "factura_plataforma_x" SET "a" = 1',
   ])("no confunde una lectura u otra tabla con una escritura: %s", (linea) => {
     expect(escriturasEn(linea)).toEqual([]);
   });
@@ -102,11 +184,31 @@ describe("SL-40 — nadie escribe cargos desde la app (R8, D3)", () => {
 
   it("ningún archivo de lib/ ni de app/ escribe en cobro_plataforma_movimiento", () => {
     const fallos = ARCHIVOS.flatMap((a) =>
-      escriturasEn(readFileSync(a, "utf8")).map((h) => `${relativa(a)}:${h}`),
+      escriturasEn(readFileSync(a, "utf8"), ["cobro_plataforma_movimiento"]).map((h) => `${relativa(a)}:${h}`),
     );
     expect(
       fallos,
       "Los cargos y reversos los escriben los triggers sobre `orden` (SL-40 design §2.2). Si hace falta otra vía, va en una migración, no en la app.",
+    ).toEqual([]);
+  });
+
+  it("ningún archivo de lib/ ni de app/ escribe en cobro_plataforma_traza (SLT-85, R25)", () => {
+    const fallos = ARCHIVOS.flatMap((a) =>
+      escriturasEn(readFileSync(a, "utf8"), ["cobro_plataforma_traza"]).map((h) => `${relativa(a)}:${h}`),
+    );
+    expect(
+      fallos,
+      "La traza de facturación la escribe solo el trigger sobre `cobro_plataforma_movimiento` y no se edita (SLT-85 design §5). Si hace falta otra vía, va en una migración, no en la app.",
+    ).toEqual([]);
+  });
+
+  it("ningún archivo de lib/ ni de app/ escribe en factura_plataforma (SLT-118, R22)", () => {
+    const fallos = ARCHIVOS.flatMap((a) =>
+      escriturasEn(readFileSync(a, "utf8"), ["factura_plataforma"]).map((h) => `${relativa(a)}:${h}`),
+    );
+    expect(
+      fallos,
+      "Las facturas de la plataforma las escriben solo las funciones del dueño en la base (SLT-118 design §1.3, §2). La app las llama y las lee; si hace falta otra vía, va en una migración.",
     ).toEqual([]);
   });
 

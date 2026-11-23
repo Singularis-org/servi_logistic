@@ -134,7 +134,7 @@ export function EnviosModule({ initialItems }: EnviosModuleProps) {
       </div>
 
       {rechazo ? (
-        <div role="alert" className="rounded-lg border border-danger/40 bg-danger-soft p-3 text-sm text-danger-strong">
+        <div role="alert" className="rounded-lg border border-danger/40 bg-danger-soft p-3 dark:bg-danger/15 text-sm text-danger-strong">
           <p className="font-semibold">«{rechazo.nombre}» no se pudo encender. Sigue apagado porque:</p>
           <ul className="mt-1 list-disc pl-5">
             {rechazo.motivos.map((m) => (

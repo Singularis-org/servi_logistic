@@ -3,6 +3,7 @@ import { fechaDiaMovimientoCR } from "@/lib/utils/fecha-dia-iso";
 import type { SelectOption } from "@/components/ui/select";
 import type { CierreTiendaOpcionDTO } from "@/lib/types/wallet-tienda";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 /**
  * FICHA 335 (design §4.3) — el catalogo de cierres del libro de ESTA tienda, tal como lo
  * necesita el selector del filtro. Modulo PURO: sin React, sin dinero, sin estado.
@@ -49,7 +50,8 @@ function contarMovimientos(n: number): string {
  * siguiente). Usar aqui otra funcion haria que la opcion dijera un dia y las filas de al lado otro.
  */
 function diaDe(cierre: CierreTiendaOpcionDTO): string {
-  return fechaDiaMovimientoCR(cierre.fecha);
+  // SLT-81: la UI sigue en la zona de CR
+  return fechaDiaMovimientoCR(cierre.fecha, ZONA_CR);
 }
 
 /** `08:30`: la hora de pared de Costa Rica, coherente con el dia de `diaDe`. */

@@ -9,6 +9,7 @@ import {
 } from "@/lib/utils/descarga-dataset";
 import { buildXlsxLibro, buildXlsxRows } from "@/lib/utils/xlsx-template";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 // Ficha 464 (T1, design §2.1) — el generador comun con VARIAS hojas: R10, R12, R41, R42.
 // Los asertos de xlsx RELEEN el binario con exceljs (round-trip real, sin dobles).
 
@@ -63,7 +64,7 @@ describe("ficha 464 — R41: sin hojas adicionales el archivo es el de siempre",
     for (const hojasAdicionales of [undefined, [] as DescargaHoja[]]) {
       const a = await construirDescarga(
         { titulo: "Libro de la caja", columnas: COLUMNAS, filas: FILAS, ...(hojasAdicionales ? { hojasAdicionales } : {}) },
-        FECHA,
+        ZONA_CR, FECHA,
       );
       const libro = await leer(a.contenido);
       expect(libro.worksheets).toHaveLength(1);
@@ -89,10 +90,10 @@ describe("ficha 464 — R41: sin hojas adicionales el archivo es el de siempre",
   });
 
   it("csv sin hojas adicionales (o con la lista vacia) sigue produciendo el csv de siempre", async () => {
-    const sin = await construirDescarga({ tipo: "csv", titulo: "T", columnas: COLUMNAS, filas: FILAS }, FECHA);
+    const sin = await construirDescarga({ tipo: "csv", titulo: "T", columnas: COLUMNAS, filas: FILAS }, ZONA_CR, FECHA);
     const vacia = await construirDescarga(
       { tipo: "csv", titulo: "T", columnas: COLUMNAS, filas: FILAS, hojasAdicionales: [] },
-      FECHA,
+      ZONA_CR, FECHA,
     );
     expect(vacia).toEqual(sin);
   });
@@ -112,7 +113,7 @@ describe("ficha 464 — R10: con una hoja adicional el libro lleva dos hojas, en
   it("la principal primero y «Detalle por orden» despues, cada una con sus columnas y filas", async () => {
     const a = await construirDescarga(
       { titulo: "Libro de la caja", columnas: COLUMNAS, filas: FILAS, hojasAdicionales: [DETALLE] },
-      FECHA,
+      ZONA_CR, FECHA,
     );
     const libro = await leer(a.contenido);
     expect(libro.worksheets.map((w) => w.name)).toEqual(["Libro de la caja", "Detalle por orden"]);
@@ -134,7 +135,7 @@ describe("ficha 464 — R10: con una hoja adicional el libro lleva dos hojas, en
   it("R24: una hoja adicional sin filas sale con su fila de encabezados y nada mas", async () => {
     const a = await construirDescarga(
       { titulo: "Libro", columnas: COLUMNAS, filas: FILAS, hojasAdicionales: [{ ...DETALLE, filas: [] }] },
-      FECHA,
+      ZONA_CR, FECHA,
     );
     const libro = await leer(a.contenido);
     expect(celdas(libro.worksheets[1])).toEqual([["N.º", "Guía", "Monto"]]);
@@ -144,7 +145,7 @@ describe("ficha 464 — R10: con una hoja adicional el libro lleva dos hojas, en
     await expect(
       construirDescarga(
         { titulo: "Libro", columnas: COLUMNAS, filas: FILAS, hojasAdicionales: [{ ...DETALLE, columnas: [] }] },
-        FECHA,
+        ZONA_CR, FECHA,
       ),
     ).rejects.toThrow(/al menos una columna/);
   });
@@ -155,7 +156,7 @@ describe("ficha 464 — R12: csv con hojas adicionales no produce archivo", () =
     await expect(
       construirDescarga(
         { tipo: "csv", titulo: "Libro", columnas: COLUMNAS, filas: FILAS, hojasAdicionales: [DETALLE] },
-        FECHA,
+        ZONA_CR, FECHA,
       ),
     ).rejects.toThrow(/solo existen en xlsx/);
   });
@@ -173,7 +174,7 @@ describe("ficha 464 — R42: nombres de hoja validos para Excel y distintos entr
           { ...DETALLE, titulo: "Detalle" },
         ],
       },
-      FECHA,
+      ZONA_CR, FECHA,
     );
     const libro = await leer(a.contenido);
     expect(libro.worksheets.map((w) => w.name)).toEqual(["Detalle", "detalle (2)", "Detalle (3)"]);
@@ -188,7 +189,7 @@ describe("ficha 464 — R42: nombres de hoja validos para Excel y distintos entr
         filas: FILAS,
         hojasAdicionales: [{ ...DETALLE, titulo: largo }],
       },
-      FECHA,
+      ZONA_CR, FECHA,
     );
     const libro = await leer(a.contenido);
     const nombres = libro.worksheets.map((w) => w.name);

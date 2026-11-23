@@ -2,9 +2,12 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 
 import { RastreoPublicoRepository } from "@/lib/repositories/RastreoPublicoRepository";
 import { RastreoPublicoService } from "@/lib/services/RastreoPublicoService";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 import { C, R, RETIRADO } from "../../../../fixtures/codigos-455";
 import { HAY_BASE_DE_DATOS } from "../../_postgres-real";
 import { conEscenario, prepararMundo, type Escenario, type Mundo } from "../../454/_escenario";
+
+const SIN_ROL_DE_APP = { rolDeLaApp: false } as const;
 
 /**
  * FEATURE 455 — FASE 0 · C13 (R31, R34). EL RASTREO PUBLICO: CUANTAS ENTRADAS Y CON QUE FECHAS.
@@ -75,7 +78,11 @@ describeSiHayBase("455/C13 — rastreo publico (Postgres real)", () => {
 
   function correr() {
     return conEscenario(mundo, async (e) => {
-      const rastreo = new RastreoPublicoService(new RastreoPublicoRepository(e.cliente));
+      const rastreo = new RastreoPublicoService(
+        new RastreoPublicoRepository(e.cliente),
+        undefined,
+        reglasPaisFijas(),
+      );
       const o = await e.sembrarOrden({ estatus: C.devueltaATienda as never, mensajeroId: null });
       for (const [i, paso] of HISTORIAL.entries()) {
         const estatusDestinoId = paso.retirado ? await idRetirado(e, paso.codigo) : e.id(paso.codigo);
@@ -122,7 +129,7 @@ describeSiHayBase("455/C13 — rastreo publico (Postgres real)", () => {
           nombreResultado: lineaPendiente[lineaPendiente.length - 1]?.nombre ?? "∅",
         },
       };
-    });
+    }, SIN_ROL_DE_APP); // SLT-177: DDL/catalogo dentro del escenario
   }
 
   beforeAll(async () => {

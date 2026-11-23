@@ -70,13 +70,15 @@ export function motivoSinOrdenes(nombre: string): string {
 export async function resumenTiendasPicking(
   repo: IPickingRepository,
   ahora: Date,
+  /** SLT-42 (R22): la zona del pais de la empresa, de la que salen los dias en preparacion. */
+  zona: string,
   diasAtraso: number,
 ): Promise<TiendaPickingDTO[]> {
   const [tiendas, entradas] = await Promise.all([
     leer("tiendasFulfillment", () => repo.tiendasFulfillment()),
     leer("entradasEnPreparacion", () => repo.entradasEnPreparacion()),
   ]);
-  const conteo = contarPorTienda(entradas, ahora, diasAtraso);
+  const conteo = contarPorTienda(entradas, ahora, zona, diasAtraso);
   return [...tiendas]
     .sort((a, b) => compararCodigo(a.nombre, b.nombre) || compararCodigo(a.id, b.id))
     .map((t) => ({
@@ -144,8 +146,8 @@ export function crearInformePicking(deps?: DepsInformePicking): InformeWhatsapp<
       },
       { clave: "remision_desde", nombre: "Primera remisión", descripcion: "La primera remisión del picking.", ejemplo: "NA-1069" },
       { clave: "remision_hasta", nombre: "Última remisión", descripcion: "La última remisión del picking.", ejemplo: "NA-1101" },
-      { clave: "fecha", nombre: "Fecha del picking", descripcion: "Fecha del envío (hora de Costa Rica).", ejemplo: "05/10/2026" },
-      { clave: "hora", nombre: "Hora del picking", descripcion: "Hora del envío (hora de Costa Rica).", ejemplo: "06:30" },
+      { clave: "fecha", nombre: "Fecha del picking", descripcion: "Fecha del envío (hora local).", ejemplo: "05/10/2026" },
+      { clave: "hora", nombre: "Hora del picking", descripcion: "Hora del envío (hora local).", ejemplo: "06:30" },
     ],
     generaDocumento: true,
     // D3: el picking lo hace la bodega de la empresa; no llega a una tienda.
@@ -161,7 +163,12 @@ export function crearInformePicking(deps?: DepsInformePicking): InformeWhatsapp<
       }
       const filas = await leer("ordenesEnPreparacion", () => repo.ordenesEnPreparacion(tiendaId));
       if (filas.length === 0) return { tipo: "vacio", motivo: motivoSinOrdenes(tienda.nombre) };
-      const modelo = construirModeloPicking(filas, { ahora: ctx.ahora, diasAtraso, tienda: tienda.nombre });
+      const modelo = construirModeloPicking(filas, {
+        ahora: ctx.ahora,
+        zona: ctx.zona,
+        diasAtraso,
+        tienda: tienda.nombre,
+      });
       return {
         tipo: "contenido",
         valores: { ...modelo.valores },

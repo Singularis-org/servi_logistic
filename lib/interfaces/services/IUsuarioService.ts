@@ -1,4 +1,9 @@
-import type { RolItem, UsuarioPublico } from "@/lib/interfaces/repositories/IUserRepository";
+import type {
+  ICambioCorreoRepository,
+  RolItem,
+  TipoIdentificacionItem,
+  UsuarioPublico,
+} from "@/lib/interfaces/repositories/IUserRepository";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type {
   ActualizarUsuarioInput,
@@ -6,8 +11,11 @@ import type {
   CrearUsuarioInput,
   ListarUsuariosCompletoInput,
   ListarUsuariosInput,
+  CambioCorreoPendienteDTO,
+  SolicitarCambioCorreoInput,
   UsuarioListItemDTO,
 } from "@/lib/types/usuario";
+import type { IEmailSender } from "@/lib/interfaces/external/IEmailSender";
 import type { ListarCompletoServiceResult } from "@/lib/types/descarga-listado";
 import type { ListarPaginadoServiceResult } from "@/lib/types/listado-paginado";
 import type { ResultadoTopePlan } from "@/lib/types/planes";
@@ -45,7 +53,8 @@ export type ActualizarUsuarioServiceResult =
   | { status: "ok"; usuario: UsuarioPublico }
   | { status: "validation_error"; fieldErrors: Record<string, string[]> } // R18: catalogo
   | { status: "forbidden" }
-  | { status: "not_found" }; // R17
+  | { status: "not_found" } // R17
+  | { status: "conflict"; campo: "email" | "cedula" }; // SLT-221 R1603: el documento ya es de otro
 
 // SL-24 (R27): activar desde `inactivo` o `bloqueado` es un alta; con el tope del rol lleno,
 // `tope_plan`. Crear y actualizar no lo necesitan: lo devuelven como `fieldErrors.rolId`.
@@ -56,7 +65,7 @@ export type CambiarEstadoUsuarioServiceResult =
   | ResultadoTopePlan;
 
 export type ListarTiposIdentificacionServiceResult =
-  | { status: "ok"; tipos: { id: string; value: string }[] }
+  | { status: "ok"; tipos: TipoIdentificacionItem[] } // SLT-42 (R5): solo los del pais de la empresa
   | { status: "forbidden" };
 
 export type ListarRolesServiceResult =
@@ -175,4 +184,46 @@ export interface IUsuarioService {
     cambio: CambioUsuarioEvaluable,
     actor: Actor,
   ): Promise<ConsultarImpactoCambioServiceResult>;
+  /**
+   * SLT-221 (R1610-R1617, R1620): pide (o reenvía) el cambio de correo del usuario `id`. Deja un
+   * pendiente y escribe al correo NUEVO; `usuario.email` no cambia hasta el canje.
+   */
+  solicitarCambioCorreo(
+    id: string,
+    input: SolicitarCambioCorreoInput,
+    actor: Actor,
+  ): Promise<SolicitarCambioCorreoServiceResult>;
+  /** SLT-221 (R1619): anula el pendiente del usuario, si lo hay. */
+  cancelarCambioCorreo(id: string, actor: Actor): Promise<CancelarCambioCorreoServiceResult>;
+  /** SLT-221 (R1618): el pendiente del usuario, o `null`. */
+  cambioCorreoPendiente(id: string, actor: Actor): Promise<CambioCorreoPendienteServiceResult>;
 }
+
+/**
+ * SLT-221 (design §3.4): con qué sale el correo de confirmación. Lo arma el composition root.
+ * `baseUrl: null` = sin URL no hay enlace: `solicitarCambioCorreo` lanza.
+ */
+export interface CorreoDeCambio {
+  /** El `UserRepository` real: los accesos a `usuario_cambio_correo`. */
+  repo: ICambioCorreoRepository;
+  sender: IEmailSender;
+  baseUrl: string | null;
+  contacto: string | null;
+  ttlHoras: number;
+}
+
+type RechazoDeCambioCorreo =
+  | { status: "validation_error"; fieldErrors: Record<string, string[]> } // R1612, R1613
+  | { status: "forbidden" } // R1631
+  | { status: "not_found" }; // R1630
+
+export type SolicitarCambioCorreoServiceResult =
+  | { status: "ok"; pendiente: CambioCorreoPendienteDTO }
+  | { status: "envio_fallido" } // R1617
+  | { status: "conflict"; campo: "email" } // R1611
+  | { status: "conflict"; campo: "email"; mensaje: string } // m5: dos pedidos a la vez
+  | RechazoDeCambioCorreo;
+export type CancelarCambioCorreoServiceResult = { status: "ok" } | RechazoDeCambioCorreo;
+export type CambioCorreoPendienteServiceResult =
+  | { status: "ok"; pendiente: CambioCorreoPendienteDTO | null }
+  | RechazoDeCambioCorreo;

@@ -13,6 +13,7 @@ import type { IAnaliticaCache } from "@/lib/interfaces/external/IAnaliticaCache"
 import type { ICicloVidaRepository } from "@/lib/interfaces/repositories/ICicloVidaRepository";
 import type { CicloVidaDTO } from "@/lib/types/conteo-ciclo-vida";
 
+import { ZONA_DE_CR, reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 // SLT-71 (design §11.1): `lugares` es obligatorio. La entrada de los casos son los lugares de su filtro,
 // resueltos sobre el catalogo de prueba (`p1` → `c1` → `d1`); las aserciones no cambian por esto.
 const condicionesDeCiclo = (c: ConsultaConteoEntregas) => condicionesDeCicloCon(c, lugaresDe(c.filtro));
@@ -20,7 +21,7 @@ const condicionesDeCiclo = (c: ConsultaConteoEntregas) => condicionesDeCicloCon(
 const AHORA = new Date("2026-08-18T12:00:00.000Z");
 
 function consultaDe(raw: object = {}, rol = "maestro", extra: object = {}): ConsultaConteoEntregas {
-  const preparada = prepararConteoEntregas(raw, { usuarioId: "u1", rol, ...extra } as never, AHORA);
+  const preparada = prepararConteoEntregas(raw, { usuarioId: "u1", rol, ...extra } as never, ZONA_DE_CR, AHORA);
   if (preparada.status !== "ok") throw new Error(`filtro de prueba inválido: ${preparada.status}`);
   return preparada.consulta;
 }
@@ -302,7 +303,7 @@ function deps(actor: unknown) {
   const service = { consultar: vi.fn(async (_c: ConsultaConteoEntregas) => DATOS) };
   const logger = { logError: vi.fn() };
   return {
-    deps: { service, logger, getActor: async () => actor as never, now: () => AHORA },
+    deps: { reglasPais: reglasPaisFijas(), service, logger, getActor: async () => actor as never, now: () => AHORA },
     service,
     logger,
   };

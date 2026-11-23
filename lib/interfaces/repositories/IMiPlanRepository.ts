@@ -1,5 +1,6 @@
-import type { CobroDelCiclo, CostoVigente, UsoDelPlan } from "@/lib/types/consumo-plan";
-import type { TipoCobro, VersionPlan } from "@/lib/types/planes";
+import type { PlanConUsoLeido } from "@/lib/planes/consumo";
+import type { PendienteDeEmpresa } from "@/lib/types/consumo-plan";
+import type { VersionPlan } from "@/lib/types/planes";
 
 // SLT-58 (design §3.1) — el plan de la empresa del contexto, tal como lo devuelve
 // `plan_de_la_empresa`, ya validado y con los roles en su clave de la app. La empresa no es un
@@ -12,23 +13,29 @@ export interface CambioProgramadoLeido {
   version: VersionPlan;
 }
 
-export interface PlanDeLaEmpresaLeido {
-  vigente: VersionPlan;
-  /** El ancla del ciclo de órdenes; con plan nunca es nula (CHECK de SL-24). */
-  ancla: Date;
-  /** SLT-58 (§11.4, R34): el inicio del ciclo corto, `null` fuera de él. Opcional como en `PlanConUsoLeido`. */
-  cortoDesde?: Date | null;
-  uso: UsoDelPlan;
-  cambio: CambioProgramadoLeido | null;
-  /** SLT-66 (R18, §3.2): el costo por orden que cobrará la próxima orden y de dónde sale. SLT-83: fijo o porcentual. */
-  costoVigente: CostoVigente;
-  /** SLT-83 (R24): lo cobrado en el ciclo en curso y las órdenes porcentuales sin estado final. */
-  cobroCiclo: CobroDelCiclo;
-  /** Ajuste planes-custom (D6): cómo paga la empresa el plan (`plan_de_la_empresa.tipo_cobro`). */
-  tipoCobro: TipoCobro;
+/**
+ * SLT-86 (R5, R15, R26, R27): lo mismo que pinta el detalle de empresa del superadmin (`PlanConUsoLeido`):
+ * la entrada, el precio del período en curso y el cambio pendiente de la empresa, sin el actor (R32).
+ */
+export type PlanDeLaEmpresaLeido = PlanConUsoLeido;
+
+/**
+ * SLT-86 (R26, decisión del 2026-11-05): una empresa sin plan con su primera asignación pendiente
+ * (P4 = a). «Mi plan» muestra «Sin límites» y «{Plan} empieza a regir el {fecha}».
+ */
+export interface SinPlanConPendienteLeido {
+  sinPlan: true;
+  pendiente: PendienteDeEmpresa;
+}
+
+/** `null` = sin plan y sin pendiente (SLT-58 R6). */
+export type LecturaDeMiPlan = PlanDeLaEmpresaLeido | SinPlanConPendienteLeido | null;
+
+/** SLT-86 (R26): la lectura es de una empresa sin plan con su primera asignación pendiente. */
+export function esSinPlanConPendiente(l: LecturaDeMiPlan): l is SinPlanConPendienteLeido {
+  return l !== null && "sinPlan" in l;
 }
 
 export interface IMiPlanRepository {
-  /** `null` si la empresa no tiene plan (R6). */
-  planDeLaEmpresa(): Promise<PlanDeLaEmpresaLeido | null>;
+  planDeLaEmpresa(): Promise<LecturaDeMiPlan>;
 }
