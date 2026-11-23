@@ -1,11 +1,12 @@
 "use client";
 
-import { useId, useState, type CSSProperties, type ReactNode } from "react";
+import { useId, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import { ChevronDown } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { EstadoConInfo } from "@/components/shared/EstadoInfo";
-import { money } from "@/lib/config/moneda";
+import { useImpuestoDelPais, useMonedaDelPais } from "@/hooks/use-moneda-del-pais";
+import { formatearMontoEn, SIN_MONTO_RAYA } from "@/lib/config/moneda";
 import { cn } from "@/lib/utils";
 import { CLASE_INFO_TACTIL_MOVIL, COLUMNA_FIJA, TACTIL_MOVIL, TEXTO_ENTERO } from "@/components/shared/texto-entero";
 import type { CierreDetalleGestion, CierreResultado } from "@/lib/interfaces/services/ICierreDiaService";
@@ -22,6 +23,7 @@ import {
 } from "@/app/(app)/cierres-admin/_components/cierre-factura";
 
 import { Cuenta } from "../detalle/Cuenta";
+import type { PaisDelCierre } from "../detalle/detalle-cierre-vista";
 import { CalculoCobro } from "./CalculoCobro";
 import {
   accionesDe,
@@ -41,7 +43,8 @@ import * as L from "./fila-gestion-labels";
 // gestión de un cierre, para las cuatro audiencias (D15: un componente, props distintas). Cerrada:
 // la fila de la tabla con sus señales. Desplegada: los datos de la orden, las tarjetas de dinero en
 // cascada (`Cuenta`, D16) y «Ver cómo se calculó». Qué se ve lo decide `fila-gestion-vista.ts`; aquí
-// solo se pinta, con los strings del servidor por `money()` (R71).
+// solo se pinta, con los strings del servidor por `formatearMontoEn` en la moneda del país (R71;
+// SLT-244, R4).
 //
 // Fiel al canvas (`Fila2.dc.html`): la cabecera desplegada lleva SOLO Orden, Producto y Dirección
 // (PA6), y la fila no pinta indemnización ni «Ingreso de bodega» por gestión (S3-2).
@@ -205,6 +208,9 @@ export function FilaGestion({
   const ofrecidas = accionesDe(g, audiencia, acciones);
   const delaOrden = `de la orden ${g.numRemision} · ${g.destinatario}`;
   const senales = textoSenales(g, audiencia);
+  const moneda = useMonedaDelPais();
+  const impuesto = useImpuestoDelPais();
+  const pais = useMemo<PaisDelCierre>(() => ({ moneda, impuesto }), [moneda, impuesto]);
 
   function celda(c: ColumnaFila): ReactNode {
     switch (c.id) {
@@ -230,12 +236,12 @@ export function FilaGestion({
         return <span className="pl-4 text-xs text-warning-strong">{senales}</span>;
       default:
         // R86: un importe nulo es «—», nunca ₡0.
-        return <span className={cn("block text-right", COLUMNA_FIJA)}>{money(montoDeColumna(g, c.id))}</span>;
+        return <span className={cn("block text-right", COLUMNA_FIJA)}>{formatearMontoEn(moneda, montoDeColumna(g, c.id), SIN_MONTO_RAYA)}</span>;
     }
   }
 
-  const tarjetas = tarjetasDe(g, audiencia, quienMiraEsCentral);
-  const calculo = calculoDe(g, congeladoAt);
+  const tarjetas = tarjetasDe(g, audiencia, quienMiraEsCentral, pais);
+  const calculo = calculoDe(g, congeladoAt, pais);
 
   function pieDe(t: TarjetaFila): ReactNode {
     if (t.id === "recibido" && ofrecidas.corregirMetodos) {
@@ -459,6 +465,7 @@ function TarjetaMensajero({
   onAlternar: () => void;
   senales: string;
 }>) {
+  const moneda = useMonedaDelPais();
   return (
     <div className={TARJETA_MENSAJERO} data-tarjeta-mensajero="">
       <button
@@ -490,7 +497,7 @@ function TarjetaMensajero({
         <span className="text-xs text-muted-foreground">{L.COL_GANANCIA}</span>
         {/* R86: un importe nulo es «—», nunca ₡0. */}
         <span data-columna="ganancia" className={cn("text-base font-semibold", COLUMNA_FIJA)}>
-          {money(montoDeColumna(g, "ganancia"))}
+          {formatearMontoEn(moneda, montoDeColumna(g, "ganancia"), SIN_MONTO_RAYA)}
         </span>
       </div>
       {senales === "" ? null : (

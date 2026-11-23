@@ -13,7 +13,7 @@
 import type { CierreGestionDescargaDTO, RechazoTiendaDescargaDTO } from "@/lib/interfaces/services/ICierresAdminService";
 import type { ConceptoTarifaDTO, PagoPorTarifaDTO } from "@/lib/interfaces/services/ICierreDiaService";
 import type { DescargaColumna, DescargaFila } from "@/lib/types/descarga";
-import { money } from "@/lib/config/moneda";
+import { MONEDA_PLATAFORMA, money } from "@/lib/config/moneda"; // provisional SLT-244 T3.1
 import { MONTO_FIJO, origenDe, porcentajeDe } from "@/components/private/cierres/fila/fila-gestion-labels";
 import { textoSenales, type AudienciaFila } from "@/components/private/cierres/fila/fila-gestion-vista";
 
@@ -120,7 +120,7 @@ function textoTarifa(t: ConceptoTarifaDTO | PagoPorTarifaDTO): string {
   // que la sonda de la guardia de datos sensibles (un Proxy) llegue al texto como su marcador.
   const valor = `${t.valor}`;
   const base = t.base === null ? null : `${t.base}`;
-  const rotulo = t.modo === "monto" ? `${MONTO_FIJO} ${money(valor)}` : porcentajeDe(valor, base);
+  const rotulo = t.modo === "monto" ? `${MONTO_FIJO} ${money(valor)}` : porcentajeDe(valor, base, MONEDA_PLATAFORMA); // provisional SLT-244 T3.1
   return `${rotulo}${SEPARADOR_TARIFA}${origenDe(t.nivel, t)}`;
 }
 

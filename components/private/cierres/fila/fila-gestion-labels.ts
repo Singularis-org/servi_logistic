@@ -4,13 +4,11 @@
 // `*_LABEL` (D20: una cifra, un nombre); aquí solo vive lo que no existía.
 //
 // Módulo PURO: sin React ni DOM. Ningún texto calcula dinero (R71): los que llevan un importe lo
-// reciben como STRING del servidor y lo pasan por `money()`.
+// reciben como STRING del servidor y lo pasan por `formatearMontoEn` con la moneda del país que pasa
+// el llamador (SLT-244, R5).
 
-import { money } from "@/lib/config/moneda";
-import {
-  porcentajeParaVer,
-  porcentajeParaVerEnLaPlataforma,
-} from "@/app/(app)/configuracion/tarifas/_components/tarifas-textos";
+import { formatearMontoEn, SIN_MONTO_RAYA, type FormatoMoneda } from "@/lib/config/moneda";
+import { porcentajeParaVer } from "@/app/(app)/configuracion/tarifas/_components/tarifas-textos";
 import type { OrigenTarifaDTO } from "@/lib/interfaces/services/ICierreDiaService";
 
 import {
@@ -123,13 +121,18 @@ export const CALCULO_REGION = "Cómo se calculó el cobro a la tienda";
 export const FLETE_POR_ENTREGADO = "Flete por entregado";
 export const MONTO_FIJO = "Monto fijo";
 export const tarifaDe = (origen: string): string => `Tarifa: ${origen}`;
-/** «2 % de ₡25.000»: el % es el string congelado; el importe, el del servidor por `money()`. */
-export const porcentajeDe = (valor: string, base: string | null): string =>
-  base === null ? `${porcentajeParaVerEnLaPlataforma(valor)} %` : `${porcentajeParaVerEnLaPlataforma(valor)} % de ${money(base)}`;
+/**
+ * «2 % de ₡25.000»: el % es el string congelado, con el separador de la moneda; el importe, el del
+ * servidor por `formatearMontoEn` (SLT-244, R5: moneda obligatoria).
+ */
+export const porcentajeDe = (valor: string, base: string | null, moneda: FormatoMoneda): string =>
+  base === null
+    ? `${porcentajeParaVer(valor, moneda)} %`
+    : `${porcentajeParaVer(valor, moneda)} % de ${formatearMontoEn(moneda, base, SIN_MONTO_RAYA)}`;
 /** Modelo viejo (R29): la columna aplicada con los rótulos de hoy. */
 export const tarifaVieja = (columna: string): string => `tarifa ${columna}`;
-export const conPorcentaje = (rotulo: string, pct: string, base: string): string =>
-  `${rotulo} (${porcentajeParaVerEnLaPlataforma(pct)} % de ${money(base)})`;
+export const conPorcentaje = (rotulo: string, pct: string, base: string, moneda: FormatoMoneda): string =>
+  `${rotulo} (${porcentajeParaVer(pct, moneda)} % de ${formatearMontoEn(moneda, base, SIN_MONTO_RAYA)})`;
 const NOTA_CALCULO_COLA = "Si después cambian, aquí no cambia nada.";
 export const notaCalculo = (cuando: string | null): string =>
   cuando === null

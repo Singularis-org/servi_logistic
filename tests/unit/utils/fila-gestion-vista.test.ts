@@ -24,6 +24,11 @@ import {
   ingresoNuevo,
   ingresoViejo,
 } from "@/tests/fixtures/gestion-cierre-fila";
+import { MONEDA_PLATAFORMA } from "@/lib/config/moneda";
+import { IMPUESTO_ROTULO } from "@/lib/constants/impuesto-rotulo";
+
+/** SLT-244 (R9): la moneda y el impuesto de la plataforma; con ellos los textos son los de siempre. */
+const PAIS_PLATAFORMA = { moneda: MONEDA_PLATAFORMA, impuesto: IMPUESTO_ROTULO };
 
 // SLT-101 «Fila de gestión única y lista con filtros» (T2.1) — la lógica pura de la lista y de la
 // fila. Todos los esperados van ESCRITOS A MANO (nunca la función que los produce): son el texto y
@@ -242,7 +247,7 @@ describe("SLT-154 — la lista de gestiones de quien no es la central (R474, R47
   it("R475 — sin la central, la fila desplegada no trae «Se le cobra a la tienda»; conserva Recibió y el pago", () => {
     const g = gestionFila({ gestionId: "v", ingresoEmpresa: ingresoViejo() });
     for (const [a, central] of [["satelite", false], ["solo lectura", false], ["satelite", true]] as const) {
-      const tarjetas = tarjetasDe(g, a, central);
+      const tarjetas = tarjetasDe(g, a, central, PAIS_PLATAFORMA);
       expect(tarjetas.map((t) => t.id)).toEqual(["recibido", "pago"]);
       expect(tarjetas.map((t) => t.titulo)).not.toContain("Se le cobra a la tienda");
     }
@@ -250,8 +255,8 @@ describe("SLT-154 — la lista de gestiones de quien no es la central (R474, R47
 
   it("R477 — la central (y «solo lectura» que mira la central) conserva la tarjeta del cobro", () => {
     const g = gestionFila({ gestionId: "v", ingresoEmpresa: ingresoViejo() });
-    expect(tarjetasDe(g, "central", true)[1].titulo).toBe("Se le cobra a la tienda");
-    expect(tarjetasDe(g, "solo lectura", true)[1].titulo).toBe("Se le cobra a la tienda");
+    expect(tarjetasDe(g, "central", true, PAIS_PLATAFORMA)[1].titulo).toBe("Se le cobra a la tienda");
+    expect(tarjetasDe(g, "solo lectura", true, PAIS_PLATAFORMA)[1].titulo).toBe("Se le cobra a la tienda");
   });
 });
 
@@ -259,7 +264,7 @@ describe("R25, R27, R30, R93-R95, R98 — tarjetas", () => {
   const vieja = gestionFila({ gestionId: "v", ingresoEmpresa: ingresoViejo() });
 
   it("R25: qué tarjetas ve cada audiencia", () => {
-    const ids = (a: AudienciaFila, central = false) => tarjetasDe(vieja, a, central).map((t) => t.id);
+    const ids = (a: AudienciaFila, central = false) => tarjetasDe(vieja, a, central, PAIS_PLATAFORMA).map((t) => t.id);
     expect(ids("central", true)).toEqual(["recibido", "cobro", "pago", "fulfillment"]);
     // SLT-154 (R475): sin la central, sin «Se le cobra a la tienda».
     expect(ids("satelite")).toEqual(["recibido", "pago"]);
@@ -269,7 +274,7 @@ describe("R25, R27, R30, R93-R95, R98 — tarjetas", () => {
   });
 
   it("R27: «Recibió el mensajero» sin los métodos en 0 (D4)", () => {
-    const [recibido] = tarjetasDe(vieja, "central", true);
+    const [recibido] = tarjetasDe(vieja, "central", true, PAIS_PLATAFORMA);
     expect(recibido.titulo).toBe("Recibió el mensajero");
     expect(lineas(recibido)).toEqual([
       ["Efectivo", "15000.00"],
@@ -279,7 +284,7 @@ describe("R25, R27, R30, R93-R95, R98 — tarjetas", () => {
   });
 
   it("R27, R93: «Se le cobra a la tienda» con cada concepto con IVA y «de eso, IVA»", () => {
-    const cobro = tarjetasDe(vieja, "central", true)[1];
+    const cobro = tarjetasDe(vieja, "central", true, PAIS_PLATAFORMA)[1];
     expect(cobro.titulo).toBe("Se le cobra a la tienda");
     expect(lineas(cobro)).toEqual([
       ["Flete por entregado + IVA", "4520.00"],
@@ -291,7 +296,7 @@ describe("R25, R27, R30, R93-R95, R98 — tarjetas", () => {
 
   it("R93: sin `ivaIncluido` no hay línea «de eso, IVA»", () => {
     const g = gestionFila({ gestionId: "s", ingresoEmpresa: ingresoViejo({ ivaIncluido: null }) });
-    expect(tarjetasDe(g, "central", true)[1].aparte).toBeUndefined();
+    expect(tarjetasDe(g, "central", true, PAIS_PLATAFORMA)[1].aparte).toBeUndefined();
   });
 
   it("R27: una devolución del viejo cobra con el rótulo de siempre", () => {
@@ -313,7 +318,7 @@ describe("R25, R27, R30, R93-R95, R98 — tarjetas", () => {
       }),
     });
     // SLT-154 (R475): la tarjeta del cobro solo la ve la central.
-    expect(lineas(tarjetasDe(g, "central", true)[1])).toEqual([
+    expect(lineas(tarjetasDe(g, "central", true, PAIS_PLATAFORMA)[1])).toEqual([
       ["Flete por devolución a origen + IVA", "2260.00"],
       ["Se le cobra", "2260.00"],
     ]);
@@ -321,7 +326,7 @@ describe("R25, R27, R30, R93-R95, R98 — tarjetas", () => {
 
   it("R27: fuente nula → «Sin dato», no ₡0", () => {
     const pre = gestionFila({ gestionId: "pre", resultado: "novedad", montoRecibido: null, pagoMensajero: null, ingresoEmpresa: null });
-    const t = tarjetasDe(pre, "central", true);
+    const t = tarjetasDe(pre, "central", true, PAIS_PLATAFORMA);
     expect(t.map((x) => [x.titulo, x.vacio, x.lineas.length])).toEqual([
       ["Recibió el mensajero", "Sin dato", 0],
       ["Se le cobra a la tienda", "Sin dato", 0],
@@ -330,7 +335,7 @@ describe("R25, R27, R30, R93-R95, R98 — tarjetas", () => {
   });
 
   it("R95, R98: pago con «Por tarifa», «− Ajuste», «Se le paga», insignia, motivo y quién ajustó", () => {
-    const pago = tarjetasDe(gestionCanvas(), "central", true)[2];
+    const pago = tarjetasDe(gestionCanvas(), "central", true, PAIS_PLATAFORMA)[2];
     expect(pago.titulo).toBe("Se le paga al mensajero");
     expect(lineas(pago)).toEqual([
       ["Por tarifa · precio propio del mensajero", "2500.00"],
@@ -348,7 +353,7 @@ describe("R25, R27, R30, R93-R95, R98 — tarjetas", () => {
       pagoPorTarifa: { ...gestionCanvas().pagoPorTarifa!, ajuste: { signo: "suma", monto: "700.00" } },
     });
     // SLT-154 (R475): sin la tarjeta del cobro, el pago es la segunda (y conserva su ajuste).
-    expect(lineas(tarjetasDe(g, "satelite", false)[1])).toEqual([
+    expect(lineas(tarjetasDe(g, "satelite", false, PAIS_PLATAFORMA)[1])).toEqual([
       ["Por tarifa · precio propio del mensajero", "2500.00"],
       ["+ Ajuste", "700.00"],
       ["Se le paga", "3200.00"],
@@ -356,13 +361,13 @@ describe("R25, R27, R30, R93-R95, R98 — tarjetas", () => {
   });
 
   it("R95: modelo viejo sin pago congelado → solo «Se le paga»", () => {
-    const pago = tarjetasDe(vieja, "central", true)[2];
+    const pago = tarjetasDe(vieja, "central", true, PAIS_PLATAFORMA)[2];
     expect(lineas(pago)).toEqual([["Se le paga", "1500.00"]]);
     expect(pago.ajustado).toBeUndefined();
   });
 
   it("mensajero: «Tu ganancia», sin ajuste ni marca", () => {
-    const pago = tarjetasDe(gestionCanvas(), "mensajero", false)[1];
+    const pago = tarjetasDe(gestionCanvas(), "mensajero", false, PAIS_PLATAFORMA)[1];
     expect(pago.titulo).toBe("Tu ganancia");
     expect(lineas(pago)).toEqual([
       ["Por tarifa · precio propio del mensajero", "2500.00"],
@@ -372,7 +377,7 @@ describe("R25, R27, R30, R93-R95, R98 — tarjetas", () => {
   });
 
   it("R30, R94: fulfillment de la central con «+ IVA 13 %», «Se cobró» y la nota con fecha", () => {
-    const f = tarjetasDe(gestionCanvas(), "central", true)[3];
+    const f = tarjetasDe(gestionCanvas(), "central", true, PAIS_PLATAFORMA)[3];
     expect(f.titulo).toBe("Fulfillment · se cobró al crear la orden");
     expect(lineas(f)).toEqual([
       ["Fulfillment", "600.00"],
@@ -387,15 +392,15 @@ describe("R25, R27, R30, R93-R95, R98 — tarjetas", () => {
 
   it("R94: sin fecha de cargo, solo la segunda frase", () => {
     const g = gestionCanvas({ ingresoEmpresa: ingresoNuevo({ fulfillmentCargadoAt: null }) });
-    expect(tarjetasDe(g, "central", true)[3].nota).toBe("No depende de esta gestión ni de este cierre.");
+    expect(tarjetasDe(g, "central", true, PAIS_PLATAFORMA)[3].nota).toBe("No depende de esta gestión ni de este cierre.");
   });
 
   it("R30: la satélite nunca ve el fulfillment, aunque llegara", () => {
-    expect(tarjetasDe(gestionCanvas(), "satelite", true).map((t) => t.id)).not.toContain("fulfillment");
+    expect(tarjetasDe(gestionCanvas(), "satelite", true, PAIS_PLATAFORMA).map((t) => t.id)).not.toContain("fulfillment");
   });
 
   it("R30: el viejo sin IVA de fulfillment no pinta «+ IVA»", () => {
-    const f = tarjetasDe(vieja, "central", true)[3];
+    const f = tarjetasDe(vieja, "central", true, PAIS_PLATAFORMA)[3];
     expect(lineas(f)).toEqual([
       ["Fulfillment", "300.00"],
       ["Se cobró", "300.00"],
@@ -405,7 +410,7 @@ describe("R25, R27, R30, R93-R95, R98 — tarjetas", () => {
 
 describe("R28, R29, R97 — «Ver cómo se calculó»", () => {
   it("R29 viejo GAM: «tarifa GAM», IVA con su % y base, comisión con su % de lo cobrado", () => {
-    const c = calculoDe(gestionFila({ gestionId: "v", ingresoEmpresa: ingresoViejo() }), CONGELADO_AT)!;
+    const c = calculoDe(gestionFila({ gestionId: "v", ingresoEmpresa: ingresoViejo() }), CONGELADO_AT, PAIS_PLATAFORMA)!;
     expect(c.cuentas.map((x) => [x.titulo, lineas(x)])).toEqual([
       [
         "Flete por entregado",
@@ -431,7 +436,7 @@ describe("R28, R29, R97 — «Ver cómo se calculó»", () => {
 
   it("R29 viejo no GAM: la columna no GAM", () => {
     const ing = ingresoViejo({ esCentral: false, flete: "3000.00", ivaFlete: "390.00", fleteConIva: "3390.00" });
-    const c = calculoDe(gestionFila({ gestionId: "v", ingresoEmpresa: ing }), CONGELADO_AT)!;
+    const c = calculoDe(gestionFila({ gestionId: "v", ingresoEmpresa: ing }), CONGELADO_AT, PAIS_PLATAFORMA)!;
     expect(lineas(c.cuentas[0])).toEqual([
       ["tarifa no GAM", "3000.00"],
       ["+ IVA flete (13 % de ₡3.000)", "390.00"],
@@ -448,7 +453,7 @@ describe("R28, R29, R97 — «Ver cómo se calculó»", () => {
       fleteConIva: "5650.00",
       tarifa: { ...ingresoViejo().tarifa!, tarifaEspecial: "5000.00" },
     });
-    const c = calculoDe(gestionFila({ gestionId: "v", ingresoEmpresa: ing }), CONGELADO_AT)!;
+    const c = calculoDe(gestionFila({ gestionId: "v", ingresoEmpresa: ing }), CONGELADO_AT, PAIS_PLATAFORMA)!;
     expect(lineas(c.cuentas[0])).toEqual([
       ["tarifa especial pactada", "5000.00"],
       ["+ IVA flete (13 % de ₡5.000)", "650.00"],
@@ -461,7 +466,7 @@ describe("R28, R29, R97 — «Ver cómo se calculó»", () => {
 
   it("R29 especial sin pacto: la columna normal y la marca de falta de pacto", () => {
     const ing = ingresoViejo({ fleteOrigen: "especial_sin_pacto", esZonaEspecial: true });
-    const c = calculoDe(gestionFila({ gestionId: "v", ingresoEmpresa: ing }), CONGELADO_AT)!;
+    const c = calculoDe(gestionFila({ gestionId: "v", ingresoEmpresa: ing }), CONGELADO_AT, PAIS_PLATAFORMA)!;
     expect(lineas(c.cuentas[0])[0]).toEqual(["tarifa GAM", "4000.00"]);
     expect(c.faltaPacto).toBe(true);
   });
@@ -474,19 +479,19 @@ describe("R28, R29, R97 — «Ver cómo se calculó»", () => {
       comisionConIva: null,
       total: "4520.00",
     });
-    const c = calculoDe(gestionFila({ gestionId: "v", ingresoEmpresa: ing }), CONGELADO_AT)!;
+    const c = calculoDe(gestionFila({ gestionId: "v", ingresoEmpresa: ing }), CONGELADO_AT, PAIS_PLATAFORMA)!;
     expect(c.cuentas.map((x) => x.titulo)).toEqual(["Flete por entregado"]);
     expect(c.notas).toEqual(["Esta orden no cobra comisión COD."]);
   });
 
   it("R29 sin tarifa congelada: solo el aviso", () => {
-    const c = calculoDe(gestionFila({ gestionId: "v", ingresoEmpresa: ingresoViejo({ tarifa: null }) }), CONGELADO_AT)!;
+    const c = calculoDe(gestionFila({ gestionId: "v", ingresoEmpresa: ingresoViejo({ tarifa: null }) }), CONGELADO_AT, PAIS_PLATAFORMA)!;
     expect(c.sinTarifa).toBe(true);
     expect(c.cuentas).toEqual([]);
   });
 
   it("R97 nuevo = el canvas: «Tarifa: …», «Monto fijo», «2 % de ₡25.000», «+ IVA 13 %»", () => {
-    const c = calculoDe(gestionCanvas(), CONGELADO_AT)!;
+    const c = calculoDe(gestionCanvas(), CONGELADO_AT, PAIS_PLATAFORMA)!;
     expect(c.cuentas.map((x) => [x.titulo, x.tarifa, lineas(x)])).toEqual([
       [
         "Flete por entregado",
@@ -512,18 +517,18 @@ describe("R28, R29, R97 — «Ver cómo se calculó»", () => {
   it("R97: con el valor de tarifa borrado (nombres nulos), el nivel sin nombres", () => {
     const ing = ingresoNuevo();
     const conceptos = ing.conceptosTarifa!.map((c) => ({ ...c, zonaNombre: null, grupoNombre: null }));
-    const c = calculoDe(gestionCanvas({ ingresoEmpresa: { ...ing, conceptosTarifa: conceptos } }), CONGELADO_AT)!;
+    const c = calculoDe(gestionCanvas({ ingresoEmpresa: { ...ing, conceptosTarifa: conceptos } }), CONGELADO_AT, PAIS_PLATAFORMA)!;
     expect(c.cuentas.map((x) => x.tarifa)).toEqual(["Tarifa: grupo", "Tarifa: valor base de la zona"]);
   });
 
   it("R97: sin fecha del cierre, la nota sin paréntesis", () => {
-    expect(calculoDe(gestionCanvas(), null)!.nota).toBe(
+    expect(calculoDe(gestionCanvas(), null, PAIS_PLATAFORMA)!.nota).toBe(
       "Tarifas tal como estaban al crear el cierre. Si después cambian, aquí no cambia nada.",
     );
   });
 
   it("sin snapshot no hay cálculo", () => {
-    expect(calculoDe(gestionFila({ gestionId: "p", ingresoEmpresa: null }), CONGELADO_AT)).toBeNull();
+    expect(calculoDe(gestionFila({ gestionId: "p", ingresoEmpresa: null }), CONGELADO_AT, PAIS_PLATAFORMA)).toBeNull();
   });
 });
 

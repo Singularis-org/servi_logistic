@@ -24,26 +24,23 @@ import { CAUSA_INCIDENTE_LABEL } from "@/app/(app)/mis-asignaciones/_components/
 import {
   RESULTADO_LABEL,
   RESULTADO_VACIO,
-  fleteDevConIvaDeGestion,
+  fleteDevConImpuestoDeGestion,
   FULFILLMENT_COL,
   fleteNoEntregaLabel,
   fulfillmentDeIngreso,
-  ivaFleteNoEntregaLabel,
+  impuestoFleteNoEntregaLabel,
 } from "@/app/(app)/cierres-admin/_components/cierre-labels";
 import {
   COMISION_COD_LABEL as COMISION_COD_CONCEPTO,
   ESPECIAL_BADGE_NOTA,
   FLETE_RECHAZO_LABEL,
   HINT_TARIFA_ESPECIAL,
-  IVA_COMISION_LABEL,
-  IVA_FLETE_LABEL,
-  IVA_FLETE_RECHAZO_LABEL,
   ORDEN_RESULTADOS,
   SIN_COMISION_NOTA,
+  impuestoComisionLabel,
+  impuestoFleteLabel,
+  impuestoFleteRechazoLabel,
 } from "@/app/(app)/cierres-admin/_components/cierre-detalle-shared";
-
-import { MONEDA_PLATAFORMA } from "@/lib/config/moneda";
-import { IMPUESTO_ROTULO } from "@/lib/constants/impuesto-rotulo";
 
 import type { LineaCuenta, PaisDelCierre } from "../detalle/detalle-cierre-vista";
 import {
@@ -53,12 +50,6 @@ import {
 } from "../detalle/detalle-cierre-labels";
 import { COLUMNA_GANA_BODEGA } from "../cola/cola-cierres-labels";
 import * as L from "./fila-gestion-labels";
-
-/**
- * SLT-244 (T2.1, provisional): la moneda y el rótulo de la plataforma, el mismo texto de antes. Lo
- * retira T2.3 al pasar `pais` a `tarjetasDe` y `calculoDe`.
- */
-const PAIS_PROVISIONAL: PaisDelCierre = { moneda: MONEDA_PLATAFORMA, impuesto: IMPUESTO_ROTULO };
 
 // ═══ Audiencia y filtros ═════════════════════════════════════════════════════════════════════════
 
@@ -322,21 +313,21 @@ function tarjetaRecibido(g: CierreDetalleGestion): TarjetaFila {
   };
 }
 
-function tarjetaCobro(g: CierreDetalleGestion): TarjetaFila {
+function tarjetaCobro(g: CierreDetalleGestion, impuesto: string): TarjetaFila {
   const base = { id: "cobro" as const, titulo: L.COBRO_TITULO };
   const ing = g.ingresoEmpresa ?? null;
   if (ing === null) return { ...base, lineas: [], vacio: L.SIN_DATO };
   const conceptos: [string, string | null][] = [
-    [fletePorEntregadoConImpuesto(IMPUESTO_ROTULO), ing.fleteConIva],
-    [comisionCodConImpuesto(IMPUESTO_ROTULO), ing.comisionConIva],
-    [fleteDevConIvaDeGestion(g), ing.fleteDevolucionConIva],
+    [fletePorEntregadoConImpuesto(impuesto), ing.fleteConIva],
+    [comisionCodConImpuesto(impuesto), ing.comisionConIva],
+    [fleteDevConImpuestoDeGestion(g, impuesto), ing.fleteDevolucionConIva],
   ];
   const presentes = conceptos.filter((c): c is [string, string] => c[1] !== null);
   const ivaIncluido = ing.ivaIncluido ?? null;
   return {
     ...base,
     lineas: [...presentes.map(([label, monto], i) => partida(label, monto, i === 0)), total(L.COBRO_TOTAL, ing.total)],
-    ...(ivaIncluido === null ? {} : { aparte: { label: L.deEsoImpuesto(IMPUESTO_ROTULO), monto: ivaIncluido } }),
+    ...(ivaIncluido === null ? {} : { aparte: { label: L.deEsoImpuesto(impuesto), monto: ivaIncluido } }),
   };
 }
 
@@ -378,13 +369,13 @@ export function veFulfillment(a: AudienciaFila, quienMiraEsCentral: boolean): bo
   return veDineroEmpresa(a, quienMiraEsCentral);
 }
 
-function tarjetaFulfillment(ing: IngresoEmpresaDTO): TarjetaFila | null {
+function tarjetaFulfillment(ing: IngresoEmpresaDTO, pais: PaisDelCierre): TarjetaFila | null {
   const fulfillment = fulfillmentDeIngreso(ing);
   if (fulfillment === null) return null;
   const lineas: LineaCuenta[] = [partida(FULFILLMENT_COL, fulfillment, true)];
   const pct = ing.ivaPctFulfillment ?? null;
   if (pct !== null && ing.ivaFulfillment !== null) {
-    lineas.push(partida(L.impuestoConPorcentaje(pct, PAIS_PROVISIONAL), ing.ivaFulfillment, false));
+    lineas.push(partida(L.impuestoConPorcentaje(pct, pais), ing.ivaFulfillment, false));
   }
   const conIva = ing.fulfillmentConIva ?? null;
   if (conIva !== null) lineas.push(total(L.FULFILLMENT_TOTAL, conIva));
@@ -397,20 +388,24 @@ function tarjetaFulfillment(ing: IngresoEmpresaDTO): TarjetaFila | null {
   };
 }
 
-/** Las tarjetas de la fila desplegada, en el orden del canvas (D2). */
+/**
+ * Las tarjetas de la fila desplegada, en el orden del canvas (D2). SLT-244 (R5, R6, R8): `pais` es
+ * obligatorio; da el impuesto de los rótulos y la moneda del porcentaje del fulfillment.
+ */
 export function tarjetasDe(
   g: CierreDetalleGestion,
   a: AudienciaFila,
   quienMiraEsCentral: boolean,
+  pais: PaisDelCierre,
 ): TarjetaFila[] {
   const tarjetas: TarjetaFila[] = [tarjetaRecibido(g)];
   // El mensajero no ve el dinero de la empresa (R25); SLT-154 (R475): solo lo ve la central. «Ver cómo
   // se calculó» cuelga de esta tarjeta y se va con ella.
-  if (veDineroEmpresa(a, quienMiraEsCentral)) tarjetas.push(tarjetaCobro(g));
+  if (veDineroEmpresa(a, quienMiraEsCentral)) tarjetas.push(tarjetaCobro(g, pais.impuesto));
   tarjetas.push(tarjetaPago(g, a));
   const ing = g.ingresoEmpresa ?? null;
   if (ing !== null && veFulfillment(a, quienMiraEsCentral)) {
-    const f = tarjetaFulfillment(ing);
+    const f = tarjetaFulfillment(ing, pais);
     if (f !== null) tarjetas.push(f);
   }
   return tarjetas;
@@ -452,7 +447,7 @@ function cuentaConcepto(
 
 type ConceptoCobro = ConceptoTarifaDTO["concepto"];
 
-function calculoNuevo(g: CierreDetalleGestion, ing: IngresoEmpresaDTO): CuentaCalculo[] {
+function calculoNuevo(g: CierreDetalleGestion, ing: IngresoEmpresaDTO, pais: PaisDelCierre): CuentaCalculo[] {
   const conceptos = ing.conceptosTarifa ?? [];
   const tituloDe: Record<ConceptoCobro, string> = {
     flete: L.FLETE_POR_ENTREGADO,
@@ -465,9 +460,9 @@ function calculoNuevo(g: CierreDetalleGestion, ing: IngresoEmpresaDTO): CuentaCa
     fleteDevolucion: [ing.fleteDevolucion, ing.ivaFleteDevolucion, ing.fleteDevolucionConIva],
   };
   const ivaDe: Record<ConceptoCobro, string> = {
-    flete: IVA_FLETE_LABEL,
-    comisionCod: IVA_COMISION_LABEL,
-    fleteDevolucion: ivaFleteNoEntregaLabel(g.resultado),
+    flete: impuestoFleteLabel(pais.impuesto),
+    comisionCod: impuestoComisionLabel(pais.impuesto),
+    fleteDevolucion: impuestoFleteNoEntregaLabel(g.resultado, pais.impuesto),
   };
   const orden: ConceptoCobro[] = ["flete", "comisionCod", "fleteDevolucion"];
   return orden.flatMap((c) => {
@@ -477,12 +472,12 @@ function calculoNuevo(g: CierreDetalleGestion, ing: IngresoEmpresaDTO): CuentaCa
     const titulo = tituloDe[c];
     // Sin la tarifa del concepto (un doble anterior a SLT-101): la cuenta sin la línea «Tarifa:».
     if (t === undefined) return [cuentaConcepto(titulo, [titulo, base], [ivaDe[c], iva], conIva)];
-    const rotuloBase = t.modo === "monto" ? L.MONTO_FIJO : L.porcentajeDe(t.valor, t.base);
+    const rotuloBase = t.modo === "monto" ? L.MONTO_FIJO : L.porcentajeDe(t.valor, t.base, pais.moneda);
     return [
       cuentaConcepto(
         titulo,
         [rotuloBase, base],
-        [L.impuestoConPorcentaje(t.ivaPct, PAIS_PROVISIONAL), iva],
+        [L.impuestoConPorcentaje(t.ivaPct, pais), iva],
         conIva,
         L.tarifaDe(L.origenDe(t.nivel, t)),
       ),
@@ -490,7 +485,8 @@ function calculoNuevo(g: CierreDetalleGestion, ing: IngresoEmpresaDTO): CuentaCa
   });
 }
 
-function calculoViejo(ing: IngresoEmpresaDTO): { cuentas: CuentaCalculo[]; notas: string[] } {
+function calculoViejo(ing: IngresoEmpresaDTO, pais: PaisDelCierre): { cuentas: CuentaCalculo[]; notas: string[] } {
+  const { moneda, impuesto } = pais;
   const t = ing.tarifa;
   if (t === null) return { cuentas: [], notas: [] };
   // La regla de hoy de `DesgloseIngresoEmpresa` (337/338): pacto si salió de él y existe; si no,
@@ -512,7 +508,7 @@ function calculoViejo(ing: IngresoEmpresaDTO): { cuentas: CuentaCalculo[]; notas
       cuentaConcepto(
         L.FLETE_POR_ENTREGADO,
         [columna(fleteEspecial), ing.flete],
-        [L.conPorcentaje(IVA_FLETE_LABEL, t.ivaFlete, fleteAplicado), ing.ivaFlete],
+        [L.conPorcentaje(impuestoFleteLabel(impuesto), t.ivaFlete, fleteAplicado, moneda), ing.ivaFlete],
         ing.fleteConIva,
       ),
     );
@@ -521,8 +517,8 @@ function calculoViejo(ing: IngresoEmpresaDTO): { cuentas: CuentaCalculo[]; notas
     cuentas.push(
       cuentaConcepto(
         COMISION_COD_CONCEPTO,
-        [L.conPorcentaje(COMISION_COD_CONCEPTO, t.comisionCod, ing.montoCobrar), ing.comisionCod],
-        [L.conPorcentaje(IVA_COMISION_LABEL, t.ivaComisionCod, ing.comisionCod), ing.ivaComisionCod],
+        [L.conPorcentaje(COMISION_COD_CONCEPTO, t.comisionCod, ing.montoCobrar, moneda), ing.comisionCod],
+        [L.conPorcentaje(impuestoComisionLabel(impuesto), t.ivaComisionCod, ing.comisionCod, moneda), ing.ivaComisionCod],
         ing.comisionConIva,
       ),
     );
@@ -532,7 +528,7 @@ function calculoViejo(ing: IngresoEmpresaDTO): { cuentas: CuentaCalculo[]; notas
       cuentaConcepto(
         FLETE_RECHAZO_LABEL,
         [columna(fleteDevEspecial), ing.fleteDevolucion],
-        [L.conPorcentaje(IVA_FLETE_RECHAZO_LABEL, t.ivaFlete, fleteDevAplicado), ing.ivaFleteDevolucion],
+        [L.conPorcentaje(impuestoFleteRechazoLabel(impuesto), t.ivaFlete, fleteDevAplicado, moneda), ing.ivaFleteDevolucion],
         ing.fleteDevolucionConIva,
       ),
     );
@@ -541,19 +537,26 @@ function calculoViejo(ing: IngresoEmpresaDTO): { cuentas: CuentaCalculo[]; notas
   return { cuentas, notas };
 }
 
-/** Las tarjetas de «Ver cómo se calculó»: una por concepto COBRADO (D2). `null` sin snapshot. */
-export function calculoDe(g: CierreDetalleGestion, congeladoAt: string | null): CalculoVista | null {
+/**
+ * Las tarjetas de «Ver cómo se calculó»: una por concepto COBRADO (D2). `null` sin snapshot. SLT-244
+ * (R5, R6, R8): `pais` es obligatorio; da la moneda de las bases y el impuesto de los rótulos.
+ */
+export function calculoDe(
+  g: CierreDetalleGestion,
+  congeladoAt: string | null,
+  pais: PaisDelCierre,
+): CalculoVista | null {
   const ing = g.ingresoEmpresa ?? null;
   if (ing === null) return null;
   const nota = L.notaCalculo(fechaHoraCorta(congeladoAt));
   const sinComision = ing.cobraComision ? [] : [SIN_COMISION_NOTA];
   if (ing.tarifaModelo === "nuevo") {
-    return { cuentas: calculoNuevo(g, ing), notas: sinComision, sinTarifa: false, faltaPacto: false, nota };
+    return { cuentas: calculoNuevo(g, ing, pais), notas: sinComision, sinTarifa: false, faltaPacto: false, nota };
   }
   if (ing.tarifa === null) {
     return { cuentas: [], notas: [], sinTarifa: true, faltaPacto: false, nota };
   }
-  const viejo = calculoViejo(ing);
+  const viejo = calculoViejo(ing, pais);
   return {
     cuentas: viejo.cuentas,
     notas: [...viejo.notas, ...sinComision],

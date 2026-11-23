@@ -42,14 +42,14 @@
     `CierreCobrosDeLaGestion.test.tsx`, `moneda-del-pais-cierres-admin.test.tsx`,
     `flete-por-rechazo-censo.guardia.test.ts` y `rechazo-nombre-466.guardia.test.ts` pasan sin
     tocarlos.
-- [ ] **T2.2** Detalle: `PaisDelCierre`, `pieResumenMensajero`, `pieBodega`, `notaOrigenIngresoBodega`,
+- [x] **T2.2** Detalle: `PaisDelCierre`, `pieResumenMensajero`, `pieBodega`, `notaOrigenIngresoBodega`,
   `pieTextoDe`, `lineasDinero` y `cifrasDe` con la moneda y el impuesto obligatorios (design §4).
   `DetalleCierre.tsx` lee los dos hooks y pasa `pais`. Depende de T2.1.
   - `detalle-cierre-vista.test.ts`: sus llamadas pasan la constante de la plataforma.
   - Casos de R3 y los `@ts-expect-error` de `cifrasDe` y `lineasDinero` (R8).
   - *Hecho:* en verde; `detalle-cierre-vista.test.ts` sin cambiar ningún valor esperado;
     `cierre-bodega-vocabulario.guardia.test.ts` en verde sin tocarla.
-- [ ] **T2.3** Fila: `porcentajeDe`, `conPorcentaje`, `tarjetasDe` y `calculoDe` con la moneda y el
+- [x] **T2.3** Fila: `porcentajeDe`, `conPorcentaje`, `tarjetasDe` y `calculoDe` con la moneda y el
   impuesto obligatorios, y `porcentajeParaVer(…, moneda)` en lugar de
   `porcentajeParaVerEnLaPlataforma` (design §4). `FilaGestion.tsx` lee los dos hooks, pasa `pais` y
   formatea sus 2 importes (R4). Depende de T2.1.

@@ -36,3 +36,41 @@ Tests (1): `tests/components/moneda-del-pais-cierres-componentes.test.tsx` (nuev
 
 ### Veredicto
 Tanda A en verde: cola y detalle en la moneda del país, rótulos con impuesto como funciones; sin bloqueos.
+
+## Tanda B (frontend_dev, 2026-11-23): T2.2, T2.3
+
+### Archivos
+Producción (7):
+- `components/private/cierres/detalle/detalle-cierre-labels.ts` (`pieResumenMensajero(…, moneda)`, `pieBodega(…, moneda)` con `formatearMontoEn`; sale `money`)
+- `components/private/cierres/detalle/detalle-cierre-vista.ts` (`cifrasDe`, `lineasDinero` y `pieTextoDe` con `pais: PaisDelCierre` obligatorio en las dos sobrecargas, en `pieTextoDe` antes del opcional; `notaOrigenIngresoBodega(d, moneda)`; `cuentaFactura`/`cuentaQueda`/`cifrasBodega` reciben el impuesto; `FLETE_*_CON_IVA_LABEL` → `fleteDevConImpuestoLabel`/`fleteNoEntregadasConImpuestoLabel`; salen `money` e `IMPUESTO_ROTULO`)
+- `components/private/cierres/detalle/DetalleCierre.tsx` (`Cuerpo` lee `useMonedaDelPais()` y `useImpuestoDelPais()`, arma `pais` con `useMemo` y lo pasa a `modeloDe`)
+- `components/private/cierres/fila/fila-gestion-labels.ts` (`porcentajeDe(valor, base, moneda)`, `conPorcentaje(rotulo, pct, base, moneda)` con `porcentajeParaVer` y `formatearMontoEn`; salen `money` y `porcentajeParaVerEnLaPlataforma`)
+- `components/private/cierres/fila/fila-gestion-vista.ts` (`tarjetasDe(g, a, c, pais)`, `calculoDe(g, x, pais)`; rótulos con las funciones del impuesto de `cierre-labels.ts` y `cierre-detalle-shared.tsx`; salen `PAIS_PROVISIONAL`, `MONEDA_PLATAFORMA`, `IMPUESTO_ROTULO` y las constantes `IVA_*`)
+- `components/private/cierres/fila/FilaGestion.tsx` (lee los dos hooks, pasa `pais`; sus 2 `money(` → `formatearMontoEn(moneda, …, SIN_MONTO_RAYA)`; `TarjetaMensajero` lee `useMonedaDelPais()`)
+- `app/(app)/cierres-admin/_components/cierres-gestiones-modelo-nuevo-descarga-columnas.ts` (**provisional**: solo `porcentajeDe(valor, base, MONEDA_PLATAFORMA)` y el import, con `// provisional SLT-244 T3.1`)
+
+Tests (3):
+- `tests/unit/utils/detalle-cierre-vista.test.ts` (35 llamadas con `PAIS_PLATAFORMA`; ningún valor esperado cambia: el diff sin el argumento solo añade la constante)
+- `tests/unit/utils/fila-gestion-vista.test.ts` (27 llamadas, ídem)
+- `tests/components/moneda-del-pais-cierres-componentes.test.tsx` (+21 casos; 41 en total)
+
+### Provisionales que quedan
+- Ninguno en `components/private/cierres/**`: sin `IMPUESTO_ROTULO`, `PAIS_PROVISIONAL`, `money(` ni `porcentajeParaVerEnLaPlataforma` fuera de comentarios (Grep).
+- `cierres-gestiones-modelo-nuevo-descarga-columnas.ts`: `MONEDA_PLATAFORMA` en `porcentajeDe` y su `money(` del monto fijo; los retira T3.1.
+- `porcentajeParaVerEnLaPlataforma` sigue en `tarifas-textos.ts` sin llamadores de cierres; lo borra T4.1.
+
+### Mapa R → test (tanda B), en `moneda-del-pais-cierres-componentes.test.tsx`
+- R3 → `SLT-244 R3` (pie de mensajero y de bodega con «€» / «₡»; `disponibles` tras `pais`; nota de bodega del modelo viejo «€2 700»; `pieResumenMensajero`/`pieBodega`; el pie montado en los tres montajes)
+- R4 → `SLT-244 R4` (fila central desplegada: columnas y cuatro tarjetas en tres montajes; ganancia de la tarjeta del mensajero; «—» sin importe; fulfillment «IGV 13 %»)
+- R5 → `SLT-244 R5` («2 % de €25 000»; «3,5» con `MONEDA_CR` y «3.5» con `MONEDA_DE_PRUEBA`; modelo viejo «IGV flete (13 % de €4 000)», «Comisión COD (4 % de €25 000)», «IGV comisión (13 % de €1 000)», devolución; «Ver cómo se calculó» montado)
+- R6 → `SLT-244 R6 — el detalle montado…` («Flete por entregado + IGV», «IGV (no es de la empresa)», «sin IGV, …»; con CR y sin proveedor, «IVA») y `R6 — la fila montada…` («de eso, IGV (no es de la empresa)», «Flete por novedad + IGV»)
+- R8 → `llamadasSinPais` con `@ts-expect-error` en `cifrasDe`, `lineasDinero`, `tarjetasDe`, `calculoDe` y `porcentajeDe` (lo comprueba `pnpm run typecheck`)
+- R9/R10 → cada caso montado pasa por `compruebaCostaRicaYCaida`; `detalle-cierre-vista.test.ts` y `fila-gestion-vista.test.ts` verdes sin cambiar valores
+
+### Comandos (NODE_OPTIONS=--max-old-space-size=8192)
+- `pnpm run typecheck` → `tsc --noEmit`, EXIT 0 (antes de migrar los tests, solo señaló los dos `*-vista.test.ts`: ningún otro llamador)
+- `pnpm exec eslint <10 archivos tocados>` → `No issues found`, EXIT 0
+- `pnpm exec vitest run` (test nuevo, detalle-cierre-vista, fila-gestion-vista, FilaGestion, DetalleCierre, DetalleCierreBodega, DetalleCierreDinero, DetalleCierreGestiones, DineroIdentidadesEnPantalla, cierres-gestiones-modelo-nuevo-descarga, columnas-sensibles.guardia, guardias cierre-bodega-vocabulario, cierres-trato-tu, liquidacion-money-safe, pwa-mensajero-sin-recorte) → `Test Files 15 passed (15) · Tests 647 passed (647)`
+
+### Veredicto
+Tanda B en verde: detalle y fila con moneda e impuesto obligatorios desde los hooks; sin provisionales en la carpeta de cierres ni bloqueos.

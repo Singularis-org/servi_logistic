@@ -6,7 +6,7 @@
 // que gana la empresa es «Le queda a la empresa».
 
 import { EMPRESA } from "@/lib/config/marca";
-import { money } from "@/lib/config/moneda";
+import { formatearMontoEn, SIN_MONTO_RAYA, type FormatoMoneda } from "@/lib/config/moneda";
 
 /** «1 tienda» / «2 tiendas». Los conteos son números enteros del servidor, no dinero. */
 function cuantos(n: number, singular: string, plural: string): string {
@@ -147,12 +147,15 @@ export const pieAprobarConPaquetes = (paquetes: number, incidentes: number): str
     incidentes === 1 ? "indemnizar 1 incidente" : `indemnizar ${incidentes} incidentes`;
   return `Aprobar pide ${confirmar} e ${indemnizar}.`;
 };
-export const pieResumenMensajero = (recaudado: string, gestiones: number): string =>
-  `${RECAUDADO_LABEL} ${money(recaudado)} · ${cuantos(gestiones, "gestión", "gestiones")}`;
+// SLT-244 (R3): los importes del pie van en la moneda del país, que pasa el llamador.
+export const pieResumenMensajero = (recaudado: string, gestiones: number, moneda: FormatoMoneda): string =>
+  `${RECAUDADO_LABEL} ${formatearMontoEn(moneda, recaudado, SIN_MONTO_RAYA)} · ${cuantos(gestiones, "gestión", "gestiones")}`;
 export const PIE_DESTRABAR =
   "Destrabar lo deja como solicitado; después se aprueba o rechaza por la vía normal.";
-export const pieBodega = (declarado: string, coletilla: string): string =>
-  coletilla ? `Declarado ${money(declarado)} · ${coletilla}` : `Declarado ${money(declarado)}`;
+export const pieBodega = (declarado: string, coletilla: string, moneda: FormatoMoneda): string => {
+  const importe = formatearMontoEn(moneda, declarado, SIN_MONTO_RAYA);
+  return coletilla ? `Declarado ${importe} · ${coletilla}` : `Declarado ${importe}`;
+};
 export const PIE_BODEGA_CENTRAL_PENDIENTE = "márcalo recibido cuando llegue";
 export const PIE_BODEGA_SATELITE_PENDIENTE = "la central lo marca recibido cuando llega";
 export const PIE_MENSAJERO_EN_CURSO = "Se agrupan todas tus gestiones pendientes. No se puede deshacer.";
