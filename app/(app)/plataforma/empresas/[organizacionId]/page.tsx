@@ -13,6 +13,7 @@ import { fijarModuloEmpresaAction } from "@/lib/actions/modulos-empresa";
 import {
   darPlazoEmpresaAction,
   fijarGraciaEmpresaAction,
+  quitarPlazoEmpresaAction,
   verMoraDeEmpresaAction,
 } from "@/lib/actions/mora-empresa";
 import {
@@ -277,7 +278,8 @@ export default async function EmpresaDetallePage({
             <MoraEmpresa
               datos={mora}
               fijarGracia={fijarGraciaEmpresaAction.bind(null, empresa.organizacionId)}
-              descongelar={darPlazoEmpresaAction.bind(null, empresa.organizacionId)}
+              darPlazo={darPlazoEmpresaAction.bind(null, empresa.organizacionId)}
+              quitarPlazo={quitarPlazoEmpresaAction.bind(null, empresa.organizacionId)}
             />
 
             <PlanEmpresa

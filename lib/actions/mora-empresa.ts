@@ -80,8 +80,6 @@ export async function darPlazoEmpresaAction(
 
 /**
  * SLT-255 R5, R7: `{ motivo }` para quitar la prórroga vigente de la empresa ligada.
- *
- * @sin-superficie SLT-255 T4.2 (deuda de una tanda, misma rama): el botón «Quitar prórroga…» de `MoraEmpresa.tsx` y su `.bind` en `page.tsx` llegan en la Tanda 4 (frontend). La guardia pone esta anotación en rojo en cuanto la página la importe; entonces se borra.
  */
 export async function quitarPlazoEmpresaAction(
   organizacionId: string,

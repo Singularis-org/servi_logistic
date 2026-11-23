@@ -169,7 +169,7 @@ textos de la UI.
 - R11 → `tests/components/AvisoMora.test.tsx` › «SLT-255 R11: con plazo, el aviso (`status`)…» (maestro, admin).
 - R12 → sin cambio de UI. Lo decide `estadoMora` (Tanda 2): los casos `en_plazo` y `al_dia` del mismo archivo siguen en
   verde.
-- R13 → **pendiente** (T4.2 bloqueada; ver abajo).
+- R13 → ver «T4.2 — Diálogos de la prórroga» abajo.
 
 ### Verificación (salida real)
 
@@ -199,9 +199,51 @@ design §5.2 fija estos textos:
 T4.2 no se tocó, así que `@sin-superficie` sigue en `quitarPlazoEmpresaAction`. No se tocaron `MoraEmpresa.tsx`,
 `page.tsx` ni `MoraEmpresa.test.tsx`.
 
+### T4.2 — Diálogos de la prórroga (frontend_dev, 2026-11-23)
+
+Los textos 1 a 3 los fijó el humano (filas «T4.2 — …» de «Decisiones cerradas» en `requirements.md`); van literales.
+El MCP del grafo no se usó: se exploró con Grep/Read.
+
+Archivos:
+
+- `app/(app)/plataforma/empresas/[organizacionId]/_components/MoraEmpresa.tsx`:
+  - el estado `con_plazo` dice «Con prórroga hasta el dd/mm/aaaa» (sale el texto viejo «Descongelada a mano hasta…»);
+  - «Dar plazo hasta…» siempre; «Quitar prórroga…» solo con `plazo.vigente !== null` y sin congelar;
+  - `DialogoDescongelar` pasa a `DialogoDarPlazo`: título, aviso y botón según congelada / con prórroga / sin prórroga;
+    campo «Hasta» con `min`, `max` y `porDefecto` de `datos.plazo`; `sin_cambio` ya no cierra en silencio: dice «La
+    fecha es la misma de la prórroga vigente.» y el diálogo sigue abierto;
+  - `DialogoQuitarPlazo` nuevo: título «Quitar plazo de pago», aviso con la fecha vigente, motivo y «Quitar plazo»;
+    `sin_plazo` pinta `MORA_TEXTOS.plataforma.errores.sinPlazo`;
+  - la prop `descongelar` pasa a `darPlazo` y se añade `quitarPlazo`. Los textos nuevos viven en el `TEXTOS` local de
+    la pantalla, junto a los que ya había (el patrón del archivo); `MORA_TEXTOS` no cambia.
+- `app/(app)/plataforma/empresas/[organizacionId]/page.tsx`: liga `darPlazoEmpresaAction` en `darPlazo` y
+  `quitarPlazoEmpresaAction` en `quitarPlazo`.
+- `lib/actions/mora-empresa.ts`: sale la anotación provisional `@sin-superficie` de `quitarPlazoEmpresaAction`.
+- `tests/components/MoraEmpresa.test.tsx`: props nuevas, el estado «Con prórroga hasta el…», el campo «Hasta», y el
+  bloque nuevo «SLT-255 R13».
+
+R → test:
+
+- R13 → `tests/components/MoraEmpresa.test.tsx` › «SLT-255 R13 — dar, cambiar y quitar la prórroga de pago»:
+  - «Dar plazo hasta…» aparece siempre (5 estados); «Quitar prórroga…» aparece con plazo vigente y no aparece sin
+    plazo ni congelada;
+  - «el diálogo …» en los tres casos: título, aviso, botón de confirmar y «Hasta» con su valor por defecto (hoy + 7 o
+    la fecha vigente), `min` y `max`;
+  - dar la prórroga manda motivo y fecha; `sin_cambio` muestra su texto; quitar manda el motivo recortado; sin motivo
+    no llega al servidor; `sin_plazo`, `forbidden` y `not_found` se muestran;
+  - el estado «con prórroga, hasta cuándo (SLT-255 R13)» en «SLT-121 R32 — lo que ve el superadmin».
+
+Verificación (salida real):
+
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck` → `tsc --noEmit` sin errores (exit 0).
+- `pnpm exec eslint` sobre `MoraEmpresa.tsx`, `page.tsx`, `lib/actions/mora-empresa.ts` y `MoraEmpresa.test.tsx` →
+  exit 0, sin avisos.
+- `pnpm exec vitest run tests/components/MoraEmpresa.test.tsx tests/components/AvisoMora.test.tsx
+  tests/unit/guards/superficie-de-uso.guardia.test.ts` → `Test Files 3 passed (3) · Tests 74 passed (74)`.
+
 ### Veredicto
 
-T4.1 en verde (R11). T4.2 queda parada hasta que el humano fije los textos 1 a 3.
+Tanda 4 en verde: T4.1 (R11) y T4.2 (R13), sin `@sin-superficie` pendiente.
 
 ## Tanda 3 — Correos (backend_dev, 2026-11-23)
 
@@ -237,3 +279,18 @@ inventado.
 ### Veredicto
 
 Tanda 3 en verde (R16–R20, R22).
+
+## T5.2 (docs/architecture.md, sección de la mora)
+
+- **Archivo:** `docs/architecture.md` > «Mora y congelamiento (SLT-121)». Nuevo punto «El plazo» (vive en
+  `descongelada_hasta`, `plazoVigente`, congelada sin plazo); enums con `empresa_prorroga_fijada` y
+  `empresa_prorroga_quitada` (`20261127120000_prorroga_enums`); corrida con `prorroga_vence`; correos con
+  `prorroga`, `prorroga_quitada`, `prorroga_vence` y `plazoHasta` del recordatorio; repositorio con `darPlazo` y
+  `quitarPlazo` (en lugar de `descongelarAMano`); servicio, actions y estado `con_plazo` del banner.
+- **Grep** `descongelarAMano\|descongelada_a_mano`: ya no nombra `descongelarAMano` ni el estado del banner.
+  Quedan 4 líneas que son código vigente: el tipo del historial `empresa_descongelada_a_mano` (lo sigue
+  escribiendo `darPlazo` al descongelar, R2) y el resultado `descongelada_a_mano` de `organizacion_mora_congelar`,
+  que SLT-255 no renombra.
+- **Guardia que lee el doc:** `pnpm exec vitest run tests/unit/guards/unicos-por-empresa.guardia.test.ts` →
+  `Test Files 1 passed (1) · Tests 15 passed (15)`.
+- **Veredicto:** T5.2 hecha; sin código tocado.

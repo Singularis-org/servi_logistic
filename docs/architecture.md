@@ -511,19 +511,30 @@ esta bien hecha, no solo si "funciona".
     - **Columnas de `organizacion`** (de plataforma; `servi_app` solo las lee, sin `GRANT UPDATE`):
       `factura_dias_gracia` (`INTEGER NULL`, CHECK 1–60; `NULL` = rige la global), `congelada_at`
       (`TIMESTAMP(3) NULL`, UTC; no nula = congelada) y `descongelada_hasta` (`DATE NULL`, último día de
-      un descongelamiento manual). Índice parcial `organizacion_congelada_idx`. La gracia global es
-      `FACTURA_DIAS_GRACIA` (`diasDeGraciaGlobal`, `lib/config/factura-gracia.ts`: 7 si falta o no es un
-      entero de 1 a 60); la base no la conoce y la recibe por parámetro (`p_gracia_global`).
+      un plazo dado por el superadmin: descongelamiento a mano o prórroga). Índice parcial
+      `organizacion_congelada_idx`. La gracia global es `FACTURA_DIAS_GRACIA` (`diasDeGraciaGlobal`,
+      `lib/config/factura-gracia.ts`: 7 si falta o no es un entero de 1 a 60); la base no la conoce y la
+      recibe por parámetro (`p_gracia_global`).
+    - **El plazo (SLT-255 «Planes: prórroga del pago antes del congelamiento», 2026-11-23):** es
+      `descongelada_hasta`, sin columna ni `GRANT` nuevos (la empresa no puede darse un plazo a sí misma).
+      Está vigente hasta las 23:59:59 de ese día de la plataforma (`plazoVigente`, `lib/planes/mora.ts`),
+      igual que lo mira `organizacion_mora_congelar`, que no congela mientras dure. La escriben el
+      descongelamiento a mano y la prórroga, que la base no distingue; quitarla la deja en `NULL`. **Una
+      empresa congelada nunca tiene plazo vigente:** el descongelamiento a mano fija las dos columnas a la vez.
     - **Enums:** `historial_accion_tipo` suma `empresa_congelada`, `empresa_descongelada_por_pago`,
       `empresa_descongelada_a_mano`, `empresa_descongelada_por_gracia` y `factura_dias_gracia_cambiada`
       (categoría `mora`, «Mora y congelamiento», en `lib/types/historial-accion.ts`); `job_tipo` suma
-      `mora_diaria` y `mora_aviso_correo`.
+      `mora_diaria` y `mora_aviso_correo`. SLT-255 suma `empresa_prorroga_fijada` (dada, alargada o
+      acortada; `valor_anterior` = `hasta AAAA-MM-DD` si había plazo vigente) y `empresa_prorroga_quitada`
+      (`valor_nuevo` = `sin prórroga — <motivo>`), también de la categoría `mora`, en
+      `20261127120000_prorroga_enums` (sola por `55P04`, con `down.sql`). Descongelar sigue escribiendo
+      `empresa_descongelada_a_mano`: en el historial son dos acciones distintas.
     - **La única definición del plazo:** `factura_plataforma_mora(p_org, p_ahora, p_gracia_global)`
       devuelve las cerradas con saldo > 0 (saldo de `factura_plataforma_saldos`, sin recalcular) con
       `fecha_limite` = día de emisión de la plataforma (`hasta_at` − 6 h) + gracia, `vence_at` (00:00
       de la plataforma del día siguiente, en UTC) y `vencida`. Tiene `GRANT EXECUTE` a `servi_app` y da
       `42501` con otra empresa o sin empresa. Su gemela TS es `lib/planes/mora.ts` (`fechaLimiteDePago`,
-      `venceEn`, `estaVencida`, `enFranjaDeMadrugada`, `estadoDeMora`, `MORA_TEXTOS`,
+      `venceEn`, `estaVencida`, `enFranjaDeMadrugada`, `plazoVigente`, `estadoDeMora`, `MORA_TEXTOS`,
       `MENSAJE_EMPRESA_CONGELADA`), probada con la misma tabla de casos
       (`tests/integration/db/_fixtures/fecha-limite-pago.ts`). Toma la hora de la plataforma de
       `lib/planes/ciclo.ts`, sin entrada propia en `_pais-sin-literales-excepciones.ts`.
@@ -535,7 +546,8 @@ esta bien hecha, no solo si "funciona".
       cruces forzados».
       - `organizacion_mora_congelar(p_org, p_ahora, p_gracia_global) → jsonb`: toma primero el candado
         `pago_plataforma:<org>`. Responde `fuera_de_franja` fuera de 00:00–05:59 de la plataforma,
-        `ya_congelada`, `descongelada_a_mano` (con `descongelada_hasta` ≥ hoy), `al_dia`, o fija
+        `ya_congelada`, `descongelada_a_mano` (con un plazo vigente, `descongelada_hasta` ≥ hoy; el nombre
+        del resultado no cambió con SLT-255), `al_dia`, o fija
         `congelada_at` y responde `congelada` con las facturas y el saldo vencido. Con una empresa que
         no existe lanza `P0002`. No escribe historial ni encola.
       - `organizacion_mora_descongelar_si_pagada(p_org, p_ahora, p_gracia_global) → text`:
@@ -589,14 +601,23 @@ esta bien hecha, no solo si "funciona".
       `MoraEmpresaRepository.congelarSiVencida` (que, con `congelada`, escribe `empresa_congelada` con
       `appendAccion` y encola el aviso en la misma transacción) y encola los recordatorios de las
       facturas que vencen mañana (`run_after` a las 08:00 de la plataforma, dedupe
-      `mora_aviso:recordatorio:<facturaId>:<fechaLimite>`). Una empresa que falla no frena a las demás;
-      después el trabajo falla nombrándolas. Un reintento fuera de la franja ya no congela.
+      `mora_aviso:recordatorio:<facturaId>:<fechaLimite>`). En la misma transacción encola
+      `prorroga_vence` si el plazo vence mañana, la empresa no está congelada y tiene alguna vencida
+      (dedupe `mora_aviso:prorroga_vence:<org>:<hasta>`: uno por empresa y fecha aunque la corrida se
+      repita). Una empresa que falla no frena a las demás; después el trabajo falla nombrándolas. Un
+      reintento fuera de la franja ya no congela.
     - **Correos:** `mora_aviso_correo` (por evento, con empresa; payload zod `recordatorio`,
-      `congelada` o `descongelada` con motivo `pago`, `a_mano` o `gracia`) relee el estado al
-      ejecutarse, envía uno por maestro activo (`destinatariosDelAviso`) y, si un envío falla, sigue y
-      después lanza sin correos en el mensaje. Plantillas en
-      `lib/services/email/plantillas/mora-aviso.ts`, con «Ver facturas» a `/mi-plan`. El payload y las
-      dedupes están en `lib/repositories/_shared/encolar-aviso-mora.ts`. Sin campanita.
+      `congelada`, `descongelada` con motivo `pago`, `a_mano` o `gracia`, y desde SLT-255 `prorroga`
+      con `cambio` `dada`, `alargada` o `acortada`, `prorroga_quitada` y `prorroga_vence`) relee el
+      estado al ejecutarse (`contenidoVigente`): `prorroga` y `prorroga_vence` solo salen si el plazo
+      vigente sigue siendo `hasta` (un cambio posterior trae su propio correo); `prorroga_quitada`, si no
+      hay plazo ni congelamiento, y dice «se congela» solo con vencidas en ese momento. El
+      `recordatorio` lleva `plazoHasta` si un plazo vigente cubre la fecha límite, y entonces cambia «se
+      congela» por la fecha de la prórroga. Envía uno por maestro activo (`destinatariosDelAviso`) y, si
+      un envío falla, sigue y después lanza sin correos en el mensaje. Plantillas en
+      `lib/services/email/plantillas/mora-aviso.ts` (`MORA_AVISO_TEXTOS`), con «Ver facturas» a
+      `/mi-plan`. El payload y las dedupes (`dedupeAvisoMora`) están en
+      `lib/repositories/_shared/encolar-aviso-mora.ts`. Sin campanita.
     - **Enmienda a SLT-136:** el correo de cierre (`plantillaFacturaEmitida`) suma «Paga hasta el
       dd/mm/aaaa» con total > 0, con `fechaLimiteDePago` y la gracia vigente que
       `lib/planes/jobs-factura-aviso.ts` lee al enviar (`MoraEmpresaRepository.graciaDeLaEmpresa`). La
@@ -612,16 +633,34 @@ esta bien hecha, no solo si "funciona".
       descongela.
     - **Servicio, actions y pantallas:** `MoraEmpresaRepository` (`lib/repositories/`, en
       `EXCEPCIONES_DE_PLATAFORMA` con ficha `"SL-24"`): `fijarGracia` (empresa en `FOR NO KEY UPDATE`;
-      `sin_cambio` no escribe; recalcula con causa `gracia`), `descongelarAMano`, `existeEmpresa` (en
-      `comoPlataforma`) y `moraParaPlataforma` (con `conEmpresa`, historial de los cinco tipos, 50 filas).
+      `sin_cambio` no escribe; recalcula con causa `gracia`), `darPlazo`, `quitarPlazo`, `existeEmpresa`
+      (en `comoPlataforma`) y `moraParaPlataforma` (con `conEmpresa`, historial de la categoría `mora`,
+      `TIPOS_MORA`, 50 filas). Las dos del plazo (SLT-255) toman la empresa en `FOR NO KEY UPDATE`:
+      - `darPlazo(org, hasta, motivo, …)`: con la empresa congelada llama a
+        `organizacion_mora_descongelar_a_mano`, escribe `empresa_descongelada_a_mano` y encola
+        `descongelada` con motivo `a_mano` (responde `descongelada`); si no, fija `descongelada_hasta`,
+        escribe `empresa_prorroga_fijada` y encola `prorroga` (responde `prorroga`). Con la misma fecha
+        del plazo vigente responde `sin_cambio` sin fila ni correo; un plazo ya vencido no cuenta como
+        anterior.
+      - `quitarPlazo(org, motivo, …)`: con plazo vigente pone `descongelada_hasta` en `NULL`, escribe
+        `empresa_prorroga_quitada` y encola `prorroga_quitada`; sin plazo vigente, o congelada, `sin_plazo`.
+        No congela en el acto: lo hace la madrugada siguiente.
+
       `MoraEmpresaService` (`lib/services/`, la autorización vive ahí): el banner solo para `maestro` y
       `admin`; lo demás solo superadmin (`forbidden` antes de leer) y `not_found` con una empresa que no
-      existe, también al fijar la gracia y al descongelar. Tipos y zod en `lib/types/mora.ts`; actions en
-      `lib/actions/mora-empresa.ts` (`nucleo`), con la empresa ligada por `.bind`. Banner
-      `app/(app)/_components/AvisoMora.tsx` desde `app/(app)/layout.tsx` (`avisoMoraDelLayout`, aislado:
-      si falla, sin banner); sección «Plazo de pago y mora» del superadmin en
+      existe, también al fijar la gracia y al dar o quitar el plazo. `darPlazo` valida `hasta` de hoy a
+      hoy + 60 del calendario de la plataforma, con el mismo «ahora» que la escritura. Tipos y zod
+      (`darPlazoSchema`, `quitarPlazoSchema`) en `lib/types/mora.ts`; actions en
+      `lib/actions/mora-empresa.ts` (`nucleo`: `darPlazoEmpresaAction`, `quitarPlazoEmpresaAction`), con
+      la empresa ligada por `.bind`. Banner `app/(app)/_components/AvisoMora.tsx` desde
+      `app/(app)/layout.tsx` (`avisoMoraDelLayout`, aislado: si falla, sin banner). El estado
+      **`con_plazo`** (`{ hasta }`, `MORA_TEXTOS.banner.conPlazo`, tono aviso) sale con un plazo vigente y
+      alguna factura con saldo cuya fecha límite cae dentro de él, también antes de que venza; congelada
+      manda sobre él. Es el mismo para el descongelamiento a mano y la prórroga, porque la base no los
+      distingue. Sección «Plazo de pago y mora» del superadmin en
       `app/(app)/plataforma/empresas/[organizacionId]/_components/MoraEmpresa.tsx` (gracia propia o
-      global, facturas vencidas, historial y «Descongelar» con motivo y fecha hasta, de hoy a hoy + 60).
+      global, facturas vencidas, historial, «Dar plazo hasta…» con motivo y fecha hasta, y «Quitar
+      prórroga…» solo con plazo vigente y sin congelar).
     - **Frontera:** SLT-226 «Cobro automático: modelo del cobro e idempotencia» llama a
       `recalcularCongelamiento(tx, org, ahora, { causa: "pago", actor: null })` dentro de la misma
       transacción en la que registra el pago aprobado en línea, con el candado `pago_plataforma:<org>`;

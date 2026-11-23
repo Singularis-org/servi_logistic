@@ -57,7 +57,7 @@
 - [x] **T4.1** [P] En `AvisoMora.tsx`, el caso `con_plazo` (design §5.1). Ampliar `AvisoMora.test.tsx`. Depende de
       T2.1.
       *Hecho:* R11 en el test de componente.
-- [ ] **T4.2** En `MoraEmpresa.tsx`, los botones «Dar plazo hasta…» y «Quitar prórroga…», con sus dos diálogos. En
+- [x] **T4.2** En `MoraEmpresa.tsx`, los botones «Dar plazo hasta…» y «Quitar prórroga…», con sus dos diálogos. En
       `page.tsx`, ligar las dos actions (design §5.2). Ampliar `MoraEmpresa.test.tsx`. Depende de T2.5.
       *Hecho:* R13 en el test de componente. `typecheck` en verde con las props nuevas.
 
@@ -67,7 +67,7 @@
       (design §7). Depende de las tandas 1 a 4.
       *Hecho:* en verde en local contra una base desechable nueva, junto con `--project=dinero` entero
       (`mora-congelamiento` incluido) y `e2e/dos-empresas-humo.spec.ts` (R23).
-- [ ] **T5.2** [P] Actualizar la sección de la mora en `docs/architecture.md`. Tiene que explicar:
+- [x] **T5.2** [P] Actualizar la sección de la mora en `docs/architecture.md`. Tiene que explicar:
       - que el plazo vive en `descongelada_hasta`;
       - los dos tipos nuevos del historial;
       - `darPlazo` y `quitarPlazo`;
