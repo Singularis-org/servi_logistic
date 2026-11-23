@@ -361,6 +361,8 @@ const CENSO_NEGRO_FIJO: readonly FilaCenso[] = [
   { archivo: "app/(app)/mis-asignaciones/_components/pos-card/PosNavBlock.tsx", clase: "text-brand-dark", superficie: "brand-light", medido: 12.84, apariciones: 1 },
   { archivo: "app/(app)/ordenes/_components/OrdenesCargaMasivaButton.tsx", clase: "text-brand-dark", superficie: "brand-soft", medido: 17.7, apariciones: 1 },
   { archivo: "app/(app)/ordenes/_components/OrdenesCargaPreview.tsx", clase: "text-brand-dark", superficie: "brand-soft", medido: 17.7, apariciones: 1 },
+  // SLT-257: franja «Sandbox», negro fijo sobre amarillo en todos los temas (R7).
+  { archivo: "components/shared/BannerAmbientePruebas.tsx", clase: "text-brand-dark", superficie: "brand-light", medido: 12.84, apariciones: 1 },
 ];
 
 const RAICES_PORTAL = ["app/(app)", "components"];
