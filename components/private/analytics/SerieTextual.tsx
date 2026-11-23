@@ -9,6 +9,8 @@
 // No importa `recharts` y no debe importarlo nunca: se renderiza SIEMPRE, tambien
 // mientras el chunk diferido del lienzo viaja por la red.
 
+import { useMonedaDelPais } from "@/hooks/use-moneda-del-pais";
+
 import { formatearValor } from "./formato";
 import { cifraConPeso } from "./porcentajes";
 import type { MetricaUnidad, SerieDato } from "./tipos";
@@ -66,6 +68,8 @@ export function SerieTextual({
   avisoRecorte,
   pesos,
 }: SerieTextualProps) {
+  // SLT-242 (R2): la moneda del pais; lo montan solo las graficas, que son de cliente.
+  const moneda = useMonedaDelPais();
   return (
     <div className="sr-only">
       {recorteSeries.recortado ? (
@@ -79,7 +83,7 @@ export function SerieTextual({
           serie.puntos.map((punto, indice) => {
             // El peso se indexa por POSICION del punto, la misma con la que se calculo y con
             // la que se colorea la porcion. Sin peso, la entrada queda como siempre.
-            const texto = cifraConPeso(formatearValor(punto.valor, unidad), pesos?.[indice]);
+            const texto = cifraConPeso(formatearValor(punto.valor, unidad, moneda), pesos?.[indice]);
             return (
               <li key={`${serie.id}-${punto.categoria}`}>
                 {`${serie.etiqueta}, ${punto.categoria}: ${texto}`}

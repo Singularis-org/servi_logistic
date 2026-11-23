@@ -712,6 +712,24 @@ const CENSO_MONEDA_DEL_PAIS: readonly { archivo: string; servidor?: true }[] = [
   { archivo: "app/(app)/configuracion/envios-whatsapp/_components/VistaPreviaMensaje.tsx" },
   { archivo: "app/(app)/configuracion/plantillas/_components/VariablesInsert.tsx" },
   { archivo: "lib/utils/vista-previa-informe.ts" },
+  // SLT-242 (analítica, design §8, R15).
+  { archivo: "components/private/analytics/formato.ts" },
+  { archivo: "components/private/analytics/CifraAnalitica.tsx" },
+  { archivo: "components/private/analytics/KpiValor.tsx" },
+  { archivo: "components/private/analytics/KpiCard.tsx" },
+  { archivo: "components/private/analytics/GraficaBarras.tsx" },
+  { archivo: "components/private/analytics/GraficaDonut.tsx" },
+  { archivo: "components/private/analytics/GraficaLineas.tsx" },
+  { archivo: "components/private/analytics/GraficaRanking.tsx" },
+  { archivo: "components/private/analytics/GraficaReparto.tsx" },
+  { archivo: "components/private/analytics/SerieTextual.tsx" },
+  { archivo: "components/private/analytics/TablaResumen.tsx" },
+  { archivo: "app/(app)/analitica/_components/financiero/TableroFinanciero.tsx" },
+  { archivo: "app/(app)/analitica/_components/financiero/PanelConciliacion.tsx" },
+  { archivo: "app/(app)/analitica/_components/entregas/ProductosTabla.tsx" },
+  { archivo: "app/(app)/analitica/_components/entregas/DineroProductoDetalle.tsx" },
+  { archivo: "app/(app)/analitica/_components/finanzas/KpisFinancieros.tsx" },
+  { archivo: "app/(app)/analitica/_components/finanzas/FinanzasDiarioBarras.tsx" },
 ];
 
 /** Los formateadores que usan la moneda de la plataforma sin nombrarla (R18). */
@@ -835,9 +853,22 @@ describe("SLT-235/T4.1 — censo de R18: las pantallas en la moneda del país no
   });
 
   it("SLT-241 R19: los 16 archivos de la rebanada 3 están en el censo y dan rojo con money( o formatMontoString(", () => {
-    const deSlt241 = CENSO_MONEDA_DEL_PAIS.slice(CENSO_MONEDA_DEL_PAIS.findIndex((e) => e.archivo.endsWith("tarifas-textos.ts")));
+    const i = CENSO_MONEDA_DEL_PAIS.findIndex((e) => e.archivo.endsWith("tarifas-textos.ts"));
+    const deSlt241 = CENSO_MONEDA_DEL_PAIS.slice(i, i + 16);
     expect(deSlt241).toHaveLength(16);
     for (const { archivo, servidor } of deSlt241) {
+      const conMoney = `${leer(archivo)}\nexport const _m = money(1);\n`;
+      expect(infraccionesDeMoneda(conMoney, { servidor }), archivo).toContain("llama a money(");
+      const conString = `${leer(archivo)}\nexport const _s = formatMontoString("1");\n`;
+      expect(infraccionesDeMoneda(conString, { servidor }), archivo).toContain("llama a formatMontoString(");
+    }
+  });
+
+  it("SLT-242 R15: los 17 archivos de la analítica están en el censo y dan rojo con money( o formatMontoString(", () => {
+    const deSlt242 = CENSO_MONEDA_DEL_PAIS.slice(CENSO_MONEDA_DEL_PAIS.findIndex((e) => e.archivo === "components/private/analytics/formato.ts"));
+    expect(deSlt242).toHaveLength(17);
+    for (const { archivo, servidor } of deSlt242) {
+      expect(infraccionesDeMoneda(leer(archivo), { servidor }), archivo).toEqual([]);
       const conMoney = `${leer(archivo)}\nexport const _m = money(1);\n`;
       expect(infraccionesDeMoneda(conMoney, { servidor }), archivo).toContain("llama a money(");
       const conString = `${leer(archivo)}\nexport const _s = formatMontoString("1");\n`;

@@ -16,6 +16,8 @@
 
 import { Suspense, lazy } from "react";
 
+import { useMonedaDelPais } from "@/hooks/use-moneda-del-pais";
+
 import { formatearValor } from "./formato";
 import { pesosDeReparto, textoDePeso } from "./porcentajes";
 import { clasesDeLienzo, GraficaMarco } from "./GraficaMarco";
@@ -69,6 +71,8 @@ export function GraficaDonut({
   mostrarValores,
   mostrarPorcentaje,
 }: GraficaDonutProps) {
+  // SLT-242 (R2): la moneda del pais para las cifras con la unidad de la grafica.
+  const moneda = useMonedaDelPais();
   const hayDatos = series.some((serie) => serie.puntos.length > 0);
   const preparadas = hayDatos && !error && !cargando ? prepararSegmentos(series) : null;
 
@@ -117,7 +121,7 @@ export function GraficaDonut({
             <Suspense fallback={null}>
               <DonutLienzo
                 series={preparadas.series}
-                formatear={(valor) => formatearValor(valor, unidad)}
+                formatear={(valor) => formatearValor(valor, unidad, moneda)}
                 innerRadius={innerRadius}
                 outerRadius={outerRadius}
                 centro={centro}

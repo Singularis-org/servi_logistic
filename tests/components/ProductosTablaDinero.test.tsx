@@ -40,7 +40,7 @@ import {
 } from "@/app/(app)/_components/filtro-entregas";
 import { consultarConteoProductos } from "@/lib/actions/conteo-productos";
 import { consultarDetalleDineroProducto } from "@/lib/actions/detalle-dinero-producto";
-import { money } from "@/lib/config/moneda";
+import { MONEDA_PLATAFORMA, money } from "@/lib/config/moneda";
 import { ToastProvider } from "@/providers/ToastProvider";
 import type {
   ConteoProductosDTO,
@@ -373,7 +373,7 @@ describe("FICHA 442 · las cinco columnas, y el dinero al final", () => {
     // R13 — en cuántas de sus órdenes hay otro producto, que es lo que calibra el aviso.
     const acompanadas = await screen.findByText(textoAcompanadas(3, 5));
     // R28/R29 — y lo pendiente de cierre, con su importe y sus órdenes.
-    const pendiente = screen.getByText(textoPendiente("10000.00", 1));
+    const pendiente = screen.getByText(textoPendiente("10000.00", 1, MONEDA_PLATAFORMA));
 
     // R63 en su forma de esta ficha: enteras, sin abreviar y sin recortar.
     for (const linea of [acompanadas, pendiente]) {
@@ -986,7 +986,7 @@ describe("FICHA 347/442 · la vista de TELÉFONO lleva lo mismo (R64)", () => {
     expect(await valorDeDetalle(PRODUCTOS_COLUMNAS.empresa)).toBe(money("6215.00"));
     expect(await valorDeDetalle(PRODUCTOS_COLUMNAS.paraTienda)).toBe(money("28785.00"));
     expect(screen.getByText(textoAcompanadas(3, 5))).toBeInTheDocument();
-    expect(screen.getByText(textoPendiente("10000.00", 1))).toBeInTheDocument();
+    expect(screen.getByText(textoPendiente("10000.00", 1, MONEDA_PLATAFORMA))).toBeInTheDocument();
   });
 });
 

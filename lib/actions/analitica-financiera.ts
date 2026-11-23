@@ -14,7 +14,13 @@ import { ConciliacionCierresAnaliticaRepository } from "@/lib/repositories/Conci
 import { CuentasPorPagarAnaliticaRepository } from "@/lib/repositories/CuentasPorPagarAnaliticaRepository";
 import { IngresosAnaliticaRepository } from "@/lib/repositories/IngresosAnaliticaRepository";
 import { RecaudoAnaliticaRepository } from "@/lib/repositories/RecaudoAnaliticaRepository";
-import { AnaliticaFinancieraService } from "@/lib/services/AnaliticaFinancieraService";
+import {
+  AnaliticaFinancieraService,
+  type PaisDeLaAnalitica,
+} from "@/lib/services/AnaliticaFinancieraService";
+import { construirPaisService } from "@/lib/actions/_shared/paises-plataforma";
+import type { IPaisService, PaisParaPantallas } from "@/lib/interfaces/services/IPaisService";
+import { paisParaPantallasDelActor } from "@/lib/services/pais-para-pantallas";
 import type { RespuestaFinanciera } from "@/lib/types/analitica-financiera";
 import { exigirModuloActivo } from "@/lib/modulos/exigir-modulo";
 import { withErrorHandler } from "@/lib/errors";
@@ -68,9 +74,16 @@ export interface AnaliticaFinancieraActionDeps {
   readonly now?: Date;
   /** SLT-42 (R22, R28): la zona del pais de la empresa; en produccion, la real (`zonaDelBorde`). */
   readonly reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">;
+  /** SLT-242 (R9): la lectura del pais para pantallas; en produccion, `construirPaisService()`. */
+  readonly paisService?: Pick<IPaisService, "paraPantallas">;
 }
 
-function construirServicio(logger: ErrorLogger): IAnaliticaFinancieraService {
+/** SLT-242 (R7, R8): lo que el servicio necesita de los datos del pais para pantallas. */
+function paisDeLaAnalitica(pais: PaisParaPantallas): PaisDeLaAnalitica {
+  return { monedaCodigo: pais.moneda.codigo, impuestoNombre: pais.impuestoNombre };
+}
+
+function construirServicio(logger: ErrorLogger, pais: PaisDeLaAnalitica): IAnaliticaFinancieraService {
   const prisma = getPrismaClient();
   return new AnaliticaFinancieraService(
     new IngresosAnaliticaRepository(prisma),
@@ -80,6 +93,7 @@ function construirServicio(logger: ErrorLogger): IAnaliticaFinancieraService {
     logger,
     undefined,
     construirReglasPaisEmpresa(prisma), // SLT-42 (R22, R28): la zona horaria del pais de la empresa.
+    pais, // SLT-242 (R7, R8): la moneda y el impuesto del pais de la empresa.
   );
 }
 
@@ -127,7 +141,21 @@ export async function consultarMetricaFinanciera(
 
   const { consulta } = preparacion;
   // El servicio se construye DESPUES del 403: un intento denegado no abre ni una conexion (R10).
-  const service = deps.service ?? construirServicio(logger);
+  // SLT-242 (R9, R10): el pais se lee aqui, tambien despues del 403 y solo si hay que construir el
+  // servicio. La empresa sale del actor de la sesion (R15), nunca del input. La lectura es la
+  // memorizada de SLT-235 y nunca lanza: sin moneda, sin impuesto o si falla, da los de la plataforma
+  // y deja el aviso o el error en el log.
+  const service =
+    deps.service ??
+    construirServicio(
+      logger,
+      paisDeLaAnalitica(
+        await paisParaPantallasDelActor(
+          actor?.organizacionId ?? null,
+          deps.paisService ?? construirPaisService(),
+        ),
+      ),
+    );
 
   try {
     const resultado = await service.consultar(consulta);

@@ -4,7 +4,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { formatearValor, totalizar } from "@/components/private/analytics/formato";
-import { formatMonto, SIN_MONTO, monedaConfig } from "@/lib/config/moneda";
+import { formatMonto, MONEDA_PLATAFORMA, SIN_MONTO, monedaConfig } from "@/lib/config/moneda";
 
 /**
  * Recarga `formato.ts` (y con el `lib/config/moneda.ts`, que resuelve su
@@ -60,7 +60,7 @@ describe("formato por unidad (R20, R21)", () => {
 
     expect(formatearValor(3500, "conteo")).toBe(esperado.conteo);
     expect(formatearValor(0.842, "porcentaje")).toBe(esperado.porcentaje);
-    expect(formatearValor(3500, "moneda")).toBe(esperado.moneda);
+    expect(formatearValor(3500, "moneda", MONEDA_PLATAFORMA)).toBe(esperado.moneda);
     expect(formatearValor(45, "segundos")).toBe(esperado.segundos);
   });
 
@@ -98,9 +98,9 @@ describe("formato por unidad (R20, R21)", () => {
 
   it("un valor nulo o no finito es dato ausente en toda unidad, nunca cero", () => {
     for (const unidad of ["conteo", "porcentaje", "moneda", "segundos"] as const) {
-      expect(formatearValor(null, unidad)).toBe(SIN_MONTO);
-      expect(formatearValor(Number.NaN, unidad)).toBe(SIN_MONTO);
-      expect(formatearValor(null, unidad)).not.toContain("0");
+      expect(formatearValor(null, unidad, MONEDA_PLATAFORMA)).toBe(SIN_MONTO);
+      expect(formatearValor(Number.NaN, unidad, MONEDA_PLATAFORMA)).toBe(SIN_MONTO);
+      expect(formatearValor(null, unidad, MONEDA_PLATAFORMA)).not.toContain("0");
     }
   });
 
@@ -112,8 +112,10 @@ describe("formato por unidad (R20, R21)", () => {
 describe("la moneda y el idioma salen de configuracion, no del codigo (R13, R20)", () => {
   it("con otra moneda configurada el valor NO lleva el simbolo del colon", async () => {
     const { formatearValor: formatear } = await conMoneda("es-CR", "USD", "$");
+    // SLT-242 (R6): la moneda se pasa; la de la plataforma, recargada con la misma configuracion.
+    const { MONEDA_PLATAFORMA: plataforma } = await import("@/lib/config/moneda");
 
-    const salida = formatear(3500, "moneda");
+    const salida = formatear(3500, "moneda", plataforma);
     // Feature 230: el importe se pinta sin parte decimal (antes `$3.500,00`). El
     // simbolo y la agrupacion siguen saliendo de configuracion, que es lo que
     // este caso mide; el redondeo se define en `moneda-formato`.

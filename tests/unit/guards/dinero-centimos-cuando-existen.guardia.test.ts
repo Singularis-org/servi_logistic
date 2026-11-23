@@ -241,7 +241,7 @@ const CAMINOS_STRING: readonly { nombre: string; formatear: (v: string) => strin
 const CAMINOS_NUMERO: readonly { nombre: string; formatear: (v: number) => string }[] = [
   { nombre: "formatMonto", formatear: (v) => formatMonto(v) },
   { nombre: "PriceLabel", formatear: (v) => textoDePriceLabel(v) },
-  { nombre: "formatearValor(·, moneda)", formatear: (v) => formatearValor(v, "moneda") },
+  { nombre: "formatearValor(·, moneda)", formatear: (v) => formatearValor(v, "moneda", MONEDA_PLATAFORMA) },
   { nombre: "montoExacto", formatear: (v) => montoExacto(v) },
   { nombre: CAMINO_CON_MONEDA, formatear: (v) => formatearMontoEn(MONEDA_PLATAFORMA, v) },
 ];
@@ -414,7 +414,7 @@ describe("guardia 359 · diente 1 — la cola se pinta si y solo si existe", () 
       const salidas: readonly [string, string][] = [
         ["formatMonto", formatMonto(numero)],
         ["PriceLabel", textoDePriceLabel(numero)],
-        ["formatearValor", formatearValor(numero, "moneda")],
+        ["formatearValor", formatearValor(numero, "moneda", MONEDA_PLATAFORMA)],
         ["montoExacto", montoExacto(numero)],
         ["money", money(numero.toFixed(ESCALA_PRESENTACION))],
         [CAMINO_CON_MONEDA, formatearMontoEn(MONEDA_PLATAFORMA, numero)],

@@ -5,6 +5,7 @@ import { render, screen, cleanup, within } from "@testing-library/react";
 import { TableroFinanciero } from "@/app/(app)/analitica/_components/financiero/TableroFinanciero";
 import type { PanelFinanciero } from "@/app/(app)/analitica/_components/financiero/cargar";
 import { formatearValor } from "@/components/private/analytics/formato";
+import { MONEDA_PLATAFORMA } from "@/lib/config/moneda";
 import {
   IDS_FINANCIERAS_ACUMULADAS,
   IDS_FINANCIERAS_CON_DESGLOSE_POR_FECHA,
@@ -116,7 +117,7 @@ const CUBOS_TIENDA = [
  * DOM difieren en un byte invisible.
  */
 function cifra(valor: number, unidad: "moneda" | "conteo"): string {
-  return formatearValor(valor, unidad).replace(/\s+/g, " ");
+  return formatearValor(valor, unidad, MONEDA_PLATAFORMA).replace(/\s+/g, " ");
 }
 
 // Los dos constructores de importe salen del helper compartido
@@ -508,7 +509,7 @@ describe("Feature 132 (R17) — las dos vistas de cod_recaudado, separadas y sin
 
     // 311.11 + 722.22: `sumableCon: []` dice que estas dos vistas NO suman entre
     // si (una es lo que el mensajero entrego, la otra lo acreditado a tiendas).
-    const sumaProhibida = formatearValor(311.11 + 722.22, "moneda");
+    const sumaProhibida = formatearValor(311.11 + 722.22, "moneda", MONEDA_PLATAFORMA);
     expect(screen.queryByText(sumaProhibida)).toBeNull();
     expect(document.body.textContent ?? "").not.toContain(sumaProhibida);
   });
@@ -631,7 +632,7 @@ const SIN_NETO: [MetricaFinancieraId, number][] = [
 ];
 
 /** El marcador de dato ausente REAL del paquete, no un guion escrito aquí. */
-const MARCADOR_AUSENTE = formatearValor(null, "moneda");
+const MARCADOR_AUSENTE = formatearValor(null, "moneda", MONEDA_PLATAFORMA);
 
 describe("Feature 183 (R19) — un panel sin neto pinta el bruto y NADA en el lugar del neto", () => {
   it.each(SIN_NETO)(

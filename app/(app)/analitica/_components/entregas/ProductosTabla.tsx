@@ -88,8 +88,9 @@
 //
 // ─── MONEY-SAFE (R22) ───────────────────────────────────────────────────────────────────────
 //
-// Los importes llegan como STRING escala 2 y se pintan con `money()` de `lib/config/moneda`,
-// que formatea SIN convertir a numero. `formatearValor(_, "moneda")` recibe un `number` y NO se
+// Los importes llegan como STRING escala 2 y se pintan con `formatearMontoEn(moneda, …,
+// SIN_MONTO_RAYA)` de `lib/config/moneda`, que formatea SIN convertir a numero. La moneda es la
+// del pais de la empresa (`useMonedaDelPais()`, SLT-242 R3), leida una vez en `ProductosTabla`. `formatearValor(_, "moneda")` recibe un `number` y NO se
 // usa en este camino. Prohibidos en este archivo `Number(`, `parseFloat(`, `parseInt(` y
 // `.toFixed(`; prohibidos tambien `truncate`, `line-clamp` y `overflow-hidden` sobre una cifra
 // (R63): dinero cortado no se ve roto, se ve como OTRO numero.
@@ -111,7 +112,8 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { money } from "@/lib/config/moneda";
+import { useMonedaDelPais } from "@/hooks/use-moneda-del-pais";
+import { formatearMontoEn, SIN_MONTO_RAYA, type FormatoMoneda } from "@/lib/config/moneda";
 import { EMPRESA } from "@/lib/config/marca";
 import type { FilaProductoDTO, ResultadoConteoProductos } from "@/lib/types/conteo-productos";
 
@@ -316,10 +318,10 @@ export function textoAcompanadas(acompanadas: number, ordenes: number): string {
  * componen. Es un HECHO (el recaudo existe desde que se registro la gestion), no una
  * proyeccion: lo que no se emite de estas ordenes es su reparto (R31).
  */
-export function textoPendiente(recaudado: string, ordenes: number): string {
+export function textoPendiente(recaudado: string, ordenes: number, moneda: FormatoMoneda): string {
   const n = formatearValor(ordenes, UNIDAD_CONTEO);
   const sustantivo = ordenes === 1 ? "orden" : "órdenes";
-  return `Pendiente de cierre: ${money(recaudado)} (${n} ${sustantivo})`;
+  return `Pendiente de cierre: ${formatearMontoEn(moneda, recaudado, SIN_MONTO_RAYA)} (${n} ${sustantivo})`;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -549,7 +551,7 @@ export function textoColumnasNoSumables(etiquetas: readonly string[]): string {
  * ⚠ LOS TRES CAMINOS QUE DEVUELVEN `null` SON DISTINTOS Y SE PINTAN IGUAL, y esta bien que asi
  * sea: la fila no tiene ninguna orden que aporte (`fila.dinero === null`), o la tiene pero
  * ninguna esta liquidada (`empresa`/`tienda` llegan `null` del servidor, R30). En los dos casos
- * el hecho es el mismo —«todavia no hay reparto»— y `money(null)` lo pinta «—».
+ * el hecho es el mismo —«todavia no hay reparto»— y `SIN_MONTO_RAYA` lo pinta «—».
  *
  * ⚠ AQUI NO HAY —NI PUEDE HABER— UN `?? "0.00"`. Ese es exactamente el defecto que la mutacion
  * M6 introduce y que R30 prohibe: «no hubo» y «salio cero» son hechos distintos.
@@ -746,10 +748,13 @@ function DetalleDeFila({
   fila,
   conDinero,
   filtroSerializado,
+  moneda,
 }: {
   readonly fila: FilaProductoDTO;
   readonly conDinero: boolean;
   readonly filtroSerializado: string;
+  /** SLT-242 (R3): la moneda del pais, leida una vez en `ProductosTabla`. */
+  readonly moneda: FormatoMoneda;
 }) {
   const cifras = cifrasDeFila(fila);
   const composicion = textoComposicionOtrosResultados(fila.porStatus);
@@ -794,7 +799,7 @@ function DetalleDeFila({
               <DatoDeDetalle
                 key={cifra.id}
                 rotulo={cifra.etiqueta}
-                valor={money(importeDeFila(fila, cifra.id))}
+                valor={formatearMontoEn(moneda, importeDeFila(fila, cifra.id), SIN_MONTO_RAYA)}
               />
             ))
           : null}
@@ -808,7 +813,7 @@ function DetalleDeFila({
           <Contexto>{textoAcompanadas(fila.ordenesAcompanadas, fila.ordenes)}</Contexto>
           {pendiente && dinero !== null ? (
             <Contexto>
-              {textoPendiente(dinero.pendiente.recaudado, dinero.pendiente.ordenes)}
+              {textoPendiente(dinero.pendiente.recaudado, dinero.pendiente.ordenes, moneda)}
             </Contexto>
           ) : null}
           {/* R45 — LA ADVERTENCIA, donde muerde. */}
@@ -905,7 +910,11 @@ const MIN_DINERO: Readonly<Record<IdDinero, string>> = {
  * cinco columnas no se queda fuera nada, asi que esa disyuntiva ya no existe y el dinero deja de
  * ocupar el sitio de honor que el humano vio lleno de rayas.
  */
-function columnasEscritorio(conTienda: boolean, conDinero: boolean): Column<FilaProductoDTO>[] {
+function columnasEscritorio(
+  conTienda: boolean,
+  conDinero: boolean,
+  moneda: FormatoMoneda,
+): Column<FilaProductoDTO>[] {
   const tienda: Column<FilaProductoDTO>[] = conTienda
     ? [
         {
@@ -923,7 +932,9 @@ function columnasEscritorio(conTienda: boolean, conDinero: boolean): Column<Fila
         value: cifra.etiqueta,
         align: "right",
         minWidth: MIN_DINERO[cifra.id],
-        render: (fila) => <Cifra>{money(importeDeFila(fila, cifra.id))}</Cifra>,
+        render: (fila) => (
+          <Cifra>{formatearMontoEn(moneda, importeDeFila(fila, cifra.id), SIN_MONTO_RAYA)}</Cifra>
+        ),
       }))
     : [];
 
@@ -976,7 +987,11 @@ function columnasEscritorio(conTienda: boolean, conDinero: boolean): Column<Fila
  * recaudado—, cada una con su etiqueta. El resto vive en la misma fila desplegable que en
  * escritorio, asi que las dos vistas enseñan exactamente lo mismo (R64).
  */
-function columnasTelefono(conTienda: boolean, conDinero: boolean): Column<FilaProductoDTO>[] {
+function columnasTelefono(
+  conTienda: boolean,
+  conDinero: boolean,
+  moneda: FormatoMoneda,
+): Column<FilaProductoDTO>[] {
   return [
     {
       id: "producto",
@@ -1018,7 +1033,7 @@ function columnasTelefono(conTienda: boolean, conDinero: boolean): Column<FilaPr
                   <LineaApilada
                     key={cifra.id}
                     rotulo={cifra.etiqueta}
-                    valor={money(importeDeFila(fila, cifra.id))}
+                    valor={formatearMontoEn(moneda, importeDeFila(fila, cifra.id), SIN_MONTO_RAYA)}
                   />
                 ))
               : null}
@@ -1108,9 +1123,11 @@ export function ProductosTabla({ dinero = false }: ProductosTablaProps) {
     dinero && estadoDinero?.estado === "limite_excedido" ? estadoDinero.limite : null;
 
   const esTelefono = useIsMobile();
+  // SLT-242 (R3): la moneda del pais, una vez, para todas las celdas de dinero y el detalle.
+  const moneda = useMonedaDelPais();
   const columnas = esTelefono
-    ? columnasTelefono(conTienda, conDinero)
-    : columnasEscritorio(conTienda, conDinero);
+    ? columnasTelefono(conTienda, conDinero, moneda)
+    : columnasEscritorio(conTienda, conDinero, moneda);
 
   /**
    * R52 — las filas del archivo salen del DTO QUE YA ESTA EN PANTALLA. Sin segunda consulta, asi
@@ -1230,6 +1247,7 @@ export function ProductosTabla({ dinero = false }: ProductosTablaProps) {
             fila={fila}
             conDinero={conDinero}
             filtroSerializado={filtroSerializado}
+            moneda={moneda}
           />
         )}
         // El nombre accesible identifica SU fila —producto y tienda—, no un «Ver detalle»

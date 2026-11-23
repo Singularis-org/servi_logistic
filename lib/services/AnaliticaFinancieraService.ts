@@ -1,8 +1,10 @@
 import { Prisma } from "@prisma/client";
 import type { ConsultaAnalitica } from "@/lib/analytics/consulta";
+import { etiquetaEnElPais } from "@/lib/analytics/metrics";
 import { granularidadDe, trocear, type CuboTemporal } from "@/lib/analytics/cubo-temporal";
 import { UMBRAL_AVISO_DESCUADRE_CONCILIACION } from "@/lib/config/analitica-financiera";
-import { monedaConfig } from "@/lib/config/moneda";
+import { MONEDA_PLATAFORMA } from "@/lib/config/moneda";
+import { IMPUESTO_ROTULO } from "@/lib/constants/impuesto-rotulo";
 import { defaultLogger, type ErrorLogger } from "@/lib/errors/logger";
 import type {
   AgregadoCategoriaCaja,
@@ -83,6 +85,23 @@ import { zonaDeLaEmpresa } from "@/lib/services/zona-de-la-empresa";
 // comprobacion que se queria ganar. El umbral entra por constructor (default: la constante de
 // `lib/config/analitica-financiera.ts`, R40): aqui no hay ni un numero de dinero escrito.
 
+/** SLT-242 (R7, R8): lo que el servicio necesita del pais de la empresa de la sesion. */
+export interface PaisDeLaAnalitica {
+  /** Codigo ISO de la moneda del pais: el campo `moneda` de cada importe (R7). */
+  readonly monedaCodigo: string;
+  /** Nombre del impuesto del pais: la etiqueta de la metrica del impuesto (R8). */
+  readonly impuestoNombre: string;
+}
+
+/**
+ * SLT-242 (R10): la caida, la moneda y el rotulo de la plataforma. Es el default del constructor; en
+ * produccion la accion le pasa el pais leido de `paisParaPantallasDelActor`.
+ */
+export const PAIS_DE_LA_PLATAFORMA: PaisDeLaAnalitica = {
+  monedaCodigo: MONEDA_PLATAFORMA.codigo,
+  impuestoNombre: IMPUESTO_ROTULO,
+};
+
 /** Firma de un manejador de metrica. Todos reciben la consulta entera (R7). */
 type Manejador = (consulta: ConsultaAnalitica) => Promise<ResultadoFinanciero>;
 
@@ -92,18 +111,19 @@ function sumar(valores: readonly string[]): Prisma.Decimal {
 }
 
 /**
- * Un importe del DTO con las DOS cifras. La moneda sale de `lib/config/moneda.ts` (S2/R29): ni
- * el codigo ni el simbolo se escriben aqui.
+ * Un importe del DTO con las DOS cifras. La moneda es el codigo del pais de la empresa (SLT-242 R7),
+ * que el llamador pasa desde `this.pais` (S2/R29): ni el codigo ni el simbolo se escriben aqui.
  */
 function importeConNeto(
   bruto: Prisma.Decimal | string,
   neto: Prisma.Decimal | string,
+  moneda: string,
 ): ImporteConNeto {
   return {
     forma: "bruto_y_neto",
     bruto: new Prisma.Decimal(bruto).toFixed(2),
     neto: new Prisma.Decimal(neto).toFixed(2),
-    moneda: monedaConfig.currency,
+    moneda,
   };
 }
 
@@ -114,11 +134,11 @@ function importeConNeto(
  * No lleva `neto: null` a proposito (R23 / R15 de la 132): un ausente significa «no se sabe» y
  * aqui la verdad es «no aplica». La clave no existe, y leerla no compila.
  */
-function importeSoloBruto(bruto: Prisma.Decimal | string): ImporteSoloBruto {
+function importeSoloBruto(bruto: Prisma.Decimal | string, moneda: string): ImporteSoloBruto {
   return {
     forma: "solo_bruto",
     bruto: new Prisma.Decimal(bruto).toFixed(2),
-    moneda: monedaConfig.currency,
+    moneda,
   };
 }
 
@@ -213,6 +233,11 @@ export class AnaliticaFinancieraService implements IAnaliticaFinancieraService {
     private readonly umbralDescuadre: string = UMBRAL_AVISO_DESCUADRE_CONCILIACION,
     /** SLT-42 (R22, R28): la zona del pais de la empresa, con la que se trocea el rango en cubos. */
     private readonly reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">,
+    /**
+     * SLT-242 (R7, R8): la moneda y el impuesto del pais de la empresa, iguales para toda la consulta.
+     * El default es la caida de la plataforma; la accion lo pasa siempre (lo prueba su test de cableado).
+     */
+    private readonly pais: PaisDeLaAnalitica = PAIS_DE_LA_PLATAFORMA,
   ) {
     // ⟨D12⟩ humano, 2026-08-04 (`progress/decision_183.md`) — LA FORMA DEL IMPORTE ENTRA COMO
     // SELECTOR EXPLICITO, no como un `if` por id dentro del manejador (mismo precedente que las
@@ -283,8 +308,9 @@ export class AnaliticaFinancieraService implements IAnaliticaFinancieraService {
   private cabecera(consulta: ConsultaAnalitica) {
     return {
       metricaId: consulta.metrica.id,
-      // Del catalogo, las dos: la 127 no escribe textos de UI ni decide unidades.
-      etiqueta: consulta.metrica.etiqueta,
+      // Del catalogo, las dos: la 127 no escribe textos de UI ni decide unidades. SLT-242 (R8): la
+      // etiqueta de la metrica del impuesto lleva el nombre del impuesto del pais; las demas, tal cual.
+      etiqueta: etiquetaEnElPais(consulta.metrica, this.pais.impuestoNombre),
       unidad: consulta.metrica.unidad,
       rango: {
         desdeFecha: consulta.rango.desdeFecha,
@@ -359,12 +385,13 @@ export class AnaliticaFinancieraService implements IAnaliticaFinancieraService {
      */
     const construirImporte = (delGrupo: readonly AgregadoCategoriaCaja[]): ImporteAnalitico =>
       forma === "solo_bruto"
-        ? importeSoloBruto(sumar(delGrupo.map((f) => f.suma)))
+        ? importeSoloBruto(sumar(delGrupo.map((f) => f.suma)), this.pais.monedaCodigo)
         : importeConNeto(
             sumar(delGrupo.map((f) => f.suma)),
             // R17 — la resta con signo la sigue haciendo `derivarBalance`, ahora tambien POR
             // CUBO. Ni un `.sub(` nuevo aqui.
             derivarBalance(sumaDeTipo(delGrupo, "ingreso"), sumaDeTipo(delGrupo, "egreso")).balance,
+            this.pais.monedaCodigo,
           );
 
     return {
@@ -425,6 +452,7 @@ export class AnaliticaFinancieraService implements IAnaliticaFinancieraService {
         // R17 — la particion por naturaleza y las restas con signo las hace `derivarCaja`,
         // ahora tambien POR CUBO. El selector elige la misma cifra en las filas y en el total.
         cifra(derivarCaja(delGrupo.map((f) => ({ categoria: f.categoria, tipo: f.tipo, total: f.suma })))),
+        this.pais.monedaCodigo,
       );
 
     return {
@@ -476,10 +504,13 @@ export class AnaliticaFinancieraService implements IAnaliticaFinancieraService {
       // fecha. Se declara, no se omite: omitirlo dejaria «no se mide en el tiempo» y «se me
       // olvido declararlo» siendo el mismo valor.
       granularidad: "no_temporal",
-      filas: porMetodo.map((m) => ({ cubo: m.metodo, importe: importeConNeto(m.suma, m.suma) })),
+      filas: porMetodo.map((m) => ({
+        cubo: m.metodo,
+        importe: importeConNeto(m.suma, m.suma, this.pais.monedaCodigo),
+      })),
       total: (() => {
         const t = sumar(porMetodo.map((m) => m.suma));
-        return importeConNeto(t, t);
+        return importeConNeto(t, t, this.pais.monedaCodigo);
       })(),
     };
 
@@ -490,6 +521,7 @@ export class AnaliticaFinancieraService implements IAnaliticaFinancieraService {
       importe: importeConNeto(
         sumar(g.filas.map((f) => f.suma)),
         derivarSaldoTienda(sumaDeTipo(g.filas, "credito"), sumaDeTipo(g.filas, "debito")).saldo,
+        this.pais.monedaCodigo,
       ),
     }));
 
@@ -504,6 +536,7 @@ export class AnaliticaFinancieraService implements IAnaliticaFinancieraService {
       total: importeConNeto(
         sumar(porTienda.map((f) => f.suma)),
         derivarSaldoTienda(sumaDeTipo(porTienda, "credito"), sumaDeTipo(porTienda, "debito")).saldo,
+        this.pais.monedaCodigo,
       ),
     };
 
@@ -536,11 +569,13 @@ export class AnaliticaFinancieraService implements IAnaliticaFinancieraService {
               sumar(g.filas.map((f) => f.suma)),
               derivarSaldoTienda(sumaDeTipo(g.filas, "credito"), sumaDeTipo(g.filas, "debito"))
                 .saldo,
+              this.pais.monedaCodigo,
             ),
           })),
           total: importeConNeto(
             sumar(filas.map((f) => f.suma)),
             derivarSaldoTienda(sumaDeTipo(filas, "credito"), sumaDeTipo(filas, "debito")).saldo,
+            this.pais.monedaCodigo,
           ),
         },
       ],
@@ -592,7 +627,11 @@ export class AnaliticaFinancieraService implements IAnaliticaFinancieraService {
       devengo: Prisma.Decimal,
       pago: Prisma.Decimal,
     ): ImporteAnalitico =>
-      importeConNeto(devengo.plus(pago), derivarCuentaPorPagar(devengo, pago).cuentaPorPagar);
+      importeConNeto(
+        devengo.plus(pago),
+        derivarCuentaPorPagar(devengo, pago).cuentaPorPagar,
+        this.pais.monedaCodigo,
+      );
 
     const porCubo = agruparPorIndiceDeCubo(cubos, porCuboTemporal);
     let devengoAcumulado = sumaDeTipo(arrastre, "devengo");

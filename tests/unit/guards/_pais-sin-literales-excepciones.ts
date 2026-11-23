@@ -24,6 +24,8 @@
  * - 2026-11-21 (SLT-241 R20): salen `TarifaValorRepository.ts`, `resolver-tarifas.ts`,
  *   `plantilla-datos.ts`, `tarifa-flexible.ts` y `informe.ts` de transito, que ya toman la moneda y
  *   el impuesto del pais. El tope pasa de 19 a 14.
+ * - 2026-11-21 (SLT-242 R16): salen `metrics.ts` de analitica y `AnaliticaFinancieraService.ts`, que
+ *   ya toman la moneda y el impuesto del pais. El tope pasa de 14 a 12.
  */
 
 export type FichaQueLoRetira =
@@ -49,11 +51,6 @@ export interface ExcepcionPaisSinLiterales {
 }
 
 export const EXCEPCIONES_PAIS_SIN_LITERALES: readonly ExcepcionPaisSinLiterales[] = [
-  {
-    archivo: "lib/analytics/metrics.ts",
-    ficha: "SLT-242",
-    motivo: "rotulos y descripciones de las metricas de analitica con «IVA» (pantalla); los toma del pais la rebanada SLT-242 (design §8)",
-  },
   {
     archivo: "lib/api/openapi-spec.ts",
     ficha: "permanente",
@@ -90,11 +87,6 @@ export const EXCEPCIONES_PAIS_SIN_LITERALES: readonly ExcepcionPaisSinLiterales[
     motivo: "planes: la fecha del reinicio y del cambio pendiente, en CR; la pasa a la zona de cada empresa SLT-90 (decision del humano, 2026-11-06; antes SLT-86)",
   },
   {
-    archivo: "lib/services/AnaliticaFinancieraService.ts",
-    ficha: "SLT-242",
-    motivo: "`monedaConfig.currency` en el DTO que pintan las pantallas de analitica financiera; la moneda del pais la pone la rebanada SLT-242 (design §8)",
-  },
-  {
     archivo: "lib/utils/fecha-cr.ts",
     ficha: "SLT-81",
     motivo: "envoltorio de CR sobre calendario-zona.ts que solo usa la UI (fechas en pantalla y filtros)",
@@ -121,4 +113,4 @@ export const EXCEPCIONES_PAIS_SIN_LITERALES: readonly ExcepcionPaisSinLiterales[
   },
 ];
 
-export const TOPE_EXCEPCIONES = 14;
+export const TOPE_EXCEPCIONES = 12;

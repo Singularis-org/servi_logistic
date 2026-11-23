@@ -424,7 +424,12 @@ describe("R25 · el formato de dinero lo resuelve el paquete, no la pantalla", (
   it("los archivos que pintan importes formatean con la funcion del paquete", () => {
     // Contrapeso del caso anterior: sin esto, un tablero que no pintara NINGUNA
     // cifra tambien pasaria el censo de literales.
-    const conFormato = CENSADOS.filter(({ codigo }) => /\bformatearValor\s*\(/.test(codigo));
+    // SLT-242 (design §8): los componentes de servidor pintan el importe con la hoja de
+    // cliente `<CifraAnalitica`, que formatea con la moneda del pais; cuenta igual que
+    // `formatearValor(`. Sin esto el caso seguiria verde solo por el conteo del descuadre.
+    const conFormato = CENSADOS.filter(({ codigo }) =>
+      /\bformatearValor\s*\(|<CifraAnalitica\b/.test(codigo),
+    );
     expect(conFormato.length, "nadie formatea: el censo de R25 estaria pasando por vacio").toBeGreaterThan(
       0,
     );

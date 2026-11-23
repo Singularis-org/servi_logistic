@@ -5,7 +5,7 @@ import { render, screen, cleanup, within } from "@testing-library/react";
 import { PanelConciliacion } from "@/app/(app)/analitica/_components/financiero/PanelConciliacion";
 import { formatearValor } from "@/components/private/analytics/formato";
 import { getMetrica } from "@/lib/analytics/metrics";
-import { monedaConfig } from "@/lib/config/moneda";
+import { MONEDA_PLATAFORMA, monedaConfig } from "@/lib/config/moneda";
 import type { ResultadoFinancieroConciliacion } from "@/lib/types/analitica-financiera";
 
 // Feature 132 (T4.3) — R19.
@@ -60,7 +60,7 @@ const UNIDAD_DEL_DTO = METRICA_CONCILIACION.unidad;
  * normalizacion el esperado y el DOM difieren en un byte invisible.
  */
 function cifra(valor: number, unidad: "moneda" | "conteo"): string {
-  return formatearValor(valor, unidad).replace(/\s+/g, " ");
+  return formatearValor(valor, unidad, MONEDA_PLATAFORMA).replace(/\s+/g, " ");
 }
 
 function datosDe(cuadra: boolean, cierresDescuadrados: readonly string[]): ResultadoFinancieroConciliacion {

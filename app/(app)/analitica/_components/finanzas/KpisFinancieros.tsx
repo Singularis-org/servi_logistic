@@ -6,9 +6,10 @@
 // navegador — el árbol se pinta una vez con lo que trajo `cargarKpisFinancieros` y ya está.
 //
 // ⚠ EL DINERO NO PASA POR `number` EN NINGÚN PUNTO DE ESTE ARCHIVO. Los importes llegan como
-// STRING desde los ledgers y se formatean con `formatMontoString`, que es la variante del
-// formateador de dinero de la casa que trabaja SOBRE STRING (su hermana `formatMonto` recibe
-// `number`, así que aquí no vale: convertir para formatear es convertir). Por eso NO se usa `KpiCard` de `components/private/analytics`,
+// STRING desde los ledgers y se formatean con `MontoAnalitico`, la hoja de cliente del paquete de
+// analítica que pinta un importe STRING con la moneda del país (SLT-242, R4) sobre
+// `formatearMontoEn`, que trabaja SOBRE STRING (con un `number` no valdría: convertir para
+// formatear es convertir). Es una hoja porque este componente es de servidor y no lee contextos. Por eso NO se usa `KpiCard` de `components/private/analytics`,
 // que sería lo primero que uno mira: aquella recibe `valor: number` y formatea con
 // `formatearValor`, así que montarla aquí obligaría a un `Number(monto)` — exactamente el paso
 // que toda la capa de dinero de este repo está escrita para impedir. Se reusa `Card`, que es la
@@ -17,8 +18,8 @@
 // Las tarjetas que NO trajeron cifra no se pintan en cero: un cero es una cifra medida, y «no
 // puedes verlo» o «se rompió» no lo son. Mismo criterio que los paneles del tablero financiero.
 
+import { MontoAnalitico } from "@/components/private/analytics/CifraAnalitica";
 import { Card } from "@/components/ui/card";
-import { formatMontoString } from "@/lib/config/moneda";
 
 import type { KpiFinanciero } from "./cargar-kpis";
 
@@ -46,7 +47,7 @@ function TarjetaKpi({ kpi }: { readonly kpi: KpiFinanciero }) {
           {/* `tabular-nums` para que seis importes en una fila alineen sus decimales: sin él,
               las cifras bailan y una fila de dinero deja de poder compararse de un vistazo. */}
           <p className="text-2xl font-semibold tabular-nums text-foreground">
-            {formatMontoString(kpi.monto)}
+            <MontoAnalitico monto={kpi.monto} />
           </p>
           {kpi.pista ? <p className="text-sm text-muted-foreground">{kpi.pista}</p> : null}
         </>

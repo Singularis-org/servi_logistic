@@ -18,7 +18,9 @@
 //    `bruto`/`neto` del DTO. La unica agregacion es la cola de R20/R21, que el
 //    propio requisito ordena.
 //  - NO escribe un simbolo de moneda, un codigo ISO ni un locale (R25): todo
-//    importe pasa por `formatearValor(valor, unidad)` con la unidad del DTO.
+//    importe pasa por `formatearValor(valor, unidad, moneda)` con la unidad del DTO.
+//    Aqui, que es SERVIDOR y no puede leer el contexto, por la hoja de cliente
+//    `<CifraAnalitica>`, que pone la moneda del pais (SLT-242, R1).
 //  - NO resuelve nombres legibles de tienda (R24 / Q2): los cubos por tienda son
 //    identificadores internos y se pintan crudos, con la limitacion escrita EN
 //    PANTALLA. Resolverlos es la ficha 178.
@@ -48,12 +50,12 @@
 
 import type { ReactNode } from "react";
 
+import { CifraAnalitica } from "@/components/private/analytics/CifraAnalitica";
 import { GraficaBarras } from "@/components/private/analytics/GraficaBarras";
 import { GraficaDonut } from "@/components/private/analytics/GraficaDonut";
 import { GraficaLineas } from "@/components/private/analytics/GraficaLineas";
 import { KpiCard } from "@/components/private/analytics/KpiCard";
 import { TablaResumen } from "@/components/private/analytics/TablaResumen";
-import { formatearValor } from "@/components/private/analytics/formato";
 import { MAX_CATEGORIAS_LEGIBLES } from "@/components/private/analytics/topes";
 import type { SerieDato } from "@/components/private/analytics/tipos";
 import type { MetricaUnidad } from "@/lib/analytics/types";
@@ -208,14 +210,14 @@ function TotalDelDto({
         <div className="flex items-baseline gap-2">
           <dt className="text-muted-foreground">{TEXTOS.totalNeto}</dt>
           <dd className="font-semibold tabular-nums text-foreground">
-            {formatearValor(aNumero(total.neto), unidad)}
+            <CifraAnalitica valor={aNumero(total.neto)} unidad={unidad} />
           </dd>
         </div>
       ) : null}
       <div className="flex items-baseline gap-2">
         <dt className="text-muted-foreground">{TEXTOS.totalBruto}</dt>
         <dd className="tabular-nums text-foreground">
-          {formatearValor(aNumero(total.bruto), unidad)}
+          <CifraAnalitica valor={aNumero(total.bruto)} unidad={unidad} />
         </dd>
       </div>
     </dl>
@@ -248,7 +250,8 @@ function PanelKpi({
     <>
       <KpiCard etiqueta={TEXTOS.neto} valor={aNumero(total.neto)} unidad={unidad} />
       <p className="text-sm text-muted-foreground">
-        {`${TEXTOS.bruto}: ${formatearValor(aNumero(total.bruto), unidad)}`}
+        {`${TEXTOS.bruto}: `}
+        <CifraAnalitica valor={aNumero(total.bruto)} unidad={unidad} />
       </p>
     </>
   );

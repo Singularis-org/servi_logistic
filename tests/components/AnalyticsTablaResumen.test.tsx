@@ -10,6 +10,7 @@ import { cleanup, render, screen } from "@testing-library/react";
 
 import { TablaResumen } from "@/components/private/analytics/TablaResumen";
 import { formatearValor } from "@/components/private/analytics/formato";
+import { MONEDA_PLATAFORMA } from "@/lib/config/moneda";
 
 const VACIO = { titulo: "Sin datos en el rango", descripcion: "Prueba con otro rango" };
 
@@ -94,10 +95,10 @@ describe("TablaResumen (R22, R23, R38)", () => {
       />,
     );
 
-    expect(screen.getByText(norm(formatearValor(1000, "moneda")))).toBeInTheDocument();
+    expect(screen.getByText(norm(formatearValor(1000, "moneda", MONEDA_PLATAFORMA)))).toBeInTheDocument();
     expect(screen.getByText(norm(formatearValor(10, "conteo")))).toBeInTheDocument();
     // El ausente se marca, no se convierte en cero (R11 aplicado a la tabla).
-    expect(screen.getAllByText(norm(formatearValor(null, "moneda"))).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(norm(formatearValor(null, "moneda", MONEDA_PLATAFORMA))).length).toBeGreaterThan(0);
   });
 
   it("la fila de totales se distingue de las filas de datos", () => {

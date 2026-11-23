@@ -11,8 +11,9 @@
 // ─── MONEY-SAFE (R22), Y NO ES UNA PRECAUCION TEORICA ───────────────────────────────────────
 //
 // Los DIEZ importes de este archivo (seis en la cabecera desde la ficha 449, cuatro en las
-// columnas) llegan como STRING escala 2 y se pintan con `money()`, que
-// formatea SIN convertir a numero. Prohibidos aqui `Number(`, `parseFloat(`, `parseInt(` y
+// columnas) llegan como STRING escala 2 y se pintan con `formatearMontoEn(moneda, …,
+// SIN_MONTO_RAYA)`, que formatea SIN convertir a numero. La moneda es la del pais de la empresa
+// (`useMonedaDelPais()`, SLT-242 R3); sin proveedor, la de la plataforma. Prohibidos aqui `Number(`, `parseFloat(`, `parseInt(` y
 // `.toFixed(`: este repo ya perdio un centimo por una conversion (feature 204) y hay tres
 // guardias vivas persiguiendo esas cuatro llamadas.
 //
@@ -23,7 +24,7 @@
 // ─── LOS `null` NO SON CEROS ────────────────────────────────────────────────────────────────
 //
 // `empresa`, `tienda` y `retorno` llegan `null` cuando esa orden todavia no esta liquidada, y se
-// pintan «—» (R30). `money(null)` ya devuelve la raya larga, asi que no hace falta —ni se debe—
+// pintan «—» (R30). `SIN_MONTO_RAYA` ya es la raya larga, asi que no hace falta —ni se debe—
 // escribir un `?? "0.00"` en ningun sitio: «todavia no es un hecho» y «fue cero» son dos cosas
 // distintas y esta pantalla las distingue.
 //
@@ -33,7 +34,7 @@
 // mayoria de las tiendas, y para ellas la cifra es un `"0.00"` cierto que se leeria como un
 // concepto que les aplica. Lo decide `hayMonto`, sin convertir el string a numero.
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import useSWR from "swr";
 
@@ -41,8 +42,10 @@ import { Badge } from "@/components/ui/badge";
 import { DataTable, type Column } from "@/components/shared/DataTable";
 import { InfosEstado } from "@/components/shared/EstadoInfo";
 import { Pagination } from "@/components/shared/Pagination";
-import { money } from "@/lib/config/moneda";
+import { useImpuestoDelPais, useMonedaDelPais } from "@/hooks/use-moneda-del-pais";
+import { formatearMontoEn, SIN_MONTO_RAYA } from "@/lib/config/moneda";
 import { EMPRESA } from "@/lib/config/marca";
+import { IMPUESTO_ROTULO } from "@/lib/constants/impuesto-rotulo";
 import { PARAM_TERMINO_DEFAULT } from "@/lib/utils/filtros-url";
 import type { DineroProductoDTO } from "@/lib/types/conteo-productos";
 import type { OrdenDineroDTO } from "@/lib/types/dinero-productos";
@@ -58,6 +61,37 @@ import { etiquetaDeDesenlace } from "./etiqueta-desenlace";
 /* -------------------------------------------------------------------------- */
 /* Textos                                                                      */
 /* -------------------------------------------------------------------------- */
+
+/** SLT-242 (R17): las dos pistas de la cabecera que nombran el impuesto. */
+export interface PistasConImpuesto {
+  /** La de lo que cobro la empresa: flete + impuesto y comision + impuesto. */
+  readonly empresaPista: string;
+  /** La del flete por devolucion a origen, que tambien lleva impuesto. */
+  readonly retornoPista: string;
+}
+
+/**
+ * SLT-242 (R17, design §5.2) — las dos pistas con el NOMBRE del impuesto que se le pase: el del
+ * pais de la empresa en pantalla (`useImpuestoDelPais()`). Mismo texto de siempre con el impuesto
+ * interpolado, asi que con Costa Rica (y sin proveedor) dicen lo de antes de esta ficha (R12).
+ *
+ * FICHA 455 (2026-09-24): el grupo de la pista del retorno va por su nombre vigente (antes «las
+ * rechazadas»).
+ */
+export function pistasConImpuesto(impuesto: string): PistasConImpuesto {
+  return {
+    empresaPista: `Solo de lo ya liquidado: flete + ${impuesto} y comisión + ${impuesto}`,
+    retornoPista: `Flete por devolución a origen + ${impuesto} de las órdenes en ${etiquetaDeDesenlace("devolucion_a_origen_por_rechazo")}. Fuera del reparto`,
+  };
+}
+
+/**
+ * Las pistas con el rotulo de la PLATAFORMA (`IMPUESTO_ROTULO`): las que pinta el panel sin los
+ * datos del pais (R13). Siguen expuestas en `DETALLE_DINERO_TEXTOS.totales` porque tres suites
+ * (`ProductosTablaDinero`, `rechazo-nombre-466-app`, `textos-455-recorrido`) las leen de ahi; el
+ * componente NO las usa: pinta `pistasConImpuesto(impuesto)` con el impuesto del pais.
+ */
+const PISTAS_DE_LA_PLATAFORMA = pistasConImpuesto(IMPUESTO_ROTULO);
 
 /** TODOS los textos del panel, fuera del JSX: es lo que lo deja listo para i18n. */
 export const DETALLE_DINERO_TEXTOS = {
@@ -83,7 +117,8 @@ export const DETALLE_DINERO_TEXTOS = {
     recaudado: "Recaudado",
     recaudadoPista: "En órdenes que incluyen este producto",
     empresa: `Cobró ${EMPRESA.enFrase}`,
-    empresaPista: "Solo de lo ya liquidado: flete + IVA y comisión + IVA",
+    // SLT-242 (R17): con el impuesto de la plataforma; en pantalla, `pistasConImpuesto`.
+    empresaPista: PISTAS_DE_LA_PLATAFORMA.empresaPista,
     tienda: "Para la tienda",
     tiendaPista: "Solo de lo ya liquidado: lo recaudado menos lo anterior",
     pendiente: "Pendiente de cierre",
@@ -103,7 +138,8 @@ export const DETALLE_DINERO_TEXTOS = {
      */
     retorno: "Flete por devolución a origen",
     // FICHA 455 (2026-09-24): el grupo por su nombre vigente (antes «las rechazadas»).
-    retornoPista: `Flete por devolución a origen + IVA de las órdenes en ${etiquetaDeDesenlace("devolucion_a_origen_por_rechazo")}. Fuera del reparto`,
+    // SLT-242 (R17): con el impuesto de la plataforma; en pantalla, `pistasConImpuesto`.
+    retornoPista: PISTAS_DE_LA_PLATAFORMA.retornoPista,
     /**
      * FICHA 449 — EL SERVICIO DE BODEGA, y se llama «Fulfillment» PORQUE YA SE LLAMA ASÍ.
      *
@@ -150,7 +186,8 @@ export const DETALLE_DINERO_TEXTOS = {
 
 /**
  * Una cifra de dinero de la cabecera. `valor` llega como STRING del servidor, o `null` cuando
- * NO HAY (R30) — y `money` ya pinta la raya larga, que es el marcador de dato ausente del repo.
+ * NO HAY (R30) — y `SIN_MONTO_RAYA` es la raya larga, que es el marcador de dato ausente del repo.
+ * La moneda es la del pais de la empresa (SLT-242, R3).
  */
 function ImporteCabecera({
   rotulo,
@@ -161,10 +198,11 @@ function ImporteCabecera({
   readonly valor: string | null;
   readonly pista: string;
 }) {
+  const moneda = useMonedaDelPais();
   return (
     <div className="flex flex-col gap-0.5">
       <span className="text-sm text-muted-foreground">{rotulo}</span>
-      <span className="text-lg font-medium tabular-nums whitespace-nowrap">{money(valor)}</span>
+      <span className="text-lg font-medium tabular-nums whitespace-nowrap">{formatearMontoEn(moneda, valor, SIN_MONTO_RAYA)}</span>
       <span className="text-xs text-muted-foreground">{pista}</span>
     </div>
   );
@@ -172,7 +210,12 @@ function ImporteCabecera({
 
 /** Un importe de una fila del detalle. Ver la cabecera del archivo sobre lo prohibido aqui. */
 function Importe({ valor }: { readonly valor: string | null }) {
-  return <span className="tabular-nums whitespace-nowrap">{money(valor)}</span>;
+  const moneda = useMonedaDelPais();
+  return (
+    <span className="tabular-nums whitespace-nowrap">
+      {formatearMontoEn(moneda, valor, SIN_MONTO_RAYA)}
+    </span>
+  );
 }
 
 /**
@@ -328,6 +371,10 @@ export function DineroProductoDetalle({
   id,
 }: DineroProductoDetalleProps) {
   const [page, setPage] = useState(1);
+  // SLT-242 (R17): las pistas con el nombre del impuesto del pais; sin proveedor, el rotulo de la
+  // plataforma (R13).
+  const impuesto = useImpuestoDelPais();
+  const pistas = useMemo(() => pistasConImpuesto(impuesto), [impuesto]);
 
   const { data, error, isLoading } = useSWR(
     claveDetalleDineroProducto(filtroSerializado, tiendaId, producto, page),
@@ -395,7 +442,7 @@ export function DineroProductoDetalle({
         <ImporteCabecera
           rotulo={DETALLE_DINERO_TEXTOS.totales.empresa}
           valor={totales?.liquidado.empresa ?? null}
-          pista={DETALLE_DINERO_TEXTOS.totales.empresaPista}
+          pista={pistas.empresaPista}
         />
         <ImporteCabecera
           rotulo={DETALLE_DINERO_TEXTOS.totales.tienda}
@@ -412,7 +459,7 @@ export function DineroProductoDetalle({
         <ImporteCabecera
           rotulo={DETALLE_DINERO_TEXTOS.totales.retorno}
           valor={totales?.retorno ?? null}
-          pista={DETALLE_DINERO_TEXTOS.totales.retornoPista}
+          pista={pistas.retornoPista}
         />
         {/* FICHA 449 — el servicio de bodega, la sexta y la ULTIMA, pegada al flete por rechazo
             porque las dos estan FUERA del reparto y por el mismo tipo de motivo: ninguna sale
