@@ -294,3 +294,66 @@ Tanda 3 en verde (R16–R20, R22).
 - **Guardia que lee el doc:** `pnpm exec vitest run tests/unit/guards/unicos-por-empresa.guardia.test.ts` →
   `Test Files 1 passed (1) · Tests 15 passed (15)`.
 - **Veredicto:** T5.2 hecha; sin código tocado.
+
+## T5.1 — E2E (`e2e/mora-prorroga.spec.ts`, proyecto `dinero`)
+
+- **Archivos:** `e2e/mora-prorroga.spec.ts` (nuevo); `playwright.config.ts` (`"mora-prorroga"` en `dinero`).
+- **Fecha de la prórroga:** `H = FL + 2`, con `FL` leída de `factura_plataforma_mora` (gracia 7). El design §7 ponía
+  «hoy + 10» como ejemplo, pero la factura cerrada con el atajo de SLT-121 tiene `FL` ≈ hoy + 15 (medido:
+  `FL = 2026-12-08`, `H = 2026-12-10`). El test comprueba que `H` no pasa del `max` del campo «Hasta» (hoy + 60).
+- **Reloj:** artificio de SLT-121 §11. Corrida 1: `vence_at + 30 min` (00:30 de `FL + 1`); corrida 2:
+  `vence_at + (H − FL) días + 30 min` (00:30 de `H + 1`), calculado en SQL.
+
+| Caso | R |
+|---|---|
+| 1. el superadmin da la prórroga: «Con prórroga hasta el …» y la fila «Dio o cambió la prórroga de pago» | R3, R13, R14, R23 |
+| 2. corrida dentro de la prórroga, factura vencida: `descongelada_a_mano`, `congelada_at` NULL | R8, R23 |
+| 3. maestro y `admin` ven «Tienes prórroga de pago hasta el …» (`role="status"`) | R11, R23 |
+| 4. corrida de `H + 1`: `congelada` | R9, R23 |
+| 5. el maestro ve «Empresa congelada por falta de pago» | R23 |
+
+- **Typecheck:** `tsc --noEmit` sin errores. **Lint:** `eslint e2e/mora-prorroga.spec.ts playwright.config.ts`
+  sin salida. **Guardia:** `e2e-sin-saltos.guardia.test.ts` → `Tests 38 passed (38)`.
+- **Build:** `next build` con `NEXT_PUBLIC_APP_URL=http://localhost:3044` → exit 0.
+- **Corrida 1 (`--project=dinero`), INCOMPLETA:** Claude Code la mató por falta de memoria del sistema tras
+  147 casos ✓ y 0 ✘ (llegó a `wallet.spec.ts`; no imprimió resumen «N passed»). Incluye:
+  ```
+  ✓   71-76 [dinero] › e2e\mora-congelamiento.spec.ts › 1. … 6.  (los seis)
+  MEDIDO factura 462b02e2-…: fecha límite=2026-12-08; prórroga hasta=2026-12-10
+  ✓   77 [dinero] › e2e\mora-prorroga.spec.ts:260:5 › 1. el superadmin da la prórroga … (R3, R13, R14, R23) (1.5s)
+  MEDIDO corrida de 2026-12-09 00:30 → {"resultado":"descongelada_a_mano"}
+  ✓   78 [dinero] › e2e\mora-prorroga.spec.ts:297:5 › 2. la corrida de madrugada dentro de la prórroga … (R8, R23) (37ms)
+  ✓   79 [dinero] › e2e\mora-prorroga.spec.ts:304:5 › 3. el maestro y el admin ven «Tienes prórroga …» (R11, R23) (1.2s)
+  MEDIDO corrida de 2026-12-11 00:30 → {"facturas":[…],"resultado":"congelada","saldo_vencido":"1000.00"}
+  ✓   80 [dinero] › e2e\mora-prorroga.spec.ts:326:5 › 4. la corrida de la madrugada siguiente … congela (R9, R23) (28ms)
+  ✓   81 [dinero] › e2e\mora-prorroga.spec.ts:333:5 › 5. el maestro ve «Empresa congelada por falta de pago» (R23) (265ms)
+  ```
+- **Verificación completa (implementer, 2026-11-23).** La base es `servi_logistic_slt255_e2e`, la misma de arriba y
+  sin recrear. El build es el de las 10:37, posterior al último commit de código (`d647699e`, 10:26).
+  Cada comando lleva `E2E_PUERTO=3044` y `NODE_OPTIONS=--max-old-space-size=8192`, y corre en primer plano, uno a uno.
+  `dinero` dura más de los 10 min que admite un comando, así que va por lotes de archivos. Entre los lotes de cada
+  corrida entran los 27 archivos del proyecto.
+  - `playwright test e2e/mora-prorroga.spec.ts --project=dinero`: `5 passed (35.2s)`.
+  - **Corrida 1:**
+    - `--project=dinero` entero, cortado por mi propio `timeout 590` en el caso 123 (exit 124). Hasta ahí: 122 ✓,
+      0 ✘ reales y los 23 archivos anteriores completos. El ✘ del 123 es el corte, no un fallo.
+    - El resto (`tarifas-valor-propio-mensajero`, `tope-intentos-por-empresa`, `wallet`, `wallet-mensajeros`):
+      `30 passed (5.3m)`.
+    - `e2e/dos-empresas-humo.spec.ts` (con `plataforma-vacia`): `18 passed (3.7m)`. La primera vez la cortó un
+      `timeout 170` mío en el caso 16; repetida entera, verde.
+  - **Corrida 2** (misma base):
+    - Lote A, de `ajuste-pago-mensajero-cierre` a `cierre-vencido-modelo` (8 archivos): `35 passed, 1 failed (5.5m)`.
+      El rojo es `ajuste-pago-mensajero-cierre.spec.ts:143`, en la preparación del escenario
+      (`e2e/_escenarios/crons.ts:83`): «tras 15 pasadas de procesar-jobs, la geocodificación … no falló por
+      configuración». En la base había 389 jobs `geocodificacion` `pending` de la corrida 1, y el job de esa orden ya
+      tenía el `[geocode:config]` pero seguía `pending`, con `run_after` futuro. Es la cola acumulada en una base
+      desechable reutilizada, ya vista en `progress/impl_SLT-190.md` y `progress/impl_SLT-200.md`, y no toca la
+      mora. Repetido solo: `2 passed (1.0m)`.
+    - Lote B, de `cierres-rediseno` a `pago-plataforma-por-fuera` (9 archivos, con `mora-congelamiento` y
+      `mora-prorroga`): `53 passed (6.2m)`.
+    - Lote C, de `planes-costo-porcentual` a `tarifas-activacion` (6 archivos): `29 passed (3.9m)`.
+    - Lote D, de `tarifas-valor-propio-mensajero` a `wallet-mensajeros` (4 archivos): `30 passed (3.2m)`.
+    - `e2e/dos-empresas-humo.spec.ts`: `18 passed (1.9m)`.
+  - Ninguna corrida tuvo skipped ni flaky (sin reintentos).
+- **Veredicto:** T5.1 hecha. `mora-prorroga` sale verde en las tres corridas (5/5). `dinero` y el humo salen verdes en
+  las dos, salvo el rojo de la cola de geocodificación de arriba, que no es de esta feature.

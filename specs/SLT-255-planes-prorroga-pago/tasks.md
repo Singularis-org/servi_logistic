@@ -63,7 +63,7 @@
 
 ## Tanda 5 — E2E y documentación
 
-- [ ] **T5.1** Crear `e2e/mora-prorroga.spec.ts` y añadirlo al proyecto `dinero` en `playwright.config.ts`
+- [x] **T5.1** Crear `e2e/mora-prorroga.spec.ts` y añadirlo al proyecto `dinero` en `playwright.config.ts`
       (design §7). Depende de las tandas 1 a 4.
       *Hecho:* en verde en local contra una base desechable nueva, junto con `--project=dinero` entero
       (`mora-congelamiento` incluido) y `e2e/dos-empresas-humo.spec.ts` (R23).
