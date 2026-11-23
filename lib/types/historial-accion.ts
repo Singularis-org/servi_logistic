@@ -431,7 +431,7 @@ export const HISTORIAL_ACCION_TIPOS = [
   // tipo» del cambio que no llegó a regir.
   "plan_cambio_empresa_cancelado", // PlanesRepository.cancelarPendienteDeEmpresaEnTx
 
-  // --- A.7 · mora y congelamiento de una empresa (5) ---
+  // --- A.7 · mora y congelamiento de una empresa (7: cinco de SLT-121 y dos de SLT-255) ---
   // SLT-121 (design §1.2, §5, §7.3; R30): categoria propia. Congelar no mueve dinero (no hay asiento), no
   // borra nada y no cambia quien puede hacer que: decide si la empresa OPERA. Entidad `organizacion`.
   //   - `empresa_congelada`: `valor_nuevo` = numeros de las facturas vencidas, `monto` = saldo vencido;
@@ -444,6 +444,13 @@ export const HISTORIAL_ACCION_TIPOS = [
   "empresa_descongelada_a_mano", // MoraEmpresaRepository.descongelarAMano (T2.4)
   "empresa_descongelada_por_gracia", // mora-recalcular.recalcularCongelamiento (T2.5)
   "factura_dias_gracia_cambiada", // MoraEmpresaRepository.fijarGracia (T2.4)
+  // SLT-255 (design §1.2, §5.3; R14, R15): la prórroga del pago, en la misma categoria. Entidad `organizacion`.
+  //   - `empresa_prorroga_fijada`: `valor_anterior` = «hasta AAAA-MM-DD» si habia un plazo vigente (si no, NULL),
+  //     `valor_nuevo` = «hasta AAAA-MM-DD — <motivo>»;
+  //   - `empresa_prorroga_quitada`: `valor_anterior` = «hasta AAAA-MM-DD», `valor_nuevo` = «sin prórroga — <motivo>».
+  //   Los dos extienden la excepcion P5 del motivo (`historial-accion-sin-datos-cliente`).
+  "empresa_prorroga_fijada", // MoraEmpresaRepository.darPlazo (SLT-255 T2.3)
+  "empresa_prorroga_quitada", // MoraEmpresaRepository.quitarPlazo (SLT-255 T2.3)
 ] as const satisfies readonly PrismaHistorialAccionTipo[];
 
 export type HistorialAccionTipo = (typeof HISTORIAL_ACCION_TIPOS)[number];
@@ -665,6 +672,9 @@ export const CATEGORIA_POR_ACCION: Record<HistorialAccionTipo, CategoriaAccion> 
   empresa_descongelada_a_mano: "mora",
   empresa_descongelada_por_gracia: "mora",
   factura_dias_gracia_cambiada: "mora",
+  // SLT-255 (design §5.3): la prórroga, en la misma categoria.
+  empresa_prorroga_fijada: "mora",
+  empresa_prorroga_quitada: "mora",
 };
 
 /** Etiqueta legible de cada tipo. Exhaustiva por el mismo mecanismo que la categoria. */
@@ -772,6 +782,9 @@ export const ACCION_LABELS: Record<HistorialAccionTipo, string> = {
   empresa_descongelada_a_mano: "Descongeló a mano la operación",
   empresa_descongelada_por_gracia: "Descongeló la operación por un cambio de gracia",
   factura_dias_gracia_cambiada: "Cambió los días de gracia para pagar las facturas",
+  // SLT-255 (design §5.2): los textos del historial del superadmin.
+  empresa_prorroga_fijada: "Dio o cambió la prórroga de pago",
+  empresa_prorroga_quitada: "Quitó la prórroga de pago",
 };
 
 /** Etiqueta legible de cada categoria, para el selector de filtros y la descarga. */

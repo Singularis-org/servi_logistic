@@ -8,15 +8,15 @@
 
 ## Tanda 1 — Enums y catálogo del historial (backend_dev)
 
-- [ ] **T1.1** Crear la migración `db/migrations/20261127120000_prorroga_enums/` (`migration.sql` y `down.sql`) y
+- [x] **T1.1** Crear la migración `db/migrations/20261127120000_prorroga_enums/` (`migration.sql` y `down.sql`) y
       poner los dos valores en `db/schema.prisma`. Actualizar también el comentario de `descongelada_hasta`
       (design §1.1, §1.2).
       *Hecho:* `pnpm run db:migrate` aplica. El `down` quita solo esos dos valores y aborta si alguno está en uso.
       `tests/integration/db/prorroga-migration.test.ts` en verde.
-- [ ] **T1.2** Añadir los dos tipos a `lib/types/historial-accion.ts`: catálogo, categoría `mora`,
+- [x] **T1.2** Añadir los dos tipos a `lib/types/historial-accion.ts`: catálogo, categoría `mora`,
       `CATEGORIA_POR_ACCION` y `ACCION_LABELS` (design §5.3). Depende de T1.1.
       *Hecho:* `catalogo-y-choke-point.test.ts` en verde.
-- [ ] **T1.3** [P] Ampliar `mora-migration.test.ts` y los 8 inventarios de `historial_accion_tipo`. Los dos valores
+- [x] **T1.3** [P] Ampliar `mora-migration.test.ts` y los 8 inventarios de `historial_accion_tipo`. Los dos valores
       de SLT-255 se afirman al final y se quitan antes de los cortes, como hizo SLT-121. Depende de T1.1.
       *Hecho:* los 9 archivos en verde contra una base con la migración aplicada.
 

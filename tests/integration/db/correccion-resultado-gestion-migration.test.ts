@@ -510,6 +510,9 @@ describe.skipIf(!HAY_BASE_DE_DATOS)("398/T1.5 (b) — el down recrea las listas 
       "empresa_descongelada_a_mano",
       "empresa_descongelada_por_gracia",
       "factura_dias_gracia_cambiada",
+      // SLT-255: los dos tipos de `20261127120000_prorroga_enums`.
+      "empresa_prorroga_fijada",
+      "empresa_prorroga_quitada",
     ];
     expect([...origenAntes].sort()).toEqual(
       ORDEN_HISTORIAL_ORIGEN_TIPO_SEED.filter(

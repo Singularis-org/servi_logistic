@@ -114,8 +114,9 @@ describe("362/T0.1 (R14/R17) — el catalogo es cerrado y sus mapas son exhausti
     // 88 desde SLT-221: `usuario_cedula_cambiada` y `usuario_email_cambiado` (entidad `usuario`).
     // 90 desde SLT-225: `zona_desactivada` y `zona_reactivada` (entidad `zona`).
     // 95 desde SLT-121: los cinco de la mora (entidad `organizacion`, sin entidad nueva) y la categoria `mora`.
-    expect(HISTORIAL_ACCION_TIPOS).toHaveLength(95);
-    expect(new Set(HISTORIAL_ACCION_TIPOS).size).toBe(95);
+    // 97 desde SLT-255: los dos de la prórroga del pago (entidad `organizacion`, categoria `mora`).
+    expect(HISTORIAL_ACCION_TIPOS).toHaveLength(97);
+    expect(new Set(HISTORIAL_ACCION_TIPOS).size).toBe(97);
     expect(HISTORIAL_ACCION_ENTIDADES).toHaveLength(31); // 31 desde SLT-77 (`organizacion`)
     expect(new Set(HISTORIAL_ACCION_ENTIDADES).size).toBe(31);
     expect(CATEGORIAS_ACCION).toHaveLength(7); // 7 desde SLT-121 (`mora`)
@@ -979,8 +980,9 @@ describe("SLT-121 R30 — la mora y el congelamiento, en el catalogo del Histori
     "factura_dias_gracia_cambiada",
   ];
 
-  it("R30: los cinco tipos son la categoria `mora` entera, con su etiqueta de pantalla", () => {
-    expect([...accionesDeCategoria("mora")].sort()).toEqual([...DE_MORA].sort());
+  it("R30: los cinco tipos son la categoria `mora` entera (mas los dos de SLT-255), con su etiqueta de pantalla", () => {
+    const deSlt255 = ["empresa_prorroga_fijada", "empresa_prorroga_quitada"];
+    expect([...accionesDeCategoria("mora")].sort()).toEqual([...DE_MORA, ...deSlt255].sort());
     expect(CATEGORIA_LABELS.mora).toBe("Mora y congelamiento");
     for (const tipo of DE_MORA) {
       expect(ACCION_LABELS[tipo as keyof typeof ACCION_LABELS], tipo).toMatch(/^[A-ZÁÉÍÓÚ]/);
@@ -991,5 +993,22 @@ describe("SLT-121 R30 — la mora y el congelamiento, en el catalogo del Histori
     const { etiquetaDeEntidad } = await import("@/lib/types/historial-accion-etiquetas");
     expect(etiquetaDeEntidad("organizacion", { asunto: "mora" })).toBe("Plazo de pago y mora");
     expect(etiquetaDeEntidad("organizacion", {})).toBe("Intentos de entrega");
+  });
+});
+
+describe("SLT-255 R14 — la prórroga del pago, en el catalogo del Historico", () => {
+  it("R14: los dos tipos de la prórroga van a la categoria `mora`, con sus etiquetas de design §5.2", () => {
+    expect(CATEGORIA_POR_ACCION.empresa_prorroga_fijada).toBe("mora");
+    expect(CATEGORIA_POR_ACCION.empresa_prorroga_quitada).toBe("mora");
+    expect(accionesDeCategoria("mora")).toEqual(
+      expect.arrayContaining(["empresa_prorroga_fijada", "empresa_prorroga_quitada"]),
+    );
+    expect(ACCION_LABELS.empresa_prorroga_fijada).toBe("Dio o cambió la prórroga de pago");
+    expect(ACCION_LABELS.empresa_prorroga_quitada).toBe("Quitó la prórroga de pago");
+  });
+
+  it("R14: van al final del catalogo, detras de los cinco de SLT-121 (mismo orden que la migración)", () => {
+    expect(HISTORIAL_ACCION_TIPOS.slice(-2)).toEqual(["empresa_prorroga_fijada", "empresa_prorroga_quitada"]);
+    expect(HISTORIAL_ACCION_TIPOS.at(-3)).toBe("factura_dias_gracia_cambiada");
   });
 });

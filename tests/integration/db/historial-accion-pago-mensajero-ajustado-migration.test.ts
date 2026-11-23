@@ -181,6 +181,9 @@ describeSiHayBase("SLT-56 — tabla de ajustes y tipo de historial, de ida y vue
       "empresa_descongelada_a_mano",
       "empresa_descongelada_por_gracia",
       "factura_dias_gracia_cambiada",
+      // SLT-255: los dos tipos de `20261127120000_prorroga_enums`.
+      "empresa_prorroga_fijada",
+      "empresa_prorroga_quitada",
     ];
     expect([...enLaBase].sort()).toEqual(
       HISTORIAL_ACCION_TIPOS.filter((t) => !POSTERIORES.includes(t)).sort(),

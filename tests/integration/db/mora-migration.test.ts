@@ -108,6 +108,15 @@ describe("SLT-121 — las migraciones en disco", () => {
     for (const v of [...VALORES_HISTORIAL, ...VALORES_JOB]) expect(propia).toContain(`'${v}'`);
   });
 
+  it("SLT-255: la de la prórroga va detrás, y el down de enums de la mora no nombra sus dos valores", () => {
+    // Los dos valores de `20261127120000_prorroga_enums` quedan al final de `historial_accion_tipo`; el down de la
+    // mora lee la lista vigente y quita solo los suyos, así que no puede llevarse los de SLT-255.
+    const carpetas = carpetasDeMigracion();
+    expect(carpetas.indexOf("20261127120000_prorroga_enums")).toBe(carpetas.indexOf(M) + 1);
+    const propia = sqlDe(M_ENUM, "down.sql");
+    for (const v of ["empresa_prorroga_fijada", "empresa_prorroga_quitada"]) expect(propia).not.toContain(v);
+  });
+
   it("el down de la principal borra las cinco funciones que crea la subida, el índice y las tres columnas", () => {
     const subida = sqlDe(M, "migration.sql");
     const bajada = sqlDe(M, "down.sql");
