@@ -58,7 +58,7 @@ export interface DevolverEntrada {
   moneda: string;
 }
 
-export type EstadoDevolucion = "pendiente" | "aprobada" | "rechazada";
+export type EstadoDevolucion = "pendiente" | "aprobada" | "denegada";
 
 /** Rebill solo responde `{ status }`: no hay id de devolución (P3). */
 export interface DevolucionDelProveedor {

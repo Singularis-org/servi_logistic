@@ -392,3 +392,15 @@ Abreviaturas del mapa de `tasks.md`. Los nombres exactos de cada caso están en 
   `"denegada"`, o (b) tres entradas en `EXCEPCIONES_455`. La decisión es del leader o del humano. Hasta entonces no se
   abre el PR.
 - **T4.5** (contraste en el sandbox de Rebill): queda pendiente para el humano, como deuda de SLT-230.
+
+## Decisión sobre T2.1: `"rechazada"` pasa a `"denegada"` (2026-11-23)
+
+- **Decisión:** el humano, el 2026-11-23: «Cambiar a "denegada"». Es la opción (a), y no entran excepciones en `EXCEPCIONES_455`.
+- **Dónde cambia:** design §3 (`EstadoDevolucion`) y §6.4 (`cancelled` ⇒ `denegada`),
+  `lib/interfaces/external/IProveedorCobro.ts:61`, `lib/clients/cobro/rebill-proveedor.ts:76` y
+  `tests/integration/cobro/rebill-proveedor.test.ts:476`. El literal no aparece en `requirements.md` ni en `tasks.md`.
+- **Verificación** (`NODE_OPTIONS=--max-old-space-size=8192`):
+  - `pnpm run typecheck`: sin errores.
+  - `vitest run tests/unit/guards/censo-order-status-rename.test.ts tests/integration/cobro/rebill-proveedor.test.ts`:
+    `Test Files 2 passed (2) · Tests 83 passed (83)`.
+- Con esto T2.1 queda cerrada y el «Pendiente» de T2.1 de T5.3 queda resuelto. T4.5 sigue como pendiente humano.

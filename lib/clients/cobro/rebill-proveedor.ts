@@ -73,7 +73,7 @@ export const ESTADO_DEVOLUCION_REBILL: Readonly<Record<string, EstadoDevolucion>
   refunded: "aprobada",
   partially_refunded: "aprobada",
   approved: "pendiente",
-  cancelled: "rechazada",
+  cancelled: "denegada",
 };
 
 /** Un mapa leído con `Object.hasOwn`: `status: "constructor"` no debe dar una función del prototipo. */

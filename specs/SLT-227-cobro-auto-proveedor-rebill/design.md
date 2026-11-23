@@ -135,7 +135,7 @@ export interface AvisoFirmado {
 }
 
 export interface DevolverEntrada { pagoProveedorId: string; monto: string; moneda: string } // monto parcial o total
-export type EstadoDevolucion = "pendiente" | "aprobada" | "rechazada";
+export type EstadoDevolucion = "pendiente" | "aprobada" | "denegada";
 /** Rebill solo responde `{ status }`: no hay id de devolución (P3). */
 export interface DevolucionDelProveedor { estado: EstadoDevolucion }
 
@@ -360,7 +360,7 @@ El test afirma dos cosas sobre el cuerpo crudo que recibe el doble:
 | `refunded` | `aprobada` |
 | `partially_refunded` | `aprobada` |
 | `approved` | `pendiente` (asíncrono, según la doc) |
-| `cancelled` | `rechazada` |
+| `cancelled` | `denegada` |
 
   Cualquier otro valor es `respuesta_invalida`.
 - **No se reintenta** (R22): sin idempotencia documentada, un segundo `POST` puede devolver dos veces.

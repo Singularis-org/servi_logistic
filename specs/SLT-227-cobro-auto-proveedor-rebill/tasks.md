@@ -42,7 +42,7 @@
 
 ## Tanda 2 — Las credenciales (depende de T1)
 
-- [ ] **T2.1** `lib/types/cobro.ts`: `ENTORNOS_COBRO`, `EntornoCobro`, `OperacionProveedor`, `CodigoErrorProveedor` y
+- [x] **T2.1** `lib/types/cobro.ts`: `ENTORNOS_COBRO`, `EntornoCobro`, `OperacionProveedor`, `CodigoErrorProveedor` y
   `ProveedorCobroError` (design §4). `lib/interfaces/external/IProveedorCobro.ts`: `IConsultaPagoProveedor`, el
   `IProveedorCobro` ampliado, los tipos de entrada y salida, y `LeerCredencialesCobro` (design §3).
   `CobroIntentoService.ts` y su test pasan a `IConsultaPagoProveedor`, solo en los tipos.

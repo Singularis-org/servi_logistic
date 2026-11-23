@@ -473,7 +473,7 @@ describe("SLT-227 · adaptador de Rebill contra el doble", () => {
       const entrada = { pagoProveedorId: PAGO_TARJETA.id, monto: "1.00", moneda: "CRC" };
       const casos = [
         ["approved", "pendiente"],
-        ["cancelled", "rechazada"],
+        ["cancelled", "denegada"],
       ] as const;
       for (const [status, estado] of casos) {
         await encolarFallos(doble, { estado: 201, cuerpo: { status } });
