@@ -357,3 +357,24 @@ Tanda 3 en verde (R16–R20, R22).
   - Ninguna corrida tuvo skipped ni flaky (sin reintentos).
 - **Veredicto:** T5.1 hecha. `mora-prorroga` sale verde en las tres corridas (5/5). `dinero` y el humo salen verdes en
   las dos, salvo el rojo de la cola de geocodificación de arriba, que no es de esta feature.
+
+## T5.3 — `./init.sh` (implementer, 2026-11-23)
+
+- `NODE_OPTIONS=--max-old-space-size=8192 ./init.sh` sale con exit 1 en el validador de features y se detiene ahí:
+  `✗ feature_list.json invalido: zona fullstack: SL-21, SLT-46, SLT-47, SLT-48, SLT-81, SLT-89, SLT-125, SLT-132,
+  SLT-215, SLT-243, SLT-255 (11 in_progress, max 7)`. Es el cupo fullstack del board, que el humano autorizó
+  ignorar. No viene de esta feature. El validador no admite otra ruta y el `fail` corta el gate, así que el resto
+  se corrió a mano:
+  - `pnpm run typecheck`: exit 0.
+  - `pnpm run lint`: `249 problems (0 errors, 249 warnings)`, todos del repo. `eslint` de los 38 archivos TS del
+    diff: exit 0, sin avisos.
+  - `pnpm run test:guardias`: `Test Files 358 passed | 3 skipped (361)` y `Tests 5438 passed | 28 skipped (5466)`.
+  - `vitest related` de los archivos de `lib/` y `app/` del diff: Claude Code lo paró por falta de memoria del
+    sistema y no se relanzó. Los tests de cada tanda pasaron arriba, y la suite completa pasó en CI.
+- **CI** (`gh pr checks 279`, corrida 45219678087 sobre `7f0ca6c5`): todo en verde.
+  - `gate-completo` y `estatico`.
+  - Los 3 shards de vitest.
+  - `e2e` con `aislamiento`, `dinero` y `reparto`.
+  - «Filas fuera de su transacción»: `0 filas fuera de su transacción`.
+  - Tamaño: `42/40 archivos, 971/1000 lineas de produccion, 1849/3000 de tests`, aceptado por el humano.
+- T5.3 queda `[ ]`: su «hecho» pide `./init.sh` en verde, y en local solo lo tumba el cupo heredado.
