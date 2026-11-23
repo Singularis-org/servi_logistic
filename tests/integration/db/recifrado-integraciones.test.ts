@@ -5,7 +5,10 @@ import type { PrismaClient } from "@prisma/client";
 import type { AnilloDeClaves } from "@/lib/config/integraciones";
 import { BovedaIntegraciones, ResumenSecretoSha256 } from "@/lib/crypto/boveda-integraciones";
 import { paraCadaEmpresa, type ClienteDeOrganizaciones } from "@/lib/db/para-cada-empresa";
+import type { IIntegracionRecifradoRepository } from "@/lib/interfaces/repositories/IIntegracionRecifradoRepository";
+import { CobroCredencialRepository } from "@/lib/repositories/CobroCredencialRepository";
 import { IntegracionRecifradoRepository } from "@/lib/repositories/IntegracionRecifradoRepository";
+import { CobroCredencialService, crearLectorCredencialesCobro } from "@/lib/services/CobroCredencialService";
 import { RecifradoIntegracionesService } from "@/lib/services/RecifradoIntegracionesService";
 import { ejecutarRecifrado } from "@/scripts/recifrar-integraciones";
 import { crearOrganizacion } from "@/tests/fabricas/organizaciones";
@@ -158,7 +161,17 @@ async function secretosEnBase(tx: TxDeTest, s: Sembrada): Promise<Map<string, Re
   return new Map(filas.map((f) => [f.id, f.secretos as Record<string, string>]));
 }
 
-function servicioDe(tx: TxDeTest, s: Sembrada): RecifradoIntegracionesService {
+/** Sin credenciales de cobro: los casos de SL-36 miden solo las empresas (la pasada de plataforma, en R13). */
+const SIN_CREDENCIALES_DE_COBRO: IIntegracionRecifradoRepository = {
+  listarSecretos: async () => [],
+  reemplazarSecretos: async () => false,
+};
+
+function servicioDe(
+  tx: TxDeTest,
+  s: Sembrada,
+  plataforma: IIntegracionRecifradoRepository = SIN_CREDENCIALES_DE_COBRO,
+): RecifradoIntegracionesService {
   const soloLasDos: ClienteDeOrganizaciones = {
     organizacion: { findMany: async () => [{ id: s.A }, { id: s.B }] },
   };
@@ -167,6 +180,7 @@ function servicioDe(tx: TxDeTest, s: Sembrada): RecifradoIntegracionesService {
     versionActiva: () => rotado.activa,
     repositorio: new IntegracionRecifradoRepository(tx as unknown as Pick<PrismaClient, "integracion">),
     recorrerEmpresas: (fn) => paraCadaEmpresa(fn, { cliente: soloLasDos }),
+    plataforma,
   });
 }
 
@@ -270,6 +284,63 @@ describeSiHayBase("SL-36 T5.4 — recifrado de integraciones contra Postgres", (
       expect(codigo).toBe(1);
       expect(texto).not.toContain("secreta-pegada");
       expect(await secretosEnBase(tx, s)).toEqual(antes);
+    });
+  }, 60_000);
+
+  // ─── SLT-227 (design §9.2, R13): la pasada de plataforma sobre las credenciales de cobro ────────────────────────
+  //
+  // El repositorio de plataforma es el real, sobre la misma transacción. La tabla se vacía DENTRO de la transacción
+  // revertida para que el conteo no dependa de lo que tenga la base. Mutación medida (design §12, n.º 8): sin la
+  // pasada de plataforma, este caso cae (progress/impl_SLT-227.md).
+
+  it("R13: el recifrado lleva a v2 las credenciales de cobro en v1 y las suma al resumen", async () => {
+    await revertida(async (tx) => {
+      const s = await sembrar(tx);
+      await tx.$executeRawUnsafe(`DELETE FROM "cobro_proveedor_credencial"`);
+      const [{ id: pais }] = await tx.$queryRawUnsafe<{ id: string }[]>(`SELECT "id" FROM "pais" ORDER BY "id" LIMIT 1`);
+      const repoCobro = new CobroCredencialRepository(
+        tx as unknown as ConstructorParameters<typeof CobroCredencialRepository>[0],
+      );
+      const claros = { apiKey: `sk_test_${randomUUID()}`, secretoWebhook: `whsec_${"5a".repeat(32)}` };
+      const carga = new CobroCredencialService({
+        repo: repoCobro,
+        cifrador: enV1,
+        fuente: { nuevoId: () => randomUUID() },
+        ahora: () => new Date("2026-11-21T10:00:00.000Z"),
+      });
+      const trio = { proveedor: "rebill", paisId: pais, entorno: "sandbox" } as const;
+      expect(await carga.guardar({ usuarioId: "u-super", rol: "superadmin" }, { ...trio, secretos: claros })).toMatchObject({ estado: "ok" });
+      const cifradosAntes = (await repoCobro.secretosDe(trio))?.secretos ?? {};
+      expect(Object.values(cifradosAntes).every((v) => v.startsWith("v1:"))).toBe(true);
+
+      const { valor: codigo, texto } = await capturarSalida(() => ejecutarRecifrado(servicioDe(tx, s, repoCobro), []));
+      expect(codigo).toBe(0);
+      // Las 3 de las empresas que se mueven + los 2 campos de la credencial de cobro; nada queda en v1.
+      expect(texto).toContain("Recifrados a v2: 5.");
+      expect(texto).toContain("  v2 -> 6");
+      expect(texto).not.toContain("v1 ->");
+      expect(texto).toContain("ilegibles: 1");
+      for (const prohibido of [...Object.values(claros), ...Object.values(cifradosAntes)]) expect(texto).not.toContain(prohibido);
+
+      const despues = (await repoCobro.secretosDe(trio))?.secretos ?? {};
+      expect(Object.values(despues).every((v) => v.startsWith("v2:"))).toBe(true);
+      // Se lee con el lector y SOLO la v2: la v1 ya se podría retirar del anillo.
+      expect(await crearLectorCredencialesCobro({ repo: repoCobro, cifrador: enV2 })(trio)).toEqual(claros);
+    });
+  }, 60_000);
+
+  it("R13: si falla la pasada de plataforma, cuenta como un error de base y el comando sale con 1 sin imprimirlo", async () => {
+    await revertida(async (tx) => {
+      const s = await sembrar(tx);
+      const rota: IIntegracionRecifradoRepository = {
+        listarSecretos: async () => Promise.reject(new Error("fallo con v1:CIFRADO_CENTINELA")),
+        reemplazarSecretos: async () => false,
+      };
+      const resumen = await servicioDe(tx, s, rota).ejecutar({ soloContar: true });
+      expect(resumen.empresasConError).toBe(1);
+      const { valor: codigo, texto } = await capturarSalida(() => ejecutarRecifrado(servicioDe(tx, s, rota), ["--solo-contar"]));
+      expect(codigo).toBe(1);
+      expect(texto).not.toContain("CIFRADO_CENTINELA");
     });
   }, 60_000);
 });

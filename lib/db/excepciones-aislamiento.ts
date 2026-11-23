@@ -273,6 +273,13 @@ export const EXCEPCIONES_DE_PLATAFORMA: readonly ExcepcionDeAislamiento[] = [
     motivo:
       "SLT-226: el cobro en línea; llama a las funciones del dueño de 20261124140100, que `servi_app` no puede ejecutar (`cobro_intento_obtener_o_crear`, `cobro_intento_registrar_enlace`, `cobro_intento_avanzar`, `cobro_registrar_pago_aprobado`, `cobro_evento_registrar`, `cobro_evento_cerrar` y `cobro_marcar_pagado_manual`), el superadmin lee los intentos de una factura de cualquier empresa y marca pagado a mano un intento de cualquiera (R1–R5, R10, R12–R24, R27, R35–R39)",
   },
+  {
+    // SLT-227 (design §8.2). Lleva `SL-36` (la ficha de la bóveda) porque `FichaJira` no admite `SLT` (deuda D29).
+    archivo: "lib/repositories/CobroCredencialRepository.ts",
+    ficha: "SL-36",
+    motivo:
+      "SLT-227: credenciales de los proveedores de cobro, de plataforma y sin empresa; las lee el adaptador sin sesión y las escribe el superadmin (R5–R13)",
+  },
 ];
 
 /**

@@ -1,7 +1,7 @@
 import { RolValue } from "@prisma/client";
 import { describe, expect, it, vi } from "vitest";
 
-import type { IProveedorCobro, PagoDelProveedor } from "@/lib/interfaces/external/IProveedorCobro";
+import type { IConsultaPagoProveedor, PagoDelProveedor } from "@/lib/interfaces/external/IProveedorCobro";
 import type { ICobroIntentoRepository } from "@/lib/interfaces/repositories/ICobroIntentoRepository";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import { CobroIntentoService } from "@/lib/services/CobroIntentoService";
@@ -48,7 +48,7 @@ const INTENTO_DTO: CobroIntentoDTO = {
 
 function montar(opciones: {
   llegada?: "nuevo" | "repetido" | "pendiente";
-  consultar?: IProveedorCobro["consultarPago"];
+  consultar?: IConsultaPagoProveedor["consultarPago"];
   registrar?: Awaited<ReturnType<ICobroIntentoRepository["registrarPagoAprobado"]>>["resultado"];
   avanzar?: Awaited<ReturnType<ICobroIntentoRepository["avanzar"]>>["resultado"];
 } = {}) {
@@ -68,9 +68,9 @@ function montar(opciones: {
     intentosDeFactura: vi.fn<ICobroIntentoRepository["intentosDeFactura"]>(async () => [INTENTO_DTO]),
     marcarPagadoManual: vi.fn<ICobroIntentoRepository["marcarPagadoManual"]>(async () => "ok"),
   } satisfies ICobroIntentoRepository;
-  const consultarPago = vi.fn<IProveedorCobro["consultarPago"]>(opciones.consultar ?? (async () => pagoDelProveedor("aprobado")));
-  const proveedor: IProveedorCobro = { proveedor: "rebill", consultarPago };
-  const service = new CobroIntentoService(repo, new Map<ProveedorCobroId, IProveedorCobro>([["rebill", proveedor]]), () => AHORA, "CRC");
+  const consultarPago = vi.fn<IConsultaPagoProveedor["consultarPago"]>(opciones.consultar ?? (async () => pagoDelProveedor("aprobado")));
+  const proveedor: IConsultaPagoProveedor = { proveedor: "rebill", consultarPago };
+  const service = new CobroIntentoService(repo, new Map<ProveedorCobroId, IConsultaPagoProveedor>([["rebill", proveedor]]), () => AHORA, "CRC");
   return { service, repo, consultarPago };
 }
 

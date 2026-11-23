@@ -8,6 +8,7 @@ import type {
   IRecifradoIntegracionesService,
   ResumenRecifrado,
 } from "@/lib/interfaces/services/IRecifradoIntegracionesService";
+import { CobroCredencialRepository } from "@/lib/repositories/CobroCredencialRepository";
 import { IntegracionRecifradoRepository } from "@/lib/repositories/IntegracionRecifradoRepository";
 import { RecifradoIntegracionesService } from "@/lib/services/RecifradoIntegracionesService";
 
@@ -112,6 +113,8 @@ async function main(): Promise<void> {
       versionActiva: () => leerAnilloDeClaves().activa,
       repositorio: new IntegracionRecifradoRepository(prisma),
       recorrerEmpresas: (fn) => paraCadaEmpresa(fn),
+      // SLT-227 (design §9.2, R13): las credenciales de los proveedores de cobro, en la misma pasada.
+      plataforma: new CobroCredencialRepository(prisma),
     });
     // `exitCode` y no `exit()`: asi stdout y stderr terminan de escribirse antes de salir.
     process.exitCode = await ejecutarRecifrado(servicio, process.argv.slice(2));

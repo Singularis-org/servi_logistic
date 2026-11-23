@@ -1,6 +1,6 @@
 import { esAccesoTotal } from "@/lib/auth/acceso-total";
 import { esPlataforma } from "@/lib/auth/plataforma";
-import type { IProveedorCobro, PagoDelProveedor } from "@/lib/interfaces/external/IProveedorCobro";
+import type { IConsultaPagoProveedor, PagoDelProveedor } from "@/lib/interfaces/external/IProveedorCobro";
 import type { ICobroIntentoRepository } from "@/lib/interfaces/repositories/ICobroIntentoRepository";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type {
@@ -33,7 +33,7 @@ type Intento = { resultado: ResultadoDelEvento; intentoId: string | null };
 export class CobroIntentoService implements ICobroIntentoService {
   constructor(
     private readonly repo: ICobroIntentoRepository,
-    private readonly proveedores: ReadonlyMap<ProveedorCobroId, IProveedorCobro>,
+    private readonly proveedores: ReadonlyMap<ProveedorCobroId, IConsultaPagoProveedor>,
     private readonly ahora: () => Date,
     /** La moneda local (`monedaConfig.currency` en el composition root): el intento cobra en ella (R1). */
     private readonly monedaLocal: string,
@@ -121,7 +121,7 @@ export class CobroIntentoService implements ICobroIntentoService {
   }
 
   /** R14, R16: el estado sale del proveedor, no del evento. Si la consulta falla, el evento queda sin cerrar. */
-  private async consultar(proveedor: IProveedorCobro, evento: EventoProveedor): Promise<PagoDelProveedor | null> {
+  private async consultar(proveedor: IConsultaPagoProveedor, evento: EventoProveedor): Promise<PagoDelProveedor | null> {
     try {
       return await proveedor.consultarPago(evento.pagoProveedorId);
     } catch (e) {

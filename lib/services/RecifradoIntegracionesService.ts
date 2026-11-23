@@ -5,6 +5,7 @@ import type {
   OpcionesRecifrado,
   ResumenRecifrado,
 } from "@/lib/interfaces/services/IRecifradoIntegracionesService";
+import { ORGANIZACION_PLATAFORMA_EN_BOVEDA } from "@/lib/services/CobroCredencialService";
 
 // SL-36 (design §12; D10, R38-R40) — la rotacion de la clave maestra de las integraciones.
 //
@@ -23,6 +24,8 @@ export interface RecifradoDeps {
   repositorio: IIntegracionRecifradoRepository;
   /** `paraCadaEmpresa`: corre `fn` una vez por empresa, dentro de `conEmpresa`. */
   recorrerEmpresas: (fn: (organizacionId: string) => Promise<void>) => Promise<unknown>;
+  /** SLT-227 (design §9.2, R13): las credenciales de cobro, de plataforma (`CobroCredencialRepository`). */
+  plataforma: IIntegracionRecifradoRepository;
 }
 
 /** Lo que una empresa aporta al resumen. Se suma solo si la empresa termina sin error de base. */
@@ -53,10 +56,10 @@ export class RecifradoIntegracionesService implements IRecifradoIntegracionesSer
       empresasConError: 0,
     };
 
-    await this.deps.recorrerEmpresas(async (organizacionId) => {
+    const pasada = async (organizacionId: string, repositorio: IIntegracionRecifradoRepository): Promise<void> => {
       let conteo: ConteoDeEmpresa;
       try {
-        conteo = await this.empresa(organizacionId, activa, opciones.soloContar);
+        conteo = await this.empresa(organizacionId, activa, opciones.soloContar, repositorio);
       } catch {
         // El error NO se propaga ni se imprime: `paraCadaEmpresa` lo volcaria entero, y el mensaje
         // de un error de Prisma lleva los argumentos de la consulta, cifrados incluidos. Basta con
@@ -69,15 +72,28 @@ export class RecifradoIntegracionesService implements IRecifradoIntegracionesSer
       resumen.ilegibles += conteo.ilegibles;
       resumen.recifrados += conteo.recifrados;
       resumen.conflictos += conteo.conflictos;
-    });
+    };
+
+    await this.deps.recorrerEmpresas((organizacionId) => pasada(organizacionId, this.deps.repositorio));
+    // SLT-227 (design §9.2, R13): las credenciales de los proveedores de cobro, con el contexto de la boveda de
+    // plataforma (design §8.1). Sin esta pasada una version vieja seguiria en uso sin que el resumen lo dijera. Un
+    // fallo aqui cuenta en `empresasConError`, como el de una empresa.
+    await pasada(ORGANIZACION_PLATAFORMA_EN_BOVEDA, this.deps.plataforma);
 
     resumen.porVersion = Object.fromEntries([...porVersion].sort(([a], [b]) => a.localeCompare(b)));
     return resumen;
   }
 
-  private async empresa(organizacionId: string, activa: string, soloContar: boolean): Promise<ConteoDeEmpresa> {
+  // SLT-227 (design §9.2): el repositorio es parametro para que la pasada de plataforma reuse este
+  // mismo recorrido sobre las credenciales de cobro, con su propio repositorio.
+  private async empresa(
+    organizacionId: string,
+    activa: string,
+    soloContar: boolean,
+    repositorio: IIntegracionRecifradoRepository = this.deps.repositorio,
+  ): Promise<ConteoDeEmpresa> {
     const conteo: ConteoDeEmpresa = { porVersion: new Map(), ilegibles: 0, recifrados: 0, conflictos: 0 };
-    for (const fila of await this.deps.repositorio.listarSecretos()) {
+    for (const fila of await repositorio.listarSecretos()) {
       const nuevos: Record<string, string> = {};
       /** La version de cada valor legible tal como esta guardado hoy. */
       const antes: string[] = [];
@@ -102,7 +118,7 @@ export class RecifradoIntegracionesService implements IRecifradoIntegracionesSer
         aMover += 1;
       }
 
-      if (aMover > 0 && (await this.deps.repositorio.reemplazarSecretos(fila.id, fila.secretos, nuevos))) {
+      if (aMover > 0 && (await repositorio.reemplazarSecretos(fila.id, fila.secretos, nuevos))) {
         conteo.recifrados += aMover;
         for (let i = 0; i < antes.length; i += 1) sumarVersion(conteo.porVersion, activa);
         continue;
