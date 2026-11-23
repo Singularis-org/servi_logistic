@@ -13,6 +13,7 @@ import { normalizeName } from "@/lib/utils/normalize";
 import type { RangoPagina } from "@/lib/utils/rango-pagina";
 import { listarOrdenesBodegaPaginadoSchema } from "@/lib/types/recepcion-satelite";
 import { CAMPOS_BASE_ORDEN } from "@/tests/fixtures/fila-bodega-satelite";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // Feature 170 — FASE 2, T K.1 (R40/R41/R44/R45/R51) — «Órdenes de la bodega» de la bodega
 // satelite: los TRES filtros pasan al servidor y el listado pagina.
@@ -216,6 +217,9 @@ function repoEnMemoria(filas: FilaAlmacen[] = ALMACEN) {
     findUsuarioZonaId,
     findRecepcionSateliteByZona,
     findRecepcionSatelitePaginada,
+    // SLT-160 (R606): ninguna fila de este almacén tiene por guía un término de los tests
+    // («88880000» es un teléfono), así que el doble responde que no: contención como siempre.
+    existeGuiaEnBodega: vi.fn(async () => false),
   } as unknown as IOrdenRepository;
 
   return { repo, llamadas, findRecepcionSatelitePaginada };
@@ -240,8 +244,8 @@ function servicio(repo: IOrdenRepository, lotes?: string[][], ahora?: Date) {
   // El reloj se inyecta para poder fijar el rango del atajo de antiguedad («ultimos 7 dias»
   // se mide desde AHORA); sin `ahora` el servicio usa el del sistema, como en produccion.
   return ahora
-    ? new RecepcionSateliteService(repo, historial, () => ahora)
-    : new RecepcionSateliteService(repo, historial);
+    ? new RecepcionSateliteService(repo, historial, () => ahora, reglasPaisFijas())
+    : new RecepcionSateliteService(repo, historial, undefined, reglasPaisFijas());
 }
 
 function input(extra: Record<string, unknown> = {}) {

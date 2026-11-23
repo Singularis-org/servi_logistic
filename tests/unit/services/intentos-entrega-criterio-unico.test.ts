@@ -3,7 +3,6 @@ import type { PrismaClient } from "@prisma/client";
 import { OrdenHistorialRepository } from "@/lib/repositories/OrdenHistorialRepository";
 import { OrdenHistorialService } from "@/lib/services/OrdenHistorialService";
 import { DevolucionSlaService } from "@/lib/services/DevolucionSlaService";
-import { reintentosConfig } from "@/lib/config/reintentos";
 import type { IOrdenRepository } from "@/lib/interfaces/repositories/IOrdenRepository";
 import type { IOrdenHistorialRepository } from "@/lib/interfaces/repositories/IOrdenHistorialRepository";
 import type { IZonaRepository } from "@/lib/interfaces/repositories/IZonaRepository";
@@ -213,8 +212,8 @@ describe("R6 — el cron SLA, el drawer y el lote ven EL MISMO numero", () => {
 
     const drawer = await service.obtenerHistorial(ORDEN, MAESTRO);
     if (drawer.status !== "ok") throw new Error("esperaba ok");
-    expect(drawer.intentos).toBe(reintentosConfig.MIN_INTENTOS_ENTREGA); // 3 >= umbral 3
-    expect(drawer.umbral).toBe(reintentosConfig.MIN_INTENTOS_ENTREGA);
+    expect(drawer.intentos).toBe(3); // 3 >= umbral 3
+    expect(drawer.umbral).toBe(3);
 
     const { repo, svc } = cron(service, ordenRepo);
     const res = await svc.ejecutar(NOW);
@@ -296,9 +295,7 @@ describe("R6 — el cron SLA, el drawer y el lote ven EL MISMO numero", () => {
     // (1) R18-c: el cron sigue comparando el conteo contra el umbral ANTES de escalar. 3 visitas
     // reales en 3 cierres aprobados = 3 >= umbral 3 -> escala. La condicion NO cambia.
     const antes = montar(visitasReales);
-    expect(await antes.service.contarIntentos(ORDEN)).toBe(
-      reintentosConfig.MIN_INTENTOS_ENTREGA,
-    );
+    expect(await antes.service.contarIntentos(ORDEN)).toBe(3);
     const { repo, svc } = cron(antes.service, antes.ordenRepo);
     expect(await svc.ejecutar(NOW)).toEqual({
       evaluadas: 0,

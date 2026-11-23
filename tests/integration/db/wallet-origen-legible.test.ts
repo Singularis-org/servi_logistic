@@ -8,12 +8,25 @@ import { OrigenLegibleService } from "@/lib/services/OrigenLegibleService";
 import { WalletTiendaService } from "@/lib/services/WalletTiendaService";
 
 import { sembrarPersonas461 } from "./_fixtures/personas-461";
+import { crearFksDeOrden } from "./_fixtures/orden-minima";
 import {
   HAY_BASE_DE_DATOS,
   crearPrismaDeTest,
   enTransaccionRevertida,
   type TxDeTest,
 } from "./_postgres-real";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
+
+// SLT-42 (T5.4): la zona del pais de la empresa es la de CR, como antes. Las reglas reales leen el pais
+// de la empresa en curso con el cliente global, que no ve la empresa de una transaccion revertida ni
+// tiene empresa fuera de `conEmpresa`; la zona por pais la miden `hora-por-pais-wallet` y `demo-qa`.
+vi.mock("@/lib/services/ReglasPaisEmpresaService", async (importOriginal) => {
+  const { reglasPaisFijas } = await import("@/tests/fabricas/reglas-pais");
+  return {
+    ...(await importOriginal<typeof import("@/lib/services/ReglasPaisEmpresaService")>()),
+    construirReglasPaisEmpresa: () => reglasPaisFijas(),
+  };
+});
 
 // SL-23 (design §10): la puerta de módulo con todo encendido; aquí no se prueba el módulo apagado.
 vi.mock("@/lib/modulos/exigir-modulo", async () => (await import("@/tests/fabricas/modulos")).puertasAbiertas());
@@ -33,11 +46,11 @@ const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
 
 async function sembrar(tx: TxDeTest) {
   const p = await sembrarPersonas461(tx);
-  const zona = await tx.zona.findFirst({ select: { id: true } });
-  const fks = await tx.orden.findFirst({
-    select: { estatusId: true, zonaId: true, provinciaId: true, cantonId: true },
-  });
-  if (zona === null || fks === null) throw new Error("base sin sembrar: faltan zona u orden");
+  // SLT-184 (R1122/R1124): zona y FK de la orden propias, sembradas en la tx (antes «la primera
+  // zona» y «la primera orden» de la base), con su control positivo.
+  const fks = await crearFksDeOrden(tx);
+  const zona = { id: fks.zonaId };
+  expect(await tx.zona.count({ where: { id: zona.id } }), "SLT-184: la zona sembrada no esta en la base").toBe(1);
   // Un mensajero con segundo apellido, como 11 de los 22 de produccion: el origen lo nombra entero.
   await tx.usuario.update({
     where: { id: p.mensajeroId },
@@ -112,8 +125,9 @@ describeSiHayBase("458-A R5–R8 — el origen legible sale de la base, por la a
         { tiendaId: e.p.tiendaId, page: 1, pageSize: 20 },
         {
           getActor: async () => e.p.maestro,
+          reglasPais: reglasPaisFijas(), // SLT-42 (R22): la zona de CR; el servicio va sobre la transaccion del test
           service: new WalletTiendaService(new WalletTiendaMovimientoRepository(tx as never)),
-          origenes: new OrigenLegibleService(new OrigenLegibleRepository(tx as never)),
+          origenes: new OrigenLegibleService(new OrigenLegibleRepository(tx as never), reglasPaisFijas()),
         },
       );
       return { e, res };

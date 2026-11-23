@@ -12,6 +12,17 @@ import type { ILiquidacionService } from "@/lib/interfaces/services/ILiquidacion
 import type { PagoRegistradoDTO } from "@/lib/types/liquidacion";
 import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
 
+// SLT-42 (T5.4): la zona del pais de la empresa, sin sesion ni base: la de CR, como antes. El borde
+// (`zonaDelBorde`) y los composition roots leen `construirReglasPaisEmpresa`; la zona en si la mide
+// `tests/unit/services/hora-por-pais-wallet.test.ts`.
+vi.mock("@/lib/services/ReglasPaisEmpresaService", async (importOriginal) => {
+  const { reglasPaisFijas } = await import("@/tests/fabricas/reglas-pais");
+  return {
+    ...(await importOriginal<typeof import("@/lib/services/ReglasPaisEmpresaService")>()),
+    construirReglasPaisEmpresa: () => reglasPaisFijas(),
+  };
+});
+
 // Feature 172 / T B.7 — Server Actions de REGISTRO. Cubre R3 (sin sesion -> `unauthenticated`
 // ANTES de tocar el servicio), R14 (ningun monto viaja como `number`) y R65 (no se exporta
 // ninguna accion de EDITAR un pago).

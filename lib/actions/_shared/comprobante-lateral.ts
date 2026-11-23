@@ -10,6 +10,7 @@ import { WalletAnulacionDestinoRepository } from "@/lib/repositories/WalletAnula
 import { WalletComprobanteRepository } from "@/lib/repositories/WalletComprobanteRepository";
 import { WalletAnulacionService } from "@/lib/services/WalletAnulacionService";
 import { WalletComprobanteService } from "@/lib/services/WalletComprobanteService";
+import { construirReglasPaisEmpresa } from "@/lib/services/ReglasPaisEmpresaService";
 import { SupabaseFileStorage } from "@/lib/storage/SupabaseFileStorage";
 import { SupabaseSignedUrlProvider } from "@/lib/storage/SupabaseSignedUrlProvider";
 import { comprobanteOpcionalSchema } from "@/lib/types/wallet-laterales";
@@ -22,6 +23,8 @@ export function buildComprobantes(prisma: PrismaClient): IWalletComprobanteServi
     new SupabaseFileStorage(undefined, walletComprobanteConfig.BUCKET),
     new SupabaseSignedUrlProvider(undefined, walletComprobanteConfig.BUCKET),
     (fn) => prisma.$transaction((tx) => fn(tx)),
+    undefined, // la configuracion por defecto
+    construirReglasPaisEmpresa(prisma), // SLT-42 (R22): el dia del rotulo, en la zona del pais
   );
 }
 

@@ -18,9 +18,10 @@
 // cabecera que es tipos puros justamente para poder cruzar esa frontera).
 
 import { EMPRESA, MARCA } from "@/lib/config/marca";
-import { formatMonto } from "@/lib/config/moneda";
+import { formatearMontoEn, MONEDA_PLATAFORMA, type FormatoMoneda } from "@/lib/config/moneda";
 import { nombreDeEstado } from "@/lib/types/order-status";
 import { PARAM_GUIA } from "@/app/_landing/guia-en-url";
+import { fechaCalendario, horaDePared } from "@/lib/utils/calendario-zona";
 
 /* -------------------------------------------------------------------------- */
 /* 1. Los datos                                                                */
@@ -141,19 +142,17 @@ const numero = (v: number | null): string => (v === null ? VACIO : String(v));
 const siNo = (v: boolean | null): string => (v === null ? VACIO : v ? "Sí" : "No");
 
 /**
- * Dinero con el formato UNICO del repo (`lib/config/moneda.ts`): simbolo configurable, miles
- * con punto y SIN centimos — `₡12.500`, no `12500` ni `₡12,500.00`. Un `null` no se pinta como
- * la raya de las pantallas: en un WhatsApp esa raya no significa nada.
+ * Dinero con el formato UNICO del repo (`lib/config/moneda.ts`), en la moneda del pais de la
+ * empresa (SL-21, R10): la pasa quien resuelve en el servidor (`necesitaMoneda`). Sin moneda, la
+ * de la plataforma: es la vista previa del navegador, que no tiene el pais a mano (SLT-235).
+ * Centimos solo cuando existen — `₡12.500`, no `12500` ni `₡12,500.00`. Un `null` no se pinta
+ * como la raya de las pantallas: en un WhatsApp esa raya no significa nada.
  */
-const dinero = (v: number | null): string => (v === null ? VACIO : formatMonto(v));
+const dinero = (v: number | null, _zona: string | undefined, moneda: FormatoMoneda | undefined): string =>
+  v === null ? VACIO : formatearMontoEn(moneda ?? MONEDA_PLATAFORMA, v);
 
 /** Kilogramos, con la unidad pegada: `1.5 kg`. Mismo criterio que `pos-format.formatPeso`. */
 const peso = (v: number | null): string => (v === null ? VACIO : `${v} kg`);
-
-// Costa Rica es UTC-6 fijo (sin horario de verano), la misma constante que usa
-// `lib/utils/fecha-cr.ts`. Se repite aqui —no se importa— porque aquel modulo es del camino
-// de negocio y este tiene que poder correr en el navegador sin arrastrarlo.
-const CR_OFFSET_MS = 6 * 60 * 60 * 1000;
 
 const dosDigitos = (n: number): string => String(n).padStart(2, "0");
 
@@ -169,12 +168,19 @@ const fecha = (v: Date | null): string =>
 
 /**
  * Fecha y hora de una columna `timestamp` (`asignado_at`, `created_at`): son INSTANTES, asi
- * que hay que traerlos a hora de Costa Rica antes de leer las partes.
+ * que hay que traerlos a la hora de pared de la zona del pais de la empresa antes de leer las
+ * partes (SLT-42, R22). `calendario-zona.ts` no tiene dependencias: corre tambien en el navegador.
+ *
+ * Sin zona y con un instante, lanza: es un llamador que se olvido de pasarla (`necesitaZona`), y
+ * pintar la hora en una zona inventada mandaria al cliente una hora falsa.
  */
-const fechaHora = (v: Date | null): string => {
+const fechaHora = (v: Date | null, zona: string | undefined): string => {
   if (v === null) return VACIO;
-  const cr = new Date(v.getTime() - CR_OFFSET_MS);
-  return `${fecha(cr)} ${dosDigitos(cr.getUTCHours())}:${dosDigitos(cr.getUTCMinutes())}`;
+  if (zona === undefined) {
+    throw new Error("plantilla: una fecha con hora necesita la zona horaria del pais de la empresa (SLT-42)");
+  }
+  const [anio, mes, dia] = fechaCalendario(v, zona).split("-");
+  return `${dia}/${mes}/${anio} ${horaDePared(v, zona)}`;
 };
 
 /* -------------------------------------------------------------------------- */
@@ -216,10 +222,23 @@ export interface CampoPlantilla {
    * del catalogo». Ocultar es reversible y no toca ningun envio vivo.
    */
   ocultoEnSelector?: boolean;
+  /**
+   * SLT-42 (R22): `true` = el texto depende de la zona horaria del pais de la empresa (una fecha
+   * con hora). Quien resuelve la lee solo si alguna variable la necesita (`necesitaZona`).
+   */
+  usaZona?: boolean;
+  /**
+   * SL-21 (R10, R11): `true` = el texto es un importe y se pinta en la moneda del pais de la
+   * empresa. Quien resuelve la lee solo si alguna variable la necesita (`necesitaMoneda`).
+   */
+  usaMoneda?: true;
   /** El valor CRUDO, tal como viene en `DatosPlantilla`. */
   leer(datos: DatosPlantilla): unknown;
-  /** Convierte ese crudo en el texto que se envia. Puro: mismo valor -> mismo texto. */
-  transform(valor: unknown): string;
+  /**
+   * Convierte ese crudo en el texto que se envia. Puro: mismo valor (y misma zona y moneda) ->
+   * mismo texto. `zona` solo la usan los campos con `usaZona`; `moneda`, los de `usaMoneda`.
+   */
+  transform(valor: unknown, zona?: string, moneda?: FormatoMoneda): string;
 }
 
 /**
@@ -234,8 +253,10 @@ function definir<V>(def: {
   descripcion: string;
   ejemplo: string;
   sensible?: boolean;
+  usaZona?: boolean;
+  usaMoneda?: true;
   leer: (datos: DatosPlantilla) => V;
-  transform: (valor: V) => string;
+  transform: (valor: V, zona: string | undefined, moneda: FormatoMoneda | undefined) => string;
 }): CampoPlantilla {
   return {
     clave: def.clave,
@@ -244,8 +265,11 @@ function definir<V>(def: {
     descripcion: def.descripcion,
     ejemplo: def.ejemplo,
     ...(def.sensible === true ? { sensible: true } : {}),
+    ...(def.usaZona === true ? { usaZona: true } : {}),
+    ...(def.usaMoneda === true ? { usaMoneda: true as const } : {}),
     leer: def.leer,
-    transform: (valor: unknown) => def.transform(valor as V),
+    transform: (valor: unknown, zona?: string, moneda?: FormatoMoneda) =>
+      def.transform(valor as V, zona, moneda),
   };
 }
 
@@ -302,6 +326,7 @@ const MONTO = definir({
   nombre: "Monto a cobrar",
   descripcion: "Lo que el cliente paga contra entrega, con símbolo y separador de miles.",
   ejemplo: "₡12.500",
+  usaMoneda: true,
   leer: (d) => d.orden.montoCobrar,
   transform: dinero,
 });
@@ -511,8 +536,9 @@ const CATALOGO_DECLARADO: CampoPlantilla[] = [
     clave: "fecha_asignacion",
     campo: "orden.asignadoAt",
     nombre: "Fecha de asignación",
-    descripcion: "Cuándo se asignó por última vez el mensajero, en hora de Costa Rica.",
+    descripcion: "Cuándo se asignó por última vez el mensajero, en hora local.",
     ejemplo: "26/08/2026 08:15",
+    usaZona: true,
     leer: (d) => d.orden.asignadoAt,
     transform: fechaHora,
   }),
@@ -520,8 +546,9 @@ const CATALOGO_DECLARADO: CampoPlantilla[] = [
     clave: "fecha_creacion",
     campo: "orden.createdAt",
     nombre: "Fecha de creación",
-    descripcion: `Cuándo se registró la orden en ${MARCA.nombre}, en hora de Costa Rica.`,
+    descripcion: `Cuándo se registró la orden en ${MARCA.nombre}, en hora local.`,
     ejemplo: "25/08/2026 16:40",
+    usaZona: true,
     leer: (d) => d.orden.createdAt,
     transform: fechaHora,
   }),
@@ -834,10 +861,33 @@ export const DATOS_PLANTILLA_EJEMPLO: DatosPlantilla = {
  * modelo de plantillas es abierto (se acepta cualquier `{{clave}}` bien formada) y una clave
  * desconocida no puede romper un envio.
  */
-export function valorDeCampo(clave: string, datos: DatosPlantilla): string {
+export function valorDeCampo(
+  clave: string,
+  datos: DatosPlantilla,
+  zona?: string,
+  moneda?: FormatoMoneda,
+): string {
   const campo = CAMPOS_PLANTILLA_POR_CLAVE.get(clave);
   if (campo === undefined) return VACIO;
-  return campo.transform(campo.leer(datos));
+  return campo.transform(campo.leer(datos), zona, moneda);
+}
+
+/**
+ * SLT-42 (R22, R28): `true` si alguna de `variables` pinta una fecha con hora, y entonces quien
+ * resuelve tiene que pasar la zona horaria del pais de la empresa. Asi la zona solo se lee (y su
+ * falta solo falla, R28) cuando la plantilla la usa.
+ */
+export function necesitaZona(variables: readonly string[]): boolean {
+  return variables.some((clave) => CAMPOS_PLANTILLA_POR_CLAVE.get(clave)?.usaZona === true);
+}
+
+/**
+ * SL-21 (R10, R11): `true` si alguna de `variables` pinta un importe, y entonces quien resuelve en
+ * el servidor tiene que pasar la moneda del pais de la empresa. Asi la moneda solo se lee (y su
+ * falta, `PaisSinMoneda`, solo falla) cuando la plantilla la usa.
+ */
+export function necesitaMoneda(variables: readonly string[]): boolean {
+  return variables.some((clave) => CAMPOS_PLANTILLA_POR_CLAVE.get(clave)?.usaMoneda === true);
 }
 
 /**
@@ -848,10 +898,12 @@ export function valorDeCampo(clave: string, datos: DatosPlantilla): string {
 export function resolverValoresPlantilla(
   variables: string[],
   datos: DatosPlantilla,
+  zona?: string,
+  moneda?: FormatoMoneda,
 ): Record<string, string> {
   const valores: Record<string, string> = {};
   for (const clave of variables) {
-    valores[clave] = valorDeCampo(clave, datos);
+    valores[clave] = valorDeCampo(clave, datos, zona, moneda);
   }
   return valores;
 }

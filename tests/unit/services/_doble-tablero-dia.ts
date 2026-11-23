@@ -17,6 +17,7 @@ import { TableroDiaService } from "@/lib/services/TableroDiaService";
 import type { OrdenListItemDTO } from "@/lib/types/orden";
 import type { VentanaDiaCR } from "@/lib/utils/ventana-dia-cr";
 
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 export interface LlamadaConteo {
   readonly ventana: VentanaDiaCR;
   readonly filtro: FiltroAlcanceTablero;
@@ -168,6 +169,6 @@ export function servicioDelTablero(
   const ordenes = new OrdenesDoble();
   const historial = new HistorialDoble();
   return cache === undefined
-    ? new TableroDiaService(repo, ordenes, historial)
-    : new TableroDiaService(repo, ordenes, historial, cache);
+    ? new TableroDiaService(repo, ordenes, historial, undefined, reglasPaisFijas())
+    : new TableroDiaService(repo, ordenes, historial, cache, reglasPaisFijas());
 }

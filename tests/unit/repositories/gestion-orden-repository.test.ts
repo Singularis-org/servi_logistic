@@ -6,6 +6,7 @@ import { idEstado, sembrarCatalogoEstados } from "@/tests/fixtures/catalogo-esta
 // resultado. Estas suites pasan `nuevoEstatusId` a mano, asi que lo derivan de la misma fuente
 // que el servicio real: si el mapa cambia, cambian con el en vez de fijar un destino caducado.
 import { estatusDestinoDeResultado } from "@/lib/types/gestion-destino";
+import { inicioDelDiaCR } from "@/tests/fabricas/reglas-pais";
 
 // Feature 36 — repositorio con Prisma mockeado (sin DB). Cubre el filtrado por
 // mensajero (R9/R13), la guardia origen+propiedad de recogerLote (R15) y la
@@ -200,6 +201,9 @@ describe("GestionOrdenRepository.sumMontoCobrarGestionadas (KPI 'Total a cobrar'
       mensajeroId: "m1",
       anuladaAt: null, // feature 67/R11: una gestion deshecha deja de contar
       createdAt: { gte: DIA.desde, lt: DIA.hasta }, // `lt`, NO `lte`
+      // SLT-151: fuera lo que ya esta en un cierre solicitado/aprobado; sin cierre o rechazado/vencido, dentro.
+      // La medicion contra Postgres: tests/integration/db/total-a-cobrar-sin-cerrado-sql-real.test.ts.
+      OR: [{ cierreId: null }, { cierre: { estado: { notIn: ["solicitado", "aprobado"] } } }],
     });
     expect(arg.where.gestiones.some.resultado).toBeUndefined();
   });
@@ -587,6 +591,7 @@ describe("GestionOrdenRepository.registrarGestionPendiente (ficha 454; antes cre
     const HOY = new Date("2026-07-20T15:00:00.000Z");
     const gestionar = (repo: GestionOrdenRepository) =>
       repo.registrarGestionPendiente({
+        inicioDelDia: inicioDelDiaCR(AHORA_GESTION),
         ordenId: "o1",
         mensajeroId: "m1",
         gestion: { resultado: "entregado", montoRecibido: 1, metodoPago: "efectivo" },
@@ -619,6 +624,7 @@ describe("GestionOrdenRepository.registrarGestionPendiente (ficha 454; antes cre
       buildTxRepo();
 
     const r = await repo.registrarGestionPendiente({
+      inicioDelDia: inicioDelDiaCR(),
       ordenId: "o1",
       mensajeroId: "m1",
       gestion: {
@@ -663,6 +669,7 @@ describe("GestionOrdenRepository.registrarGestionPendiente (ficha 454; antes cre
       gestionable: false,
     });
     const r = await repo.registrarGestionPendiente({
+      inicioDelDia: inicioDelDiaCR(),
       ordenId: "o1",
       mensajeroId: "m1",
       gestion: { resultado: "entregado", montoRecibido: 1, metodoPago: "efectivo", pagos: [{ metodo: "efectivo", monto: 1 }] },
@@ -677,6 +684,7 @@ describe("GestionOrdenRepository.registrarGestionPendiente (ficha 454; antes cre
   it("R26: reprogramada persiste fecha (DATE) y motivo, sin evidencia", async () => {
     const { repo, gestionCreate } = buildTxRepo();
     await repo.registrarGestionPendiente({
+      inicioDelDia: inicioDelDiaCR(),
       ordenId: "o1",
       mensajeroId: "m1",
       gestion: { resultado: "reprogramado", fechaReprogramacion: "2027-01-01", motivo: "x" },
@@ -691,6 +699,7 @@ describe("GestionOrdenRepository.registrarGestionPendiente (ficha 454; antes cre
     const { repo, gestionCreate } = buildTxRepo();
 
     await repo.registrarGestionPendiente({
+      inicioDelDia: inicioDelDiaCR(),
       ordenId: "o1",
       mensajeroId: "m1",
       gestion: {
@@ -716,6 +725,7 @@ describe("GestionOrdenRepository.registrarGestionPendiente (ficha 454; antes cre
   it("R8: el incidente se registra con familia de aplicacion `incidente`; los otros cuatro con `gestion`", async () => {
     const { repo, eventoCreate } = buildTxRepo();
     await repo.registrarGestionPendiente({
+      inicioDelDia: inicioDelDiaCR(),
       ordenId: "o1",
       mensajeroId: "m1",
       gestion: { resultado: "incidente", causaIncidente: "danado", motivo: "caja aplastada" },
@@ -726,6 +736,7 @@ describe("GestionOrdenRepository.registrarGestionPendiente (ficha 454; antes cre
     for (const resultado of ["entregado", "reprogramado", "novedad"] as const) {
       const b = buildTxRepo();
       await b.repo.registrarGestionPendiente({
+        inicioDelDia: inicioDelDiaCR(),
         ordenId: "o1",
         mensajeroId: "m1",
         gestion: { resultado, motivo: "x", fechaReprogramacion: "2099-01-01" },
@@ -741,6 +752,7 @@ describe("GestionOrdenRepository.registrarGestionPendiente (ficha 454; antes cre
   it("R2: el evento guarda la causa TIPIFICADA y nunca el texto libre del mensajero", async () => {
     const { repo, eventoCreate } = buildTxRepo();
     await repo.registrarGestionPendiente({
+      inicioDelDia: inicioDelDiaCR(),
       ordenId: "o1",
       mensajeroId: "m1",
       gestion: { resultado: "novedad", causaDevolucion: "wrong_number", motivo: "telefono errado" },
@@ -756,6 +768,7 @@ describe("GestionOrdenRepository.registrarGestionPendiente (ficha 454; antes cre
     const { repo, gestionCreate } = buildTxRepo();
 
     await repo.registrarGestionPendiente({
+      inicioDelDia: inicioDelDiaCR(),
       ordenId: "o1",
       mensajeroId: "m1",
       gestion: { resultado: "novedad", causaDevolucion: "wrong_number", motivo: "telefono errado" },
@@ -777,6 +790,7 @@ describe("GestionOrdenRepository.registrarGestionPendiente (ficha 454; antes cre
 
     await expect(
       repo.registrarGestionPendiente({
+        inicioDelDia: inicioDelDiaCR(),
         ordenId: "o1",
         mensajeroId: "m1",
         gestion: { resultado: "novedad", causaDevolucion: "wrong_address", motivo: "x" },
@@ -788,6 +802,7 @@ describe("GestionOrdenRepository.registrarGestionPendiente (ficha 454; antes cre
     const { repo, gestionCreate } = buildTxRepo();
 
     await repo.registrarGestionPendiente({
+      inicioDelDia: inicioDelDiaCR(),
       ordenId: "o1",
       mensajeroId: "m1",
       // ⏳ 2026-09-23 (FICHA 454): antes `rechazada`; su aviso N1 sale ahora en este metodo y
@@ -805,6 +820,7 @@ describe("GestionOrdenRepository.registrarGestionPendiente (ficha 454; antes cre
     const { repo, pagoCreateMany, dentroDeTx } = buildTxRepo();
 
     await repo.registrarGestionPendiente({
+      inicioDelDia: inicioDelDiaCR(),
       ordenId: "o1",
       mensajeroId: "m1",
       gestion: {
@@ -832,6 +848,7 @@ describe("GestionOrdenRepository.registrarGestionPendiente (ficha 454; antes cre
     const { repo, pagoCreateMany } = buildTxRepo();
 
     await repo.registrarGestionPendiente({
+      inicioDelDia: inicioDelDiaCR(),
       ordenId: "o1",
       mensajeroId: "m1",
       gestion: {
@@ -863,6 +880,7 @@ describe("GestionOrdenRepository.registrarGestionPendiente (ficha 454; antes cre
 
     await expect(
       repo.registrarGestionPendiente({
+        inicioDelDia: inicioDelDiaCR(),
         ordenId: "o1",
         mensajeroId: "m1",
         gestion: {
@@ -882,6 +900,7 @@ describe("GestionOrdenRepository.registrarGestionPendiente (ficha 454; antes cre
     const { repo, pagoCreateMany, gestionCreate } = buildTxRepo();
 
     await repo.registrarGestionPendiente({
+      inicioDelDia: inicioDelDiaCR(),
       ordenId: "o1",
       mensajeroId: "m1",
       gestion: { resultado: "entregado", montoRecibido: 0, metodoPago: null, pagos: [] },
@@ -897,6 +916,7 @@ describe("GestionOrdenRepository.registrarGestionPendiente (ficha 454; antes cre
     const { repo, pagoCreateMany } = buildTxRepo();
 
     await repo.registrarGestionPendiente({
+      inicioDelDia: inicioDelDiaCR(),
       ordenId: "o1",
       mensajeroId: "m1",
       // ⏳ 2026-09-23 (FICHA 454): antes `rechazada` (ver la nota del caso R10/R16).

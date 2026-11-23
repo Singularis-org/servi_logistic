@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import type { PrismaClient } from "@prisma/client";
 
 import {
@@ -11,10 +11,12 @@ import {
 import {
   CHECK_EMPRESA_O_SUPERADMIN,
   INDICE_UN_SOLO_SUPERADMIN,
+  exigirHuecoDeSuperadmin,
   idDeRol,
   insertarUsuario,
   intentar,
-  liberarHuecoDeSuperadmin,
+  saltarSiHaySuperadminAjeno,
+  superadminDeLaBase,
   tomarLockDeSuperadmin,
 } from "./_fixtures/superadmin-32";
 
@@ -27,19 +29,24 @@ import {
 //
 // Mutacion de T3: sin el CREATE INDEX en el migration.sql, en una base desechable, caen el segundo
 // INSERT y el UPDATE.
+//
+// Todos los casos necesitan el hueco del indice: si la base ya tiene un superadmin que no es del
+// test (una base de desarrollo), se saltan con el motivo a la vista; ese no se borra ni se toca. En
+// CI la base no lo tiene y corren todos.
 
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 
 let prisma: PrismaClient;
 // Tarea A de SL-32: los archivos que crean un superadmin se turnan; ver `tomarLockDeSuperadmin`.
 let soltarSuperadmin: () => Promise<void> = async () => {};
+let hayAjeno = false;
 
 /** Transaccion revertida, serializada y sin superadmin previo. */
 function enCaso<T>(fn: (tx: TxDeTest, rolSuperadmin: string) => Promise<T>): Promise<T> {
   return enTransaccionRevertida(prisma, async (tx) => {
     await serializarEscriturasReales(tx);
     const rolSuperadmin = await idDeRol(tx, "superadmin");
-    await liberarHuecoDeSuperadmin(tx, rolSuperadmin);
+    await exigirHuecoDeSuperadmin(tx);
     return fn(tx, rolSuperadmin);
   });
 }
@@ -48,7 +55,10 @@ describeSiHayBase("SL-32 — un solo superadmin en la base (R27)", () => {
   beforeAll(async () => {
     prisma = crearPrismaDeTest();
     soltarSuperadmin = await tomarLockDeSuperadmin();
+    hayAjeno = (await superadminDeLaBase(prisma)) !== null;
   });
+
+  beforeEach((ctx) => saltarSiHaySuperadminAjeno(ctx, hayAjeno));
 
   afterAll(async () => {
     await soltarSuperadmin();

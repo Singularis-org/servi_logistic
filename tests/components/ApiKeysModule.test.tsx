@@ -11,6 +11,7 @@ import userEvent from "@testing-library/user-event";
 import { SWRConfig } from "swr";
 import type { ReactElement } from "react";
 
+import { RUTA_DESCARGA_GUIA_API_PDF, RUTA_GUIA_API } from "@/lib/ayuda/guia-api";
 import { ToastProvider } from "@/providers/ToastProvider";
 import type { ApiKeyListItemDTO } from "@/lib/types/api-key";
 
@@ -148,6 +149,27 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+});
+
+// ---------------------------------------------------------------------------
+// SLT-223 «Guía de la API: enlaces fuera de Integraciones y dentro de la página API»
+// ---------------------------------------------------------------------------
+describe("SLT-223 — la guía y su PDF, en el cuerpo junto a «Generar API key»", () => {
+  it("⭑ muestra «Guía de integración» y «Descargar guía en PDF» con las rutas de la constante (R1315)", () => {
+    renderModule(<ApiKeysModule initialData={INITIAL} />);
+
+    // Control positivo: es la fila de acciones del módulo.
+    const generarBtn = screen.getByRole("button", { name: "Generar API key" });
+    const guia = screen.getByRole("link", { name: "Guía de integración" });
+    const pdf = screen.getByRole("link", { name: "Descargar guía en PDF" });
+    expect(guia).toHaveAttribute("href", RUTA_GUIA_API);
+    expect(pdf).toHaveAttribute("href", RUTA_DESCARGA_GUIA_API_PDF);
+
+    // Misma fila que «Generar API key» (no en otra parte del módulo).
+    const fila = generarBtn.parentElement as HTMLElement;
+    expect(within(fila).getByRole("link", { name: "Guía de integración" })).toBe(guia);
+    expect(within(fila).getByRole("link", { name: "Descargar guía en PDF" })).toBe(pdf);
+  });
 });
 
 // ---------------------------------------------------------------------------

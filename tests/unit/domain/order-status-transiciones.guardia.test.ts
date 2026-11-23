@@ -145,6 +145,38 @@ describe("398 — la correccion en sitio: `entregada` gana UNA salida, y ni una 
   });
 });
 
+// ---------------------------------------------------------------------------------------------
+// ⭑ FICHA SLT-197 — LA CENTRAL RETIRA DEL ESTANTE DE UNA SATELITE (#73). Una sola salida nueva
+// desde `en_bodega_satelite`; ni salto directo a la central ni vuelta atras (D6).
+// ---------------------------------------------------------------------------------------------
+describe("SLT-197 R970 — `en_bodega_satelite` gana UNA salida, y ni una mas", () => {
+  it("R970: `en_bodega_satelite -> en_ruta_bodega_central` es LEGAL (#73, ajuste_estado)", () => {
+    expect(() => assertTransicionValida("en_bodega_satelite", "en_ruta_bodega_central")).not.toThrow();
+  });
+
+  it("R970: las salidas de `en_bodega_satelite`, enumeradas enteras (destino y familia)", () => {
+    const salidas = TRANSICIONES.en_bodega_satelite.map((d) => `${d.to} (${d.via})`).sort();
+    expect(salidas).toEqual([
+      "en_reparto (deshacer_gestion)",
+      "en_ruta_bodega_central (ajuste_estado)",
+      "incidente (incidente)",
+      "mensajero_recogiendo_en_bodega (asignacion_satelite)",
+    ]);
+  });
+
+  it("R970: `en_bodega_satelite -> en_bodega_central` directa sigue ILEGAL", () => {
+    expect(() => assertTransicionValida("en_bodega_satelite", "en_bodega_central")).toThrow(
+      TransicionIlegalError,
+    );
+  });
+
+  it("R970 (D6): la vuelta `en_ruta_bodega_central -> en_bodega_satelite` sigue ILEGAL", () => {
+    expect(() => assertTransicionValida("en_ruta_bodega_central", "en_bodega_satelite")).toThrow(
+      TransicionIlegalError,
+    );
+  });
+});
+
 describe("R6 — la guardia rechaza los pares que no estan en TRANSICIONES", () => {
   it.each([
     ["entregado", "devuelta_a_tienda"],
@@ -499,8 +531,10 @@ describe("156 — BAJAS EJECUTADAS: generar guia ya no asigna mensajero ni rutea
     // aristas de `devolucion_por_confirmar` y `ayuda_tienda`; ocho pares distintos) y suma DOS de
     // metadato (#71/#72, `gestion_tienda_ayuda` desde `en_reparto`), que repiten los pares de
     // #13/#15 y no suman par.
-    expect(RECUENTO_INVENTARIO.aristasFlujo).toBe(59); // +2: 157; +3 -1: 239; +3: 235; +2: 237; +1: 240; +1: 276; +1: 398; +1 -8 +2: 454
-    expect(RECUENTO_INVENTARIO.paresUnicos).toBe(54); // ... +1: 276 (par nuevo); +1: 398 (par nuevo); +1 -8: 454
+    // Ficha SLT-197 (2026-11-17): 59 -> 60 y 54 -> 55. Suma #73 (`en_bodega_satelite ->
+    // en_ruta_bodega_central`, la central retira del estante de una satelite). Par NUEVO.
+    expect(RECUENTO_INVENTARIO.aristasFlujo).toBe(60); // +2: 157; +3 -1: 239; +3: 235; +2: 237; +1: 240; +1: 276; +1: 398; +1 -8 +2: 454; +1: SLT-197
+    expect(RECUENTO_INVENTARIO.paresUnicos).toBe(55); // ... +1: 276 (par nuevo); +1: 398 (par nuevo); +1 -8: 454; +1: SLT-197
   });
 });
 
@@ -700,13 +734,14 @@ describe("154/R27 — el inventario auditable sigue sincronizado con el mapa", (
   // rechazada`): sube la arista y NO sube el par. Es el tercer duplicado historico del inventario.
   // Ficha 398 (2026-09-08): 63/60/2 -> 64/61/2 con #69 (`entregada -> rechazada`, la correccion
   // en sitio), que es un par NUEVO: de `entregada` solo se salia deshaciendo la gestion.
-  it("los recuentos del inventario son 59 flujo / 54 pares / 2 creacion", () => {
+  it("los recuentos del inventario son 60 flujo / 55 pares / 2 creacion", () => {
     expect(RECUENTO_INVENTARIO).toEqual({
       // ficha 454 (2026-09-23): 64 -> 65 (la alta #70) y, con el retiro del catalogo, 65 -> 59
-      // (-#59..#66, +#71/#72 de metadato).
-      aristasFlujo: 59,
+      // (-#59..#66, +#71/#72 de metadato). Ficha SLT-197 (2026-11-17): 59 -> 60 (#73).
+      aristasFlujo: 60,
       // ficha 454: 61 -> 62 (#70 es par NUEVO) y 62 -> 54 (-8 pares; #71/#72 repiten #13/#15).
-      paresUnicos: 54,
+      // Ficha SLT-197: 54 -> 55 (#73 es par NUEVO).
+      paresUnicos: 55,
       aristasCreacion: 2,
     });
   });

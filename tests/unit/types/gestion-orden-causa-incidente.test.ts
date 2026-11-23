@@ -4,6 +4,7 @@ import { gestionarSchema } from "@/lib/types/gestion-orden";
 import { CAUSA_INCIDENTE_SEED } from "@/lib/types/causa-incidente";
 import { CAUSA_DEVOLUCION_SEED } from "@/lib/types/causa-devolucion";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 // ⚠️ Feature 193 (R10), decision humana del 2026-08-10: la gestion pasa a EXIGIR la ubicacion
 // del mensajero (o un motivo tecnico de por que falta). Los casos validos de abajo se AMPLIAN
 // con `ubicacion` —no se relajan—, mismo criterio que aplicaron la 73 y la 75 al endurecer
@@ -59,7 +60,7 @@ function fechaFuturaISO(): string {
 
 describe("Feature 158 · R9 — la causa es una lista CERRADA de 3 valores en espanol", () => {
   it.each([...CAUSA_INCIDENTE_SEED])("acepta la causa del catalogo `%s`", (causa) => {
-    const r = gestionarSchema.safeParse(incidente({ causaIncidente: causa }));
+    const r = gestionarSchema(ZONA_CR).safeParse(incidente({ causaIncidente: causa }));
     expect(r.success).toBe(true);
     if (r.success && r.data.resultado === "incidente") {
       expect(r.data.causaIncidente).toBe(causa);
@@ -72,7 +73,7 @@ describe("Feature 158 · R9 — la causa es una lista CERRADA de 3 valores en es
   });
 
   it("R9: SIN causa -> invalido, con el error asociado al campo `causaIncidente`", () => {
-    const r = gestionarSchema.safeParse(incidenteSin("causaIncidente"));
+    const r = gestionarSchema(ZONA_CR).safeParse(incidenteSin("causaIncidente"));
     expect(r.success).toBe(false);
     if (!r.success) expect(fieldErrorsDe(r.error).causaIncidente).toBeDefined();
   });
@@ -91,7 +92,7 @@ describe("Feature 158 · R9 — la causa es una lista CERRADA de 3 valores en es
       "peridido", // typo que el spec descarto explicitamente
       "extraviado",
     ]) {
-      const r = gestionarSchema.safeParse(incidente({ causaIncidente: invalida }));
+      const r = gestionarSchema(ZONA_CR).safeParse(incidente({ causaIncidente: invalida }));
       expect(r.success, `deberia rechazar '${invalida}'`).toBe(false);
       if (!r.success) expect(fieldErrorsDe(r.error).causaIncidente).toBeDefined();
     }
@@ -99,7 +100,7 @@ describe("Feature 158 · R9 — la causa es una lista CERRADA de 3 valores en es
 
   it("R9: las causas de DEVOLUCION (73, en ingles) NO son causas de incidente", () => {
     for (const ajena of CAUSA_DEVOLUCION_SEED) {
-      const r = gestionarSchema.safeParse(incidente({ causaIncidente: ajena }));
+      const r = gestionarSchema(ZONA_CR).safeParse(incidente({ causaIncidente: ajena }));
       expect(r.success, `deberia rechazar la causa de devolucion '${ajena}'`).toBe(false);
     }
   });
@@ -110,7 +111,7 @@ describe("Feature 158 · R10 (Q-B) — la evidencia es OBLIGATORIA en las TRES c
     "R10: causa `%s` SIN lista de evidencias -> invalido por campo",
     (causa) => {
       const base = incidenteSin("evidencias");
-      const r = gestionarSchema.safeParse({ ...base, causaIncidente: causa });
+      const r = gestionarSchema(ZONA_CR).safeParse({ ...base, causaIncidente: causa });
       expect(r.success).toBe(false);
       if (!r.success) expect(fieldErrorsDe(r.error).evidencias).toBeDefined();
     },
@@ -119,7 +120,7 @@ describe("Feature 158 · R10 (Q-B) — la evidencia es OBLIGATORIA en las TRES c
   it.each([...CAUSA_INCIDENTE_SEED])(
     "R10: causa `%s` con lista de evidencias VACIA -> invalido (min 1)",
     (causa) => {
-      const r = gestionarSchema.safeParse(incidente({ causaIncidente: causa, evidencias: [] }));
+      const r = gestionarSchema(ZONA_CR).safeParse(incidente({ causaIncidente: causa, evidencias: [] }));
       expect(r.success).toBe(false);
       if (!r.success) expect(fieldErrorsDe(r.error).evidencias).toBeDefined();
     },
@@ -130,7 +131,7 @@ describe("Feature 158 · R10 (Q-B) — la evidencia es OBLIGATORIA en las TRES c
   // "arregla" el spec haciendo la evidencia opcional en esas dos causas, este caso lo caza.
   it("R10 (Q-B): `perdido` y `robado` NO estan exentos de la foto, aunque no haya paquete", () => {
     for (const causa of ["perdido", "robado"] as const) {
-      const sinFoto = gestionarSchema.safeParse({
+      const sinFoto = gestionarSchema(ZONA_CR).safeParse({
         ordenId: "o1",
         ubicacion: UBICACION_193,
         resultado: "incidente",
@@ -138,28 +139,28 @@ describe("Feature 158 · R10 (Q-B) — la evidencia es OBLIGATORIA en las TRES c
         motivo: "me asaltaron en la parada",
       });
       expect(sinFoto.success, `${causa} sin foto deberia ser invalido`).toBe(false);
-      const conFoto = gestionarSchema.safeParse(incidente({ causaIncidente: causa }));
+      const conFoto = gestionarSchema(ZONA_CR).safeParse(incidente({ causaIncidente: causa }));
       expect(conFoto.success, `${causa} con una foto deberia ser valido`).toBe(true);
     }
   });
 
   it("R10: aplica los MISMOS limites por archivo que el resto de resultados con foto", () => {
-    const pdf = gestionarSchema.safeParse(
+    const pdf = gestionarSchema(ZONA_CR).safeParse(
       incidente({ evidencias: [{ type: "application/pdf", size: 10 }] }),
     );
     expect(pdf.success).toBe(false);
-    const vacio = gestionarSchema.safeParse(
+    const vacio = gestionarSchema(ZONA_CR).safeParse(
       incidente({ evidencias: [{ type: "image/jpeg", size: 0 }] }),
     );
     expect(vacio.success).toBe(false);
-    const enorme = gestionarSchema.safeParse(
+    const enorme = gestionarSchema(ZONA_CR).safeParse(
       incidente({ evidencias: [{ type: "image/jpeg", size: 999_999_999 }] }),
     );
     expect(enorme.success).toBe(false);
   });
 
   it("R10: una lista de N fotos validas se acepta (1..N, no solo 1)", () => {
-    const r = gestionarSchema.safeParse(
+    const r = gestionarSchema(ZONA_CR).safeParse(
       incidente({ evidencias: [evidenciaValida(), evidenciaValida()] }),
     );
     expect(r.success).toBe(true);
@@ -171,19 +172,19 @@ describe("Feature 158 · R10 (Q-B) — la evidencia es OBLIGATORIA en las TRES c
 
 describe("Feature 158 · R11 — el motivo libre sigue obligatorio y APARTE de la causa", () => {
   it("R11: causa valida pero motivo en blanco -> invalido con `motivo requerido`", () => {
-    const r = gestionarSchema.safeParse(incidente({ motivo: "   " }));
+    const r = gestionarSchema(ZONA_CR).safeParse(incidente({ motivo: "   " }));
     expect(r.success).toBe(false);
     if (!r.success) expect(fieldErrorsDe(r.error).motivo).toContain("motivo requerido");
   });
 
   it("R11: causa valida pero SIN motivo -> invalido (la causa no afloja el motivo)", () => {
-    const r = gestionarSchema.safeParse(incidenteSin("motivo"));
+    const r = gestionarSchema(ZONA_CR).safeParse(incidenteSin("motivo"));
     expect(r.success).toBe(false);
     if (!r.success) expect(fieldErrorsDe(r.error).motivo).toBeDefined();
   });
 
   it("R9/R10/R11: un envio vacio devuelve los TRES errores por campo a la vez", () => {
-    const r = gestionarSchema.safeParse({ ordenId: "o1", resultado: "incidente" });
+    const r = gestionarSchema(ZONA_CR).safeParse({ ordenId: "o1", resultado: "incidente" });
     expect(r.success).toBe(false);
     if (!r.success) {
       const fieldErrors = fieldErrorsDe(r.error);
@@ -195,7 +196,7 @@ describe("Feature 158 · R11 — el motivo libre sigue obligatorio y APARTE de l
 
   it("R11: el motivo se parsea EXACTAMENTE como se escribio, sin decorarlo con la causa", () => {
     const crudo = "  se cayo del cajon en la curva  ";
-    const r = gestionarSchema.safeParse(incidente({ motivo: crudo }));
+    const r = gestionarSchema(ZONA_CR).safeParse(incidente({ motivo: crudo }));
     expect(r.success).toBe(true);
     if (r.success && r.data.resultado === "incidente") {
       expect(r.data.motivo).toBe(crudo.trim());
@@ -243,20 +244,20 @@ describe("Feature 158 · blindaje de la discriminatedUnion (R9/R35)", () => {
       },
     ];
     for (const caso of casos) {
-      const r = gestionarSchema.safeParse(caso);
+      const r = gestionarSchema(ZONA_CR).safeParse(caso);
       expect(r.success, `${caso.resultado} deberia seguir validando`).toBe(true);
       if (r.success) expect(r.data).not.toHaveProperty("causaIncidente");
     }
   });
 
   it("R9: `causaDevolucion` enviada en la rama `incidente` NO se parsea (y al reves)", () => {
-    const r = gestionarSchema.safeParse(incidente({ causaDevolucion: "not_found" }));
+    const r = gestionarSchema(ZONA_CR).safeParse(incidente({ causaDevolucion: "not_found" }));
     expect(r.success).toBe(true);
     if (r.success) expect(r.data).not.toHaveProperty("causaDevolucion");
   });
 
   it("no hay recaudo: `montoRecibido`/`metodoPago` NO existen en la rama `incidente`", () => {
-    const r = gestionarSchema.safeParse(
+    const r = gestionarSchema(ZONA_CR).safeParse(
       incidente({ montoRecibido: 5000, metodoPago: "efectivo" }),
     );
     expect(r.success).toBe(true);
@@ -267,7 +268,7 @@ describe("Feature 158 · blindaje de la discriminatedUnion (R9/R35)", () => {
   });
 
   it("R35: las cuatro ramas previas siguen validando exactamente igual, sin campos nuevos", () => {
-    const entregada = gestionarSchema.safeParse({
+    const entregada = gestionarSchema(ZONA_CR).safeParse({
       ordenId: "o1",
       ubicacion: UBICACION_193,
       resultado: "entregado",
@@ -275,21 +276,21 @@ describe("Feature 158 · blindaje de la discriminatedUnion (R9/R35)", () => {
       metodoPago: "efectivo",
       evidencias: [evidenciaValida()],
     });
-    const rechazada = gestionarSchema.safeParse({
+    const rechazada = gestionarSchema(ZONA_CR).safeParse({
       ordenId: "o1",
       ubicacion: UBICACION_193,
       resultado: "devolucion_a_origen_por_rechazo",
       motivo: "cliente rechazo",
       evidencias: [evidenciaValida()],
     });
-    const reprogramada = gestionarSchema.safeParse({
+    const reprogramada = gestionarSchema(ZONA_CR).safeParse({
       ordenId: "o1",
       ubicacion: UBICACION_193,
       resultado: "reprogramado",
       fechaReprogramacion: fechaFuturaISO(),
       motivo: "reagendar",
     });
-    const devuelta = gestionarSchema.safeParse({
+    const devuelta = gestionarSchema(ZONA_CR).safeParse({
       ordenId: "o1",
       ubicacion: UBICACION_193,
       resultado: "novedad",
@@ -306,7 +307,7 @@ describe("Feature 158 · blindaje de la discriminatedUnion (R9/R35)", () => {
   });
 
   it("un `resultado` fuera de los CINCO conocidos sigue siendo invalido", () => {
-    const r = gestionarSchema.safeParse({ ordenId: "o1", resultado: "indemnizada" });
+    const r = gestionarSchema(ZONA_CR).safeParse({ ordenId: "o1", resultado: "indemnizada" });
     expect(r.success).toBe(false);
   });
 });

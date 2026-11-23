@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 
 import { estadoDeLaFila, filasDeConsumo, formatearConteo, reinicioDelCiclo } from "@/lib/planes/consumo";
-import { inicioDelDiaPlataforma } from "@/lib/planes/ciclo";
 import { SIN_LIMITE, textoDelPrecio } from "@/lib/planes/mensajes";
 import type { UsoDelPlan } from "@/lib/types/consumo-plan";
 import type { TopesPlan } from "@/lib/types/planes";
@@ -9,23 +8,32 @@ import type { TopesPlan } from "@/lib/types/planes";
 // SLT-58 (design §6.1) — la lógica pura del consumo del plan que pintan «Mi plan» y el detalle de
 // empresa del superadmin.
 
-describe("SLT-58 — texto del precio (R1)", () => {
+describe("SLT-58 — texto del precio (R1); SLT-86: «{mensual} / mes» y los descuentos del período", () => {
   it.each([
     { caso: "R1: sin precio", precio: { tipo: "sin_precio" } as const, texto: "sin precio" },
     {
       caso: "R1: solo mensual",
-      precio: { tipo: "monto", mensual: "15000.00", anual: null } as const,
-      texto: "15000.00 al mes",
+      precio: { tipo: "monto", mensual: "15000.00", descuentos: {} } as const,
+      texto: "15000.00 / mes",
     },
     {
-      caso: "R1: mensual con anual fijo",
+      caso: "SLT-86 R24: mensual con descuentos, en el orden de los tipos",
+      precio: {
+        tipo: "monto",
+        mensual: "15000.00",
+        descuentos: { anual: { tipo: "porcentaje", porcentaje: "10" }, quincenal: { tipo: "monto", monto: "500" } },
+      } as const,
+      texto: "15000.00 / mes · Descuento quincenal: 500.00 · Descuento anual: 10.00 %",
+    },
+    {
+      caso: "SLT-86 R30: una fila de antes con anual fijo",
       precio: { tipo: "monto", mensual: "15000.00", anual: { tipo: "fijo", monto: "150000.00" } } as const,
-      texto: "15000.00 al mes, 150000.00 al año",
+      texto: "15000.00 / mes · 150000.00 al año",
     },
     {
-      caso: "R1: mensual con descuento anual",
+      caso: "SLT-86 R30: una fila de antes con descuento anual",
       precio: { tipo: "monto", mensual: "15000.00", anual: { tipo: "descuento", porcentaje: "10" } } as const,
-      texto: "15000.00 al mes, con 10 % de descuento en el pago anual",
+      texto: "15000.00 / mes · con 10 % de descuento en el pago anual",
     },
   ])("$caso, sin símbolo de moneda", ({ precio, texto }) => {
     expect(textoDelPrecio(precio)).toBe(texto);
@@ -61,7 +69,7 @@ describe("SLT-58 — estadoDeLaFila (R3, R4)", () => {
 });
 
 describe("SLT-58 — filasDeConsumo (R2, R3)", () => {
-  const topes: TopesPlan = { ordenesPorCiclo: 3000, porRol: { mensajero: 10, admin: 0 }, apiKeys: 5 };
+  const topes: TopesPlan = { porRol: { mensajero: 10, admin: 0 }, apiKeys: 5 };
   const uso: UsoDelPlan = {
     ordenes: 1000,
     apiKeys: 4,
@@ -69,10 +77,10 @@ describe("SLT-58 — filasDeConsumo (R2, R3)", () => {
     porRol: { admin: 0, mensajero: 12, adminTienda: 2, adminSatelite: 0 },
   };
 
-  // SLT-66 R1: el maestro ya no tiene tope, así que no tiene fila; quedan cuatro roles.
-  it("R2: una fila por tope, en orden: órdenes, los cuatro roles y API keys", () => {
+  // SLT-66 R1: el maestro ya no tiene tope, así que no tiene fila; quedan cuatro roles. SLT-86 (R8): las
+  // órdenes tampoco, porque ya no tienen tope.
+  it("R2, SLT-86 R8: una fila por tope, en orden: los cuatro roles y API keys, sin fila de órdenes", () => {
     expect(filasDeConsumo(topes, uso).map((f) => f.clave)).toEqual([
-      "ordenes",
       "admin",
       "mensajero",
       "adminTienda",
@@ -83,7 +91,6 @@ describe("SLT-58 — filasDeConsumo (R2, R3)", () => {
 
   it("R2: «<usados> de <máximo>» con miles con punto y la etiqueta del rol de ROL_LABELS", () => {
     const porClave = Object.fromEntries(filasDeConsumo(topes, uso).map((f) => [f.clave, f]));
-    expect(porClave.ordenes.texto).toBe("1.000 de 3.000 órdenes del ciclo");
     expect(porClave.mensajero.texto).toBe("12 de 10 Mensajero");
     expect(porClave.admin.texto).toBe("0 de 0 Administrador");
     expect(porClave.api_keys.texto).toBe("4 de 5 API keys");
@@ -91,7 +98,6 @@ describe("SLT-58 — filasDeConsumo (R2, R3)", () => {
 
   it("R2, R4: cada fila lleva su marca", () => {
     const porClave = Object.fromEntries(filasDeConsumo(topes, uso).map((f) => [f.clave, f]));
-    expect(porClave.ordenes.estado).toBe("normal");
     expect(porClave.mensajero.estado).toBe("lleno");
     expect(porClave.admin.estado).toBe("lleno");
     expect(porClave.api_keys.estado).toBe("cerca");
@@ -109,90 +115,45 @@ describe("SLT-58 — filasDeConsumo (R2, R3)", () => {
     });
   });
 
-  it("R3: órdenes y API keys sin tope también dicen «sin límite»", () => {
-    const sinTopes: TopesPlan = { ordenesPorCiclo: null, porRol: {}, apiKeys: null };
+  it("R3: las API keys sin tope también dicen «sin límite»", () => {
+    const sinTopes: TopesPlan = { porRol: {}, apiKeys: null };
     const filas = filasDeConsumo(sinTopes, uso);
     expect(filas.every((f) => f.estado === "sin_limite" && f.maximo === null)).toBe(true);
-    expect(filas[0].texto).toBe("1.000 órdenes del ciclo · sin límite");
     expect(filas.at(-1)?.texto).toBe("4 API keys · sin límite");
   });
 });
 
-describe("SLT-58 — reinicioDelCiclo (R5)", () => {
-  const ancla = new Date("2026-01-15T10:00:00.000Z");
-
-  it("R5: a mitad de ciclo, la fracción de día se redondea hacia arriba", () => {
-    // Del 20 de marzo 00:00 al 15 de abril 10:00 (UTC): 26 días y 10 horas.
-    expect(reinicioDelCiclo(ancla, new Date("2026-03-20T00:00:00.000Z"))).toEqual({
-      dias: 27,
-      fecha: "2026-04-15",
-    });
+// SLT-86 (R27): «Se reinicia en N días ({fecha})» cuenta hasta el fin del período de calendario, que no
+// depende de la entrada (el tramo solo recorta el inicio). Sustituye al reinicio por aniversario del
+// ancla y al del ciclo corto de SLT-58 (R5, R40), que esta ficha retira.
+describe("SLT-86 — reinicioDelCiclo hasta el siguiente período de calendario (R27)", () => {
+  it("mensual a mitad de mes: la fracción de día se redondea hacia arriba", () => {
+    // Del 20 de octubre 12:00 al 1 de noviembre 00:00 (hora de la plataforma): 11 días y 12 horas.
+    expect(reinicioDelCiclo("mensual", new Date("2026-10-20T18:00:00.000Z"))).toEqual({ dias: 12, fecha: "2026-11-01" });
   });
 
-  it("R5: a un minuto del cambio falta 1 día", () => {
-    expect(reinicioDelCiclo(ancla, new Date("2026-03-15T09:59:00.000Z"))).toEqual({
-      dias: 1,
-      fecha: "2026-03-15",
-    });
+  it("quincenal: la primera quincena reinicia el 16 y la segunda el 1", () => {
+    expect(reinicioDelCiclo("quincenal", new Date("2026-10-10T18:00:00.000Z")).fecha).toBe("2026-10-16");
+    expect(reinicioDelCiclo("quincenal", new Date("2026-10-20T18:00:00.000Z")).fecha).toBe("2026-11-01");
   });
 
-  it("R5: exactamente 24 h son 1 día y un milisegundo más son 2", () => {
-    expect(reinicioDelCiclo(ancla, new Date("2026-03-14T10:00:00.000Z")).dias).toBe(1);
-    expect(reinicioDelCiclo(ancla, new Date("2026-03-14T09:59:59.999Z")).dias).toBe(2);
+  it("bimestral y anual: el 1 del bimestre siguiente y el 1 de enero", () => {
+    expect(reinicioDelCiclo("bimestral", new Date("2026-10-20T18:00:00.000Z")).fecha).toBe("2026-11-01");
+    expect(reinicioDelCiclo("anual", new Date("2026-10-20T18:00:00.000Z"))).toEqual({ dias: 73, fecha: "2027-01-01" });
   });
 
-  it("R5: en la frontera exacta ya empezó el ciclo nuevo y cuenta hasta el siguiente", () => {
-    expect(reinicioDelCiclo(ancla, new Date("2026-03-15T10:00:00.000Z"))).toEqual({
-      dias: 31,
-      fecha: "2026-04-15",
-    });
+  it("a un minuto del cambio falta 1 día; exactamente 24 h son 1 día y un milisegundo más son 2", () => {
+    // 1 de noviembre 00:00 de la plataforma = 06:00 UTC.
+    expect(reinicioDelCiclo("mensual", new Date("2026-11-01T05:59:00.000Z"))).toEqual({ dias: 1, fecha: "2026-11-01" });
+    expect(reinicioDelCiclo("mensual", new Date("2026-10-31T06:00:00.000Z")).dias).toBe(1);
+    expect(reinicioDelCiclo("mensual", new Date("2026-10-31T05:59:59.999Z")).dias).toBe(2);
   });
 
-  it("R5: la fecha visible es la de la hora de la plataforma, no la UTC", () => {
-    // 03:00 UTC del 15 es todavía el 14 en la hora de la plataforma (−06:00).
-    const anclaDeMadrugada = new Date("2026-01-15T03:00:00.000Z");
-    expect(reinicioDelCiclo(anclaDeMadrugada, new Date("2026-02-01T00:00:00.000Z")).fecha).toBe("2026-02-14");
+  it("en la frontera exacta ya empezó el período nuevo y cuenta hasta el siguiente", () => {
+    expect(reinicioDelCiclo("mensual", new Date("2026-11-01T06:00:00.000Z"))).toEqual({ dias: 30, fecha: "2026-12-01" });
   });
 
-  it("R5: ancla el 31 de enero, el reinicio de febrero cae el 28", () => {
-    const anclaFinDeMes = new Date("2027-01-31T08:00:00.000Z");
-    expect(reinicioDelCiclo(anclaFinDeMes, new Date("2027-02-27T08:00:00.000Z"))).toEqual({
-      dias: 1,
-      fecha: "2027-02-28",
-    });
-  });
-});
-
-// SLT-58 (design §11.3, R40): asignada el 29 de octubre con el inicio del ciclo elegido el 5 de
-// noviembre, la empresa está en su ciclo corto hasta las 00:00 del 5 (hora de la plataforma). El
-// reinicio cuenta hasta esa fecha, no un mes después; desde el ancla vuelve al ciclo normal.
-describe("SLT-58 — reinicioDelCiclo durante el ciclo corto (R40, R5)", () => {
-  // 00:00 del 5 de noviembre en la hora de la plataforma (−06:00), como lo guarda la asignación.
-  const ancla = inicioDelDiaPlataforma("2026-11-05");
-  // Mediodía del 29 de octubre en la hora de la plataforma.
-  const asignadaEl29 = new Date("2026-10-29T18:00:00.000Z");
-
-  it("R40: el ancla es las 00:00 del 5 de noviembre en la hora de la plataforma", () => {
-    expect(ancla.toISOString()).toBe("2026-11-05T06:00:00.000Z");
-  });
-
-  it("R40: asignada el 29 de octubre con ancla el 5 de noviembre: «Se reinicia en 7 días (2026-11-05)»", () => {
-    expect(reinicioDelCiclo(ancla, asignadaEl29)).toEqual({ dias: 7, fecha: "2026-11-05" });
-  });
-
-  it("R40: un milisegundo antes del ancla todavía falta 1 día hasta el 5 de noviembre", () => {
-    expect(reinicioDelCiclo(ancla, new Date(ancla.getTime() - 1))).toEqual({ dias: 1, fecha: "2026-11-05" });
-  });
-
-  it("R40, R5: en el ancla exacta ya empezó el ciclo normal y cuenta hasta el 5 de diciembre", () => {
-    expect(reinicioDelCiclo(ancla, ancla)).toEqual({ dias: 30, fecha: "2026-12-05" });
-  });
-
-  it("R40, R5: el día siguiente al ancla vuelve al ciclo normal (reinicio el 5 de diciembre)", () => {
-    // Del 6 de noviembre 12:00 al 5 de diciembre 00:00 (hora de la plataforma): 28 días y 12 horas.
-    expect(reinicioDelCiclo(ancla, new Date("2026-11-06T18:00:00.000Z"))).toEqual({
-      dias: 29,
-      fecha: "2026-12-05",
-    });
+  it("la fecha visible es la de la plataforma: a las 23:00 del 31 de octubre (ya 1 de noviembre en UTC) reinicia el 1", () => {
+    expect(reinicioDelCiclo("mensual", new Date("2026-11-01T05:00:00.000Z")).fecha).toBe("2026-11-01");
   });
 });

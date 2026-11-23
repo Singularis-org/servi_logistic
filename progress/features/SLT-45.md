@@ -64,6 +64,20 @@ T9 (payloads reales desde la copia de producción) la hace una persona, no un ag
   contrato v1 22/22; openapi-v1-congelado verde; 164 pasan; guardias 323 archivos, único rojo el del
   baseline. Script T8 probado solo contra `logistic_slt45`. Pendiente antes del PR: CHANGELOG con fecha
   `2026-11-xx` (se fija al mergear).
+- 2026-11-23 · F2.3 merge de `origin/geo_jerarquica` (7763f365: SLT-43/44/65/71 + dev) · 13 conflictos
+  resueltos con las dos intenciones. Del lado de dev: SLT-86 (sin cupo de órdenes: fuera el 4.º parámetro
+  de `BulkOrdenService`, fuera el caso «R17 al tope del plan»), SLT-94 (destino por «se recoge en
+  tienda», en el pipeline común v1/v2), SLT-42/SL-21 (reglas del país en etiquetas, manifiesto y
+  detalle), SLT-201 (500 genérico: también en las 5 operaciones de v2), SLT-202 (cabecera del listado).
+  Fixture `contrato-v1/openapi-v1.json` regrabado (humano, 2026-11-21): idéntico byte a byte al
+  grabado con el spec de 7763f365, toda diferencia viene de dev; `BASE` = 7763f365; las respuestas
+  grabadas de v1 siguen pasando 22/22 sin regrabar. Guía de la API: secciones 5.11–5.15 de v2 (SLT-80
+  R1316; humano, opción a), ejemplos en bloques `http` (el E2E de SLT-208 solo ejecuta los `curl` de v1).
+  tsc 0; eslint 0 errores; guardias + `tests/unit/{api,ayuda,asistente}` 425 archivos verdes; integración
+  en `servi_logistic_slt45_integ`: contrato v1 22/22, v2 13/13, planes, pago-plataforma, orden-nodo
+  verdes; `carga-nombre-duplicado-real` 1 rojo local por Postgres 16 (CI usa ≥17).
+
+<!-- tamano-pr-aceptado: 2026-11-21 · pila geo, aceptado por el humano -->
 
 ## Modelos (overrides)
 

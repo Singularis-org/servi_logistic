@@ -142,7 +142,7 @@ describe("RecogerModule — el bloqueo por cierre se conserva (R11)", () => {
       />,
     );
 
-    expect(screen.queryByRole("button", { name: "Recoger paquete" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Escanear o escribir guía" })).toBeNull();
     expect(screen.queryByLabelText("Número de guía")).toBeNull();
     expect(screen.getByRole("alert")).toHaveTextContent(
       "Tienes un cierre sin enviar a aprobación. Mientras tanto no puedes entregar, cobrar ni recibir trabajo nuevo. Ve a «Cierre del día» para enviarlo a aprobación.",

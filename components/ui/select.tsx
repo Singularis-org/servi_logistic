@@ -19,6 +19,11 @@ export interface SelectOption {
    * distinta procedencia (p. ej. administradores de tienda vs API keys).
    */
   group?: string;
+  /**
+   * SLT-214 — un ícono decorativo delante de la etiqueta, en la lista (p. ej. el ícono de cada beneficio). Debe
+   * llevar `aria-hidden`: el nombre de la opción sigue siendo `label`. Opcional: sin él, la opción de siempre.
+   */
+  icon?: React.ReactNode;
 }
 
 export interface SelectProps {
@@ -55,7 +60,17 @@ export interface SelectProps {
    * que `multi` y `single` conviven en la misma fila sin distinguirse.
    */
   labelPrefix?: string;
+  /**
+   * SLT-190 (decisión de Carlos, 2026-11-17) — el valor elegido se lee ENTERO: parte línea en vez de
+   * recortarse con «…», y el disparador crece en alto (2 líneas o más; el consumidor fija la altura
+   * MÍNIMA con `min-h-*`, no un `h-*` fijo). Para la PWA del mensajero (R490: ningún dato se
+   * recorta). Opcional: sin él, el disparador de siempre (escritorio y admin no cambian).
+   */
+  partirLinea?: boolean;
 }
+
+/** SLT-190 — el hueco del valor cuando parte línea (en vez de `truncate`). */
+export const CLASE_VALOR_PARTE_LINEA = "min-w-0 whitespace-normal break-words text-left";
 
 /**
  * Primitiva `Select` reutilizable construida sobre `@base-ui/react/select`
@@ -74,6 +89,7 @@ export function Select({
   id,
   className,
   labelPrefix,
+  partirLinea = false,
   ...rest
 }: SelectProps) {
   const ariaLabel = rest["aria-label"];
@@ -96,20 +112,28 @@ export function Select({
         className={cn(
           "flex h-8 w-full items-center justify-between gap-1.5 rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:bg-input/30 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40",
           className,
+          partirLinea && "h-auto",
         )}
       >
         {/* Sin `labelPrefix` el disparador es EL DE SIEMPRE: un `Select.Value` pelado.
             Con él, el rótulo va delante en gris y el valor detrás, dentro del mismo
             hueco truncable (mismo patrón que `MultiSelectFilter`). */}
         {labelPrefix === undefined ? (
-          <SelectPrimitive.Value placeholder={placeholder} />
+          partirLinea ? (
+            <span className={CLASE_VALOR_PARTE_LINEA}>
+              <SelectPrimitive.Value placeholder={placeholder} />
+            </span>
+          ) : (
+            <SelectPrimitive.Value placeholder={placeholder} />
+          )
         ) : (
-          <span className="min-w-0 truncate">
+          <span className={partirLinea ? CLASE_VALOR_PARTE_LINEA : "min-w-0 truncate"}>
             <span className="text-muted-foreground">{labelPrefix}: </span>
             <SelectPrimitive.Value placeholder={placeholder} />
           </span>
         )}
-        <SelectPrimitive.Icon>
+        {/* Con `partirLinea` el icono no se encoge ni se estira cuando el valor ocupa varias líneas. */}
+        <SelectPrimitive.Icon className={partirLinea ? "flex shrink-0" : undefined}>
           <ChevronDown className="size-4 opacity-60" aria-hidden="true" />
         </SelectPrimitive.Icon>
       </SelectPrimitive.Trigger>
@@ -148,7 +172,14 @@ function renderItem(option: SelectOption) {
       disabled={option.disabled}
       className="flex cursor-pointer items-center justify-between gap-2 rounded-md px-2 py-1.5 text-sm outline-none data-[highlighted]:bg-muted data-[disabled]:cursor-not-allowed data-[disabled]:opacity-50"
     >
-      <SelectPrimitive.ItemText>{option.label}</SelectPrimitive.ItemText>
+      {option.icon === undefined ? (
+        <SelectPrimitive.ItemText>{option.label}</SelectPrimitive.ItemText>
+      ) : (
+        <span className="flex min-w-0 items-center gap-2">
+          {option.icon}
+          <SelectPrimitive.ItemText>{option.label}</SelectPrimitive.ItemText>
+        </span>
+      )}
       <SelectPrimitive.ItemIndicator>
         <Check className="size-4" aria-hidden="true" />
       </SelectPrimitive.ItemIndicator>

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll, afterEach } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, afterEach, beforeEach } from "vitest";
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
@@ -24,10 +24,11 @@ import {
 } from "./_postgres-real";
 import {
   CLAVE_LOCK_SUPERADMIN,
-  exigirSinSuperadmin,
   idDeRol,
   insertarUsuario,
   intentar,
+  saltarSiHaySuperadminAjeno,
+  superadminDeLaBase,
   tomarLockDeSuperadmin,
 } from "./_fixtures/superadmin-32";
 
@@ -39,8 +40,10 @@ import {
 // caso borra su superadmin al acabar. Los que no deben escribir nada (conflicto, catalogo sin rol)
 // corren en una transaccion revertida.
 //
-// El archivo toma el lock de `tomarLockDeSuperadmin` en `beforeAll` y exige una base sin
-// superadmin: commitea el suyo, y el hueco del indice de R27 es uno solo para toda la base.
+// El archivo toma el lock de `tomarLockDeSuperadmin` en `beforeAll` y necesita una base sin
+// superadmin: commitea el suyo, y el hueco del indice de R27 es uno solo para toda la base. Si la base
+// ya tiene uno que no es del test (una base de desarrollo), todos los casos se saltan con el motivo a
+// la vista y ese superadmin no se borra ni se toca. En CI la base no lo tiene y corren todos.
 //
 // Datos propios: emails `@example.com` y documentos con un sufijo aleatorio.
 
@@ -53,6 +56,8 @@ const PASSWORD = "Prueba#2026sl32";
 let base: PrismaClient;
 let app: PrismaClient;
 let soltarSuperadmin: () => Promise<void> = async () => {};
+/** El superadmin que ya tenia la base al empezar, o `null` (CI). Nunca se borra. */
+let superadminAjeno: string | null = null;
 
 function sufijo(): string {
   return randomUUID().replace(/-/g, "").slice(0, 12);
@@ -105,11 +110,16 @@ async function contarUsuarios(cliente: Pick<PrismaClient, "$queryRawUnsafe">): P
   return fila.n;
 }
 
-/** Borra el superadmin que haya dejado el caso. Con el lock tomado y la base exigida sin el, es nuestro. */
+/**
+ * Borra el superadmin que haya dejado el caso. Con el lock tomado, el que no es el de la base al empezar
+ * es nuestro. El de la base queda fuera del DELETE aunque los casos se hayan saltado.
+ */
 async function borrarSuperadmins(): Promise<void> {
   await bajoLockDeEscrituraReal(() =>
     base.$executeRawUnsafe(
-      `DELETE FROM "usuario" WHERE "rol_id" = (SELECT "id" FROM "rol" WHERE "value"::text = 'superadmin')`,
+      `DELETE FROM "usuario" WHERE "rol_id" = (SELECT "id" FROM "rol" WHERE "value"::text = 'superadmin')
+          AND "id" IS DISTINCT FROM $1`,
+      superadminAjeno,
     ),
   );
 }
@@ -168,8 +178,10 @@ describeSiHayBase("SL-32 — el comando de arranque del superadmin contra Postgr
     base = crearPrismaDeTest();
     app = conAislamientoPorEmpresa(crearPrismaDeTest(), async () => null);
     soltarSuperadmin = await tomarLockDeSuperadmin();
-    await exigirSinSuperadmin(base);
+    superadminAjeno = await superadminDeLaBase(base);
   });
+
+  beforeEach((ctx) => saltarSiHaySuperadminAjeno(ctx, superadminAjeno !== null));
 
   afterEach(async () => {
     await borrarSuperadmins();

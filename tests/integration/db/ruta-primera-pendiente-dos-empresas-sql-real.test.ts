@@ -4,6 +4,7 @@ import type { Prisma, PrismaClient } from "@prisma/client";
 
 import { GestionOrdenRepository } from "@/lib/repositories/GestionOrdenRepository";
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
+import { inicioDelDiaCR } from "@/tests/fabricas/reglas-pais";
 
 /**
  * SLT-59 (review m7) — las lecturas de «primera ruta pendiente» filtran por empresa, contra Postgres
@@ -339,6 +340,7 @@ describeSiBaseLocal("SLT-59 m7 — primera ruta pendiente: lecturas por empresa 
           () => AHORA,
         );
         const registrada = await repo.registrarGestionPendiente({
+          inicioDelDia: inicioDelDiaCR(AHORA),
           ordenId,
           mensajeroId: mA,
           gestion: { resultado: "novedad", causaDevolucion: "wrong_address", motivo: "SLT-79" },
@@ -385,6 +387,7 @@ describeSiBaseLocal("SLT-59 m7 — primera ruta pendiente: lecturas por empresa 
         () => AHORA,
       );
       const aplicado = await repo.traspasarMensajeroLote({
+        inicioDelDia: inicioDelDiaCR(AHORA),
         loteId: randomUUID(),
         mensajeroOrigenId: origenId,
         mensajeroDestinoId: destinoId,

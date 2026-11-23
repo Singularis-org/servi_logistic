@@ -514,9 +514,11 @@ describe("312 / R19 — la ficha no escribe nada en el modulo de chat", () => {
 
   it("lo unico que la ficha usa del vocabulario de WhatsApp es la NORMALIZACION, y solo para validar", () => {
     // Control positivo: si el barrido de arriba estuviera midiendo la nada, esto lo delataria.
-    // `normalizarTelefonoWa` SI se usa (R18), y no escribe nada: es una funcion pura.
+    // La normalizacion SI se usa (R18), y no escribe nada: es una funcion pura. Desde SLT-42 es
+    // `normalizarTelefono` con las reglas del pais de la empresa (decision del humano tras la
+    // tanda 2, punto 4), en lugar de `normalizarTelefonoWa`, que era solo de Costa Rica.
     const servicio = codigoSinComentarios("lib/services/CorregirDatosClienteService.ts");
-    expect(servicio).toContain("normalizarTelefonoWa");
-    expect(servicio).toContain("@/lib/utils/whatsapp-telefono");
+    expect(servicio).toMatch(/\bnormalizarTelefono\(/);
+    expect(servicio).toContain("@/lib/utils/telefono-pais");
   });
 });

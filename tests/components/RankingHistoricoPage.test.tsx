@@ -31,6 +31,11 @@ vi.mock("@/lib/auth/resolve-actor", () => ({
 vi.mock("@/lib/actions/ranking-historico", () => ({
   obtenerRankingHistoricoAction: vi.fn(),
 }));
+// SLT-42 (R22): sin `?fecha`, el D−1 sale de la zona del país de la empresa; aquí, Costa Rica.
+vi.mock("@/lib/actions/_shared/zona-del-borde", async () => {
+  const { ZONA_DE_CR } = await import("@/tests/fabricas/reglas-pais");
+  return { zonaDelBorde: async () => ZONA_DE_CR };
+});
 
 class NotFoundError extends Error {
   constructor() {

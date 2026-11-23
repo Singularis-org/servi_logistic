@@ -8,7 +8,6 @@
 import { z } from "zod";
 import type { ChatMensajeTipo, ChatMensajeEstado } from "@prisma/client";
 import type { ChatContactoNormalizado } from "@/lib/types/chat-contactos";
-import { normalizarTelefonoWa } from "@/lib/utils/whatsapp-telefono";
 
 // --- Esquemas de la forma cruda de Meta (solo lo que consumimos; el resto se strip-ea) ---
 
@@ -220,7 +219,11 @@ export interface WebhookMensajeEntrante {
   reaccion?: { objetivoWaMessageId: string; emoji: string | null };
   /** Feature 311 (R7): lista NO vacia de contactos; ausente si el mensaje no es `contactos`. */
   contactos?: ChatContactoNormalizado[];
-  /** Feature 311 (R9): numeros del cambio de numero del cliente. `telefonoNuevo` siempre presente. */
+  /**
+   * Feature 311 (R9): numeros del cambio de numero del cliente. `telefonoNuevo` siempre presente.
+   * SLT-42: van TAL CUAL los manda Meta (recortados); los normaliza `ChatWhatsappService` con las
+   * reglas del pais de la empresa, que este parser no conoce.
+   */
   sistema?: { telefonoAnterior: string | null; telefonoNuevo: string };
   /** SLT-40 (R1): wamid del mensaje que el cliente cita con «Responder». Ausente si no hay. */
   citadoWaMessageId?: string;
@@ -482,6 +485,9 @@ const SUBTIPOS_CAMBIO_NUMERO: ReadonlySet<string> = new Set([
   "customer_identity_changed",
 ]);
 
+/** Un numero «utilizable» tiene al menos un digito: sin ninguno, normalizaria a `""`. */
+const TIENE_DIGITO = /\d/;
+
 /**
  * Feature 311 (design §2.2, R9/R10) — helper PURO: normaliza el cambio de numero del cliente.
  *
@@ -489,6 +495,10 @@ const SUBTIPOS_CAMBIO_NUMERO: ReadonlySet<string> = new Set([
  * porque la forma ha variado entre versiones y el repo NO tiene un payload real capturado (P1).
  * El ANTERIOR es el `from` del propio mensaje. Sin numero nuevo utilizable ⇒ `null` ⇒ el mensaje
  * se degrada y NO se migra ningun hilo: no se inventan numeros (R10).
+ *
+ * SLT-42 (R18): aqui solo se decide si hay un numero (algun digito). La normalizacion depende del
+ * pais de la empresa y la hace el servicio de ingesta; un numero sin digitos normalizaria a `""`
+ * con cualquier pais, asi que el criterio de «utilizable» no cambia.
  */
 export function normalizarSistema(m: MetaMessage): WebhookMensajeEntrante["sistema"] | null {
   const sistema = m.system;
@@ -498,11 +508,11 @@ export function normalizarSistema(m: MetaMessage): WebhookMensajeEntrante["siste
 
   const nuevoCrudo = sistema.wa_id ?? sistema.new_wa_id ?? sistema.customer;
   if (nuevoCrudo === undefined) return null;
-  const telefonoNuevo = normalizarTelefonoWa(nuevoCrudo);
-  if (telefonoNuevo === "") return null;
+  const telefonoNuevo = nuevoCrudo.trim();
+  if (!TIENE_DIGITO.test(telefonoNuevo)) return null;
 
-  const anterior = normalizarTelefonoWa(m.from);
-  return { telefonoAnterior: anterior === "" ? null : anterior, telefonoNuevo };
+  const anterior = m.from.trim();
+  return { telefonoAnterior: TIENE_DIGITO.test(anterior) ? anterior : null, telefonoNuevo };
 }
 
 /**

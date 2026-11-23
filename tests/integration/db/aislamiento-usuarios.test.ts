@@ -17,6 +17,7 @@ import {
 import type { Actor } from "@/lib/interfaces/services/IUsuarioService";
 import { UserRepository } from "@/lib/repositories/UserRepository";
 import { UsuarioService } from "@/lib/services/UsuarioService";
+import { construirReglasPaisEmpresa } from "@/lib/services/ReglasPaisEmpresaService";
 import {
   actualizarUsuarioSchema,
   cambiarEstadoUsuarioSchema,
@@ -24,7 +25,7 @@ import {
 } from "@/lib/types/usuario";
 import { datosDeOrganizacionDePrueba } from "../../fabricas/organizaciones";
 import { HAY_BASE_DE_DATOS, bajoLockDeEscrituraReal, crearPrismaDeTest } from "./_postgres-real";
-import { exigirSinSuperadmin, tomarLockDeSuperadmin } from "./_fixtures/superadmin-32";
+import { saltarSiHaySuperadminAjeno, superadminDeLaBase, tomarLockDeSuperadmin } from "./_fixtures/superadmin-32";
 
 // SL-17 / T3.4 (design §9.2, §6.2) — R31, R3, R35, R36 y R14 sobre `usuario`, contra Postgres real.
 //
@@ -39,7 +40,9 @@ import { exigirSinSuperadmin, tomarLockDeSuperadmin } from "./_fixtures/superadm
 //
 // SL-32: el superadmin lleva su rol real. El `CHECK` `usuario_empresa_o_superadmin` (R28) ya no deja
 // un `maestro` sin empresa, y el indice `usuario_un_solo_superadmin` (R27) admite uno solo en toda
-// la base: el archivo toma el lock de `tomarLockDeSuperadmin` mientras vive el suyo.
+// la base: el archivo toma el lock de `tomarLockDeSuperadmin` mientras vive el suyo. En una base de
+// desarrollo que ya tiene el suyo, se usa ese de actor sin empresa (no se borra ni se toca), y el caso
+// de R35 que lo da de alta se salta: necesita el hueco del indice.
 
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 
@@ -56,6 +59,7 @@ let rolMaestro: string;
 let rolSuperadmin: string;
 let tipoCedula: string;
 let soltarSuperadmin: () => Promise<void> = async () => {};
+let superadminAjeno: string | null = null;
 
 const ids: Record<"a1" | "a2" | "b1" | "b2" | "maestroB" | "maestroA" | "superadmin", string> = {
   a1: "",
@@ -103,11 +107,12 @@ describeSiHayBase("SL-17 — aislamiento de usuarios entre empresas (Postgres)",
     // Resolutor nulo: fuera de `conEmpresa`/`comoPlataforma` toda operación de negocio falla (R11/R14).
     app = conAislamientoPorEmpresa(base, async () => null);
     repo = new UserRepository(app);
-    servicio = new UsuarioService(repo);
+    // SLT-42: las reglas del pais reales, leidas con la empresa de `conEmpresa` (B esta en CR).
+    servicio = new UsuarioService(repo, undefined, undefined, undefined, undefined, construirReglasPaisEmpresa(app));
 
     // Antes de sembrar: el hueco del unico superadmin es de este archivo hasta su `afterAll`.
     soltarSuperadmin = await tomarLockDeSuperadmin();
-    await exigirSinSuperadmin(base);
+    superadminAjeno = await superadminDeLaBase(base);
 
     // Commitea `organizacion` y `usuario` fuera de toda transaccion revertida: bajo el lock de la 227
     // para no cruzarse con un `down.sql` serializado (ver `bajoLockDeEscrituraReal`).
@@ -128,9 +133,11 @@ describeSiHayBase("SL-17 — aislamiento de usuarios entre empresas (Postgres)",
       ids.b2 = await sembrar(orgB, "b2");
       ids.maestroB = await sembrar(orgB, "maestrob");
       // El superadmin nace como lo hará el arranque de SL-32: en plataforma y con el `null` escrito.
-      ids.superadmin = await comoPlataforma(SUPERADMIN.ficha, SUPERADMIN.motivo, async () =>
-        (await app.usuario.create({ data: { ...datosDeUsuario("superadmin", rolSuperadmin), organizacionId: null } })).id,
-      );
+      ids.superadmin =
+        superadminAjeno ??
+        (await comoPlataforma(SUPERADMIN.ficha, SUPERADMIN.motivo, async () =>
+          (await app.usuario.create({ data: { ...datosDeUsuario("superadmin", rolSuperadmin), organizacionId: null } })).id,
+        ));
     });
 
     // Sin estas filas el test no prueba nada: si la siembra no dejó lo esperado, falla aquí.
@@ -139,7 +146,9 @@ describeSiHayBase("SL-17 — aislamiento de usuarios entre empresas (Postgres)",
       select: { id: true, organizacionId: true },
     });
     const porEmpresa = (org: string | null) => sembrados.filter((u) => u.organizacionId === org).length;
-    expect([porEmpresa(orgA), porEmpresa(orgB), porEmpresa(null)]).toEqual([3, 3, 1]);
+    // El superadmin ajeno no lleva el sufijo en el email: no entra en este conteo.
+    expect([porEmpresa(orgA), porEmpresa(orgB), porEmpresa(null)]).toEqual([3, 3, superadminAjeno === null ? 1 : 0]);
+    expect((await base.usuario.findUniqueOrThrow({ where: { id: ids.superadmin } })).organizacionId).toBeNull();
   }, 120_000);
 
   afterAll(async () => {
@@ -231,7 +240,7 @@ describeSiHayBase("SL-17 — aislamiento de usuarios entre empresas (Postgres)",
     const actor = actorDe(ids.maestroB);
 
     const editado = await comoB(() =>
-      servicio.actualizar(ids.b2, actualizarUsuarioSchema.parse({ telefono: "33334444" }), actor),
+      servicio.actualizar(ids.b2, actualizarUsuarioSchema.parse({ telefono: "22223333" }), actor),
     );
     const estado = await comoB(() =>
       servicio.cambiarEstado(ids.b2, cambiarEstadoUsuarioSchema.parse({ estado: "inactivo" }), actor),
@@ -239,7 +248,7 @@ describeSiHayBase("SL-17 — aislamiento de usuarios entre empresas (Postgres)",
 
     expect(editado.status).toBe("ok");
     expect(estado.status).toBe("ok");
-    expect(await filaEnBase(ids.b2)).toMatchObject({ telefono: "33334444", estado: "inactivo", organizacionId: orgB });
+    expect(await filaEnBase(ids.b2)).toMatchObject({ telefono: "22223333", estado: "inactivo", organizacionId: orgB });
   });
 
   /* ------------------------------------------------------------------------ */
@@ -303,7 +312,8 @@ describeSiHayBase("SL-17 — aislamiento de usuarios entre empresas (Postgres)",
     expect(await base.usuario.count({ where: { email: datos.email } })).toBe(0);
   });
 
-  it("R35: en `comoPlataforma`, con `organizacionId: null` explícito crea el usuario sin empresa (superadmin)", async () => {
+  it("R35: en `comoPlataforma`, con `organizacionId: null` explícito crea el usuario sin empresa (superadmin)", async (ctx) => {
+    saltarSiHaySuperadminAjeno(ctx, superadminAjeno !== null);
     // SL-32 (R27): la base admite un solo superadmin, y el del `beforeAll` ya lo ocupa. Se borra
     // antes para que el alta de este caso sea la de verdad, y el nuevo pasa a ser el del archivo.
     await bajoLockDeEscrituraReal(() => base.usuario.delete({ where: { id: ids.superadmin } }));

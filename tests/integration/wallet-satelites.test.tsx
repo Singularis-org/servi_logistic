@@ -75,6 +75,7 @@ vi.mock("@/app/_components/LogoutButton", () => ({
 }));
 
 import { SaldosSatelitesTable } from "@/app/(app)/wallet/satelites/_components/SaldosSatelitesTable";
+import { SATELITES_PAGINA } from "@/app/(app)/wallet/satelites/_components/satelites-labels";
 import { ConciliacionSatelite } from "@/app/(app)/wallet/satelites/_components/ConciliacionSatelite";
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
 
@@ -360,20 +361,30 @@ describe("R23 — la tabla de saldos y sus tres tarjetas", () => {
     expect(screen.getByText("FGAM Puntarenas")).toBeInTheDocument();
   });
 
-  it("⭑ LA NOTA que impide contar dos veces está a la vista, y sin desplegable", () => {
-    // Es lo único que separa un número de siete cifras llamado «pendiente» dentro del módulo
-    // Wallet de que alguien lo sume al balance y lo cuente dos veces. Si desaparece, la pantalla
-    // sigue funcionando y el error se comete en una hoja de cálculo, fuera de la app.
+  it("SLT-209 (Carlos, 2026-11-19) — LA NOTA que impide contar dos veces vive en el (i) de «Pendiente de conciliar», no al pie", async () => {
+    // Es lo que separa un número de siete cifras llamado «pendiente» dentro del módulo Wallet de que
+    // alguien lo sume al balance y lo cuente dos veces. Antes iba al pie de la tabla; ahora en el (i)
+    // de la tarjeta. Textos literales (son el contrato aprobado), no las constantes.
+    const user = userEvent.setup();
     renderTabla();
-    const nota = screen.getByRole("note");
-    expect(nota).toHaveTextContent("El saldo no es un movimiento de caja.");
-    expect(nota).toHaveTextContent(
-      /Ese dinero ya entró a la caja de la empresa cuando se aprobó el cierre de cada mensajero/,
+    expect(SATELITES_PAGINA.descripcion).toBe(
+      "Dinero que las bodegas ya cobraron y todavía no han entregado a la central.",
     );
-    expect(nota).toHaveTextContent(/dónde está físicamente/);
-    expect(nota).toHaveTextContent(
-      /cuánto queda en manos de cada bodega esperando llegar a la central/,
-    );
+    // El pie ya no existe.
+    expect(screen.queryByRole("note")).toBeNull();
+    expect(screen.queryByText(/no es un movimiento de caja/)).toBeNull();
+    // El (i) está en la tarjeta «Pendiente de conciliar» y abre con su texto.
+    const tarjeta = screen.getByText("Pendiente de conciliar", { exact: true }).closest("[data-tarjeta-resumen]");
+    expect(tarjeta, "SLT-209: sin la tarjeta «Pendiente de conciliar»").not.toBeNull();
+    const info = within(tarjeta as HTMLElement).getByRole("button", { name: "Qué significa «Pendiente de conciliar»" });
+    // Las otras dos tarjetas no llevan (i).
+    expect(screen.getAllByRole("button", { name: /^Qué significa/ })).toHaveLength(1);
+    await user.click(info);
+    expect(
+      await screen.findByText(
+        "Este dinero todavía no está en la caja. Entra a la caja cuando se concilia la entrega de la bodega. Aquí ves cuánto tiene cada bodega por entregar.",
+      ),
+    ).toBeInTheDocument();
   });
 });
 
@@ -383,8 +394,9 @@ describe("R22/R24 — la conciliación de una bodega (458-D: en su estado de cue
     const region = await montarConciliacion();
     await waitFor(() => expect(listarConsolidacionesMock).toHaveBeenCalled());
 
-    // El «Pendiente de llegar» de la cabecera es el saldo que el SERVIDOR cuadró.
-    expect(within(region).getByText("₡115.000")).toBeInTheDocument();
+    // SLT-114 (PA1): la tarjeta «Pendiente de llegar» sale de la conciliación (la cifra está en
+    // «Por entregar hoy» del estado de cuenta).
+    expect(within(region).queryByText("Pendiente de llegar")).toBeNull();
     // Lo esperado es «Para la central» (SLT-73, D3), recibido es lo que se contó.
     expect(within(region).getByText("₡500.000")).toBeInTheDocument();
     expect(within(region).getByText("₡485.000")).toBeInTheDocument();

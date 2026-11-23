@@ -7,12 +7,13 @@ import type {
   ResumenConsolidablesPendientes,
 } from "@/lib/interfaces/repositories/ICierreBodegaRepository";
 import type { PaginaRepositorio, RangoPagina } from "@/lib/utils/rango-pagina";
-import type { FiltrosCierresBodega } from "@/lib/types/filtros-cierres";
-import {
-  inicioDelDiaCREnUtc,
-  inicioDelDiaSiguienteCREnUtc,
-} from "@/lib/utils/fecha-cr";
+import type { FiltrosCierresBodegaRepo } from "@/lib/types/filtros-cierres";
 import { NOMBRE_USUARIO_SELECT, nombreCompletoUsuario } from "@/lib/utils/nombre-usuario";
+import {
+  idsCierresBodegaPorFolio,
+  idsCierresDiaPorFolio,
+  recortePorFolio,
+} from "@/lib/repositories/_shared/folio-cierres-sql";
 // ⭑ FICHA 431 (R7): el error que aborta una consolidacion que enlazaria menos cierres de los que
 // sus totales snapshot ya sumaron. Modulo puro, compartido con el servicio que lo traduce.
 import { ConsolidacionParcialError } from "@/lib/utils/consolidacion-parcial";
@@ -41,9 +42,10 @@ const ESTADO_APROBADO = "aprobado";
 const DESTINO_SATELITE = "bodega_satelite";
 
 // SLT-76 (R3/R4): + los dos libros que lee `consolidacionesConDinero` para derivar `desmarcable`.
+// SLT-153 (R458): + `$queryRaw`, solo para leer los ids por folio (`_shared/folio-cierres-sql.ts`).
 type CierreBodegaPrismaClient = Pick<
   PrismaClient,
-  "cierreDia" | "cierreBodega" | "$transaction" | "walletMovimiento" | "conciliacionBodegaAjuste"
+  "cierreDia" | "cierreBodega" | "$transaction" | "walletMovimiento" | "conciliacionBodegaAjuste" | "$queryRaw"
 >;
 
 // Money-safe: Decimal -> string escala 2 (nunca number/parseFloat).
@@ -71,8 +73,18 @@ const CONSOLIDABLE_SELECT = {
   totalGeneral: true,
   totalPagoMensajero: true, // feature 39/R18: snapshot del pago al mensajero del cierre_dia
   totalIngresoBodegaRechazos: true, // feature 56/R17: snapshot del ingreso de bodega por rechazos del cierre_dia
+  resueltoAt: true, // SLT-106 (R194): la columna «Aprobado» de «A consolidar»
+  pagoIndependienteEfectivo: true, // SLT-139 (R322, R323): la regla de pago de este cierre
   mensajero: { select: NOMBRE_USUARIO_SELECT },
-  _count: CONTEO_DETALLE_MODELO_NUEVO, // SLT-54 (R71): en la misma sentencia, sin consulta por fila
+  // SLT-54 (R71): en la misma sentencia, sin consulta por fila.
+  // SLT-106 (R194): + las gestiones con al menos un ajuste del pago, la misma subconsulta que
+  // `CierresBodegaAdminRepository.DETALLE_CIERRE_SELECT` (una gestion ajustada dos veces cuenta una).
+  _count: {
+    select: {
+      ...CONTEO_DETALLE_MODELO_NUEVO.select,
+      gestiones: { where: { ajustesPagoMensajero: { some: {} } } },
+    },
+  },
 } as const;
 
 // Proyeccion de la cabecera de un cierre de bodega (join a zona/usuario + _count).
@@ -206,12 +218,15 @@ export async function aResumenRows(
  * cierres, escrito aqui porque las tablas son otras.
  */
 function rangoSolicitadoAt(
-  filtros: FiltrosCierresBodega | undefined,
+  filtros: FiltrosCierresBodegaRepo | undefined,
 ): { gte?: Date; lt?: Date } | undefined {
-  if (!filtros || (filtros.desde === undefined && filtros.hasta === undefined)) return undefined;
+  // SLT-42 (R22): los limites llegan ya resueltos en la zona del pais de la empresa.
+  if (!filtros || (filtros.solicitadoDesde === undefined && filtros.solicitadoHasta === undefined)) {
+    return undefined;
+  }
   return {
-    ...(filtros.desde !== undefined ? { gte: inicioDelDiaCREnUtc(filtros.desde) } : {}),
-    ...(filtros.hasta !== undefined ? { lt: inicioDelDiaSiguienteCREnUtc(filtros.hasta) } : {}),
+    ...(filtros.solicitadoDesde !== undefined ? { gte: filtros.solicitadoDesde } : {}),
+    ...(filtros.solicitadoHasta !== undefined ? { lt: filtros.solicitadoHasta } : {}),
   };
 }
 
@@ -227,7 +242,7 @@ function rangoSolicitadoAt(
  * dice. Ofrecer un control que no filtra es peor que no ofrecerlo.
  */
 function recorteZona<T extends { destinoZonaId?: unknown; zonaId?: unknown }>(
-  filtros: FiltrosCierresBodega | undefined,
+  filtros: FiltrosCierresBodegaRepo | undefined,
   clave: "destinoZonaId" | "zonaId",
 ): T[] {
   if (!filtros || filtros.destinoZonaIds === undefined) return [];
@@ -236,10 +251,15 @@ function recorteZona<T extends { destinoZonaId?: unknown; zonaId?: unknown }>(
 
 function consolidablesWhere(
   zonaId: string,
-  filtros?: FiltrosCierresBodega,
+  filtros?: FiltrosCierresBodegaRepo,
+  idsPorFolio?: readonly string[],
 ): Prisma.CierreDiaWhereInput {
   const rango = rangoSolicitadoAt(filtros);
-  const zonas = recorteZona<Prisma.CierreDiaWhereInput>(filtros, "destinoZonaId");
+  // SLT-153 (R458): el folio DENTRO del `AND`, junto al recorte de zona; nunca en lugar del alcance.
+  const zonas = [
+    ...recorteZona<Prisma.CierreDiaWhereInput>(filtros, "destinoZonaId"),
+    ...recortePorFolio(idsPorFolio),
+  ];
   return {
     estado: ESTADO_APROBADO, // R5: solo aprobados aportan dinero cuadrado
     destinoTipo: DESTINO_SATELITE, // R5: destino bodega satelite
@@ -272,10 +292,14 @@ const ORDEN_CONSOLIDABLES: Prisma.CierreDiaOrderByWithRelationInput = { solicita
  */
 function cierresBodegaDeZonaWhere(
   zonaId: string,
-  filtros?: FiltrosCierresBodega,
+  filtros?: FiltrosCierresBodegaRepo,
+  idsPorFolio?: readonly string[],
 ): Prisma.CierreBodegaWhereInput {
   const rango = rangoSolicitadoAt(filtros);
-  const zonas = recorteZona<Prisma.CierreBodegaWhereInput>(filtros, "zonaId");
+  const zonas = [
+    ...recorteZona<Prisma.CierreBodegaWhereInput>(filtros, "zonaId"),
+    ...recortePorFolio(idsPorFolio), // SLT-153 (R458)
+  ];
   return {
     zonaId, // R3: el alcance por zona, en el WHERE y nunca en memoria
     ...(rango ? { solicitadoAt: rango } : {}),
@@ -292,14 +316,38 @@ type ConsolidableRow = Prisma.CierreDiaGetPayload<{ select: typeof CONSOLIDABLE_
 
 /** Fila cruda de un cierre_dia consolidable -> DTO de dominio (money-safe STRING). */
 function toConsolidableRow(r: ConsolidableRow): CierreDiaConsolidableRow {
+  const totales = totalesToString(r);
+  const totalPagoMensajero = r.totalPagoMensajero.toFixed(2); // R18: snapshot money-safe STRING
+  const totalIngresoBodegaRechazos = r.totalIngresoBodegaRechazos.toFixed(2); // feature 56/R17
   return {
     cierreDiaId: r.id,
     mensajeroId: r.mensajeroId,
     mensajeroNombre: nombreCompletoUsuario(r.mensajero),
-    totales: totalesToString(r),
-    totalPagoMensajero: r.totalPagoMensajero.toFixed(2), // R18: snapshot money-safe STRING
-    totalIngresoBodegaRechazos: r.totalIngresoBodegaRechazos.toFixed(2), // feature 56/R17: snapshot money-safe STRING
+    totales,
+    totalPagoMensajero,
+    totalIngresoBodegaRechazos,
     incluyeModeloNuevo: incluyeModeloNuevoDe(r), // SLT-54 (R71)
+    // SLT-106 (R67): la MISMA derivacion que `toBodegaResumenRow`, desde los snapshots de ESTE
+    // cierre. Como el mapper lo comparten la pagina, el conjunto y la descarga, las tres emiten lo
+    // mismo.
+    paraLaCentral: paraLaCentral(totales.general, totalPagoMensajero, totalIngresoBodegaRechazos),
+    aprobadoAt: r.resueltoAt === null ? null : r.resueltoAt.toISOString(), // R194
+    gestionesAjustadas: r._count.gestiones, // R194
+    pagoIndependienteEfectivo: r.pagoIndependienteEfectivo, // SLT-139 (R322, R323)
+  };
+}
+
+/**
+ * SLT-106 (R199/R200) — los cierre_dia de la zona aun `solicitado`: los que bloquean «Solicitar
+ * cierre de bodega». Declarado UNA vez: lo leen la puerta de `solicitarCierreBodega` (cuenta) y el
+ * aviso de la pantalla (nombres). Con dos `where` gemelos el aviso podria nombrar a quien la
+ * puerta no cuenta.
+ */
+function sinResolverWhere(zonaId: string): Prisma.CierreDiaWhereInput {
+  return {
+    destinoTipo: DESTINO_SATELITE,
+    destinoZonaId: zonaId, // R3: la zona del actor, en el WHERE
+    estado: ESTADO_SOLICITADO,
   };
 }
 
@@ -313,6 +361,18 @@ function toConsolidableRow(r: ConsolidableRow): CierreDiaConsolidableRow {
 export class CierreBodegaRepository implements ICierreBodegaRepository {
   constructor(private readonly prisma: CierreBodegaPrismaClient) {}
 
+  /** SLT-153 (R458): con folio, los ids de `cierre_dia` que lo contienen; sin folio, ni una consulta. */
+  private async idsDiaPorFolio(filtros: FiltrosCierresBodegaRepo | undefined): Promise<string[] | undefined> {
+    if (filtros?.folio === undefined) return undefined;
+    return idsCierresDiaPorFolio(this.prisma, filtros.folio);
+  }
+
+  /** SLT-153 (R458): idem sobre `cierre_bodega`. */
+  private async idsBodegaPorFolio(filtros: FiltrosCierresBodegaRepo | undefined): Promise<string[] | undefined> {
+    if (filtros?.folio === undefined) return undefined;
+    return idsCierresBodegaPorFolio(this.prisma, filtros.folio);
+  }
+
   /**
    * R5: cierre_dia aprobados de la zona, destino satelite, sin cierre de bodega.
    *
@@ -323,10 +383,10 @@ export class CierreBodegaRepository implements ICierreBodegaRepository {
    */
   async findCierresDiaConsolidables(
     zonaId: string,
-    filtros?: FiltrosCierresBodega,
+    filtros?: FiltrosCierresBodegaRepo,
   ): Promise<CierreDiaConsolidableRow[]> {
     const rows = await this.prisma.cierreDia.findMany({
-      where: consolidablesWhere(zonaId, filtros),
+      where: consolidablesWhere(zonaId, filtros, await this.idsDiaPorFolio(filtros)),
       orderBy: ORDEN_CONSOLIDABLES,
       select: CONSOLIDABLE_SELECT,
     });
@@ -351,9 +411,9 @@ export class CierreBodegaRepository implements ICierreBodegaRepository {
   async findCierresDiaConsolidablesPaginado(
     zonaId: string,
     rango: RangoPagina,
-    filtros?: FiltrosCierresBodega,
+    filtros?: FiltrosCierresBodegaRepo,
   ): Promise<PaginaRepositorio<CierreDiaConsolidableRow>> {
-    const where = consolidablesWhere(zonaId, filtros);
+    const where = consolidablesWhere(zonaId, filtros, await this.idsDiaPorFolio(filtros));
     const [rows, total] = await Promise.all([
       this.prisma.cierreDia.findMany({
         where,
@@ -400,13 +460,16 @@ export class CierreBodegaRepository implements ICierreBodegaRepository {
 
   /** R6: cierre_dia de la zona aun `solicitado` (sin resolver por el adminSatelite). */
   async contarCierresDiaSolicitados(zonaId: string): Promise<number> {
-    return this.prisma.cierreDia.count({
-      where: {
-        destinoTipo: DESTINO_SATELITE,
-        destinoZonaId: zonaId,
-        estado: ESTADO_SOLICITADO,
-      },
+    return this.prisma.cierreDia.count({ where: sinResolverWhere(zonaId) });
+  }
+
+  /** SLT-106 (R199): un nombre por cierre `solicitado` de la zona, con repetidos. */
+  async findMensajerosConCierreSinResolver(zonaId: string): Promise<string[]> {
+    const rows = await this.prisma.cierreDia.findMany({
+      where: sinResolverWhere(zonaId),
+      select: { mensajero: { select: NOMBRE_USUARIO_SELECT } },
     });
+    return rows.map((r) => nombreCompletoUsuario(r.mensajero));
   }
 
   // ⭑ FICHA 431 — AQUI VIVIA `existeCierreBodegaSolicitado`, el gate «a lo sumo una consolidacion
@@ -474,10 +537,10 @@ export class CierreBodegaRepository implements ICierreBodegaRepository {
    */
   async findCierresBodegaByZona(
     zonaId: string,
-    filtros?: FiltrosCierresBodega,
+    filtros?: FiltrosCierresBodegaRepo,
   ): Promise<CierreBodegaResumenRow[]> {
     const rows = await this.prisma.cierreBodega.findMany({
-      where: cierresBodegaDeZonaWhere(zonaId, filtros),
+      where: cierresBodegaDeZonaWhere(zonaId, filtros, await this.idsBodegaPorFolio(filtros)),
       orderBy: ORDEN_CIERRES_BODEGA,
       select: BODEGA_RESUMEN_SELECT,
     });
@@ -496,10 +559,10 @@ export class CierreBodegaRepository implements ICierreBodegaRepository {
   async findCierresBodegaByZonaPaginado(
     zonaId: string,
     rango: RangoPagina,
-    filtros?: FiltrosCierresBodega,
+    filtros?: FiltrosCierresBodegaRepo,
   ): Promise<PaginaRepositorio<CierreBodegaResumenRow>> {
     // R3/R16: el MISMO alcance —y el mismo recorte— que el conjunto del archivo.
-    const where = cierresBodegaDeZonaWhere(zonaId, filtros);
+    const where = cierresBodegaDeZonaWhere(zonaId, filtros, await this.idsBodegaPorFolio(filtros));
     const [rows, total] = await Promise.all([
       this.prisma.cierreBodega.findMany({
         where,

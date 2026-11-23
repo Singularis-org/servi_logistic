@@ -3,6 +3,8 @@ import type {
   CierreDelDiaRow,
   ICierreDelDiaRepository,
 } from "@/lib/interfaces/repositories/ICierreDelDiaRepository";
+import type { Alcance } from "@/lib/interfaces/repositories/ICierresAdminRepository";
+import { alcanceWhere } from "@/lib/repositories/alcance-cierre-where";
 
 // Cliente Prisma acotado a lo que este repositorio necesita: los cierres. La ventana se cruza
 // contra las gestiones POR RELACION (`gestiones: { some: … }`), asi que no hace falta el delegado
@@ -29,6 +31,9 @@ export class CierreDelDiaRepository implements ICierreDelDiaRepository {
    *    cierre podria «contener» un dia solo por una gestion anulada.
    *  - `createdAt: { gte, lt }`: la ventana es SEMIABIERTA. `lt` y no `lte`: con `lte` el primer
    *    instante del dia siguiente entraria y un dia entero de gestiones se moveria de cierre.
+ *  - `alcanceWhere(alcance)` (SLT-124, R1-R5): el destino del cierre. Va en el WHERE para que el
+   *    desempate elija entre los cierres del alcance: en el caso mixto, con el filtro en memoria
+   *    `findFirst` ya habria elegido el de satelite pedido antes y el central se perderia.
    *
    * §4.4 — `orderBy` `solicitadoAt` asc y `id` asc como desempate, con `findFirst`: de los varios
    * posibles gana siempre el mismo, y las dos columnas del orden son inmutables.
@@ -36,6 +41,7 @@ export class CierreDelDiaRepository implements ICierreDelDiaRepository {
   async resolverCierreDelDia(
     mensajeroId: string,
     ventana: { desde: Date; hasta: Date },
+    alcance: Alcance,
   ): Promise<CierreDelDiaRow | null> {
     const fila = await this.prisma.cierreDia.findFirst({
       where: {
@@ -46,6 +52,7 @@ export class CierreDelDiaRepository implements ICierreDelDiaRepository {
             createdAt: { gte: ventana.desde, lt: ventana.hasta },
           },
         },
+        ...alcanceWhere(alcance),
       },
       orderBy: [{ solicitadoAt: "asc" }, { id: "asc" }],
       select: { id: true, estado: true, solicitadoAt: true },

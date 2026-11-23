@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Diálogos del cierre (el componente)</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>body{margin:0}</style>
+</helmet>
+<div style="width:1440px;height:900px;display:flex;background:#F7F7F5;font-family:Archivo,system-ui,sans-serif;color:#111111;font-variant-numeric:tabular-nums">
+
+  <!-- catálogo: solo para recorrer los diálogos en el canvas -->
+  <nav aria-label="Diálogos" style="width:300px;flex-shrink:0;background:#ffffff;border-right:1px solid #e7e5e4;padding:20px 16px;display:flex;flex-direction:column;gap:4px;overflow:auto">
+    <sc-for list="{{grupos}}" as="g" hint-placeholder-count="4">
+      <div style="display:flex;flex-direction:column;gap:2px;margin-bottom:10px">
+        <span style="font-size:12px;font-weight:600;color:#44403c;letter-spacing:0.04em;padding:4px 8px">{{g.titulo}}</span>
+        <sc-for list="{{g.items}}" as="it" hint-placeholder-count="4">
+          <button type="button" onClick="{{it.pick}}" style="{{it.style}}">{{it.label}}</button>
+        </sc-for>
+      </div>
+    </sc-for>
+  </nav>
+
+  <!-- el diálogo, sobre la app atenuada -->
+  <div style="flex:1;position:relative;overflow:hidden">
+    <div aria-hidden="true" style="position:absolute;inset:0;background:#e7e5e4"></div>
+    <div aria-hidden="true" style="position:absolute;inset:0;background:rgba(17,17,17,0.45)"></div>
+    <section role="dialog" aria-modal="true" aria-labelledby="titulo-dialogo" style="{{caja}}">
+      <header style="display:flex;flex-direction:column;gap:4px">
+        <h2 id="titulo-dialogo" style="margin:0;font-size:18px;font-weight:600">{{d.titulo}}</h2>
+        <p style="margin:0;font-size:14px;color:#44403c">{{d.desc}}</p>
+      </header>
+
+      <sc-if value="{{d.hayResumen}}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-direction:column;gap:6px;padding:12px 14px;border-radius:10px;background:#f5f5f4;font-size:14px">
+          <sc-for list="{{d.resumen}}" as="rs" hint-placeholder-count="2">
+            <div style="display:flex;justify-content:space-between;gap:12px"><span style="color:#44403c">{{rs.l}}</span><strong style="font-weight:600">{{rs.v}}</strong></div>
+          </sc-for>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{d.hayLista}}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-direction:column;gap:6px;font-size:14px">
+          <strong style="font-weight:600">{{d.listaTitulo}}</strong>
+          <ul style="margin:0;padding-left:20px;display:flex;flex-direction:column;gap:4px;color:#44403c">
+            <sc-for list="{{d.lista}}" as="li" hint-placeholder-count="3"><li>{{li.t}}</li></sc-for>
+          </ul>
+        </div>
+      </sc-if>
+
+      <!-- confirmar paquetes que vuelven -->
+      <sc-if value="{{d.esEscaner}}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-direction:column;gap:12px;min-height:0">
+          <div role="status" style="display:flex;flex-direction:column;gap:8px;padding:12px 14px;border-radius:10px;background:#ffffff;border:1px solid #e7e5e4">
+            <div style="display:flex;justify-content:space-between;font-size:14px"><strong style="font-weight:600">Paquetes confirmados: 4 de 6</strong><span style="color:#92400e">Faltan 2 paquetes por confirmar</span></div>
+            <div style="height:8px;border-radius:999px;background:#f5f5f4;overflow:hidden"><div style="width:66%;height:100%;background:#111111"></div></div>
+            <span role="alert" style="font-size:13px;color:#b91c1c">Esa guía no pertenece a este cierre.</span>
+          </div>
+          <div style="display:flex;gap:8px;align-items:flex-end">
+            <label style="display:flex;flex-direction:column;gap:4px;font-size:14px;font-weight:500;flex:1">Número de guía<input type="text" placeholder="Escanea el código o escribe el número" style="font:inherit;font-size:14px;height:38px;padding:0 10px;border:1px solid #e7e5e4;border-radius:8px"></label>
+            <button type="button" style="font:inherit;font-size:14px;font-weight:500;height:38px;padding:0 14px;border-radius:8px;border:1px solid #e7e5e4;background:#ffffff;cursor:pointer">Usar cámara</button>
+            <button type="button" style="font:inherit;font-size:14px;font-weight:500;height:38px;padding:0 14px;border-radius:8px;border:0;background:#111111;color:#ffffff;cursor:pointer">Confirmar</button>
+          </div>
+          <div style="border:1px solid #e7e5e4;border-radius:10px;background:#ffffff;padding:4px 14px;max-height:260px;overflow:auto">
+            <sc-for list="{{paquetes}}" as="pq" hint-placeholder-count="6">
+              <div style="display:grid;grid-template-columns:90px 1.4fr 130px 110px;gap:8px;align-items:center;font-size:14px;padding:9px 0;border-bottom:1px solid #f5f5f4">
+                <span style="font-family:'JetBrains Mono',monospace;font-size:13px">{{pq.guia}}</span>
+                <span>{{pq.dest}} <span style="font-size:12px;color:#44403c">· {{pq.tienda}}</span></span>
+                <span style="font-size:12px;color:#44403c">{{pq.res}}</span>
+                <span style="text-align:right"><span style="{{pq.estStyle}}">{{pq.est}}</span></span>
+              </div>
+            </sc-for>
+          </div>
+          <p style="margin:0;font-size:13px;color:#44403c">1 incidente no se escanea: ese paquete no vuelve a bodega, se indemniza en el paso siguiente. Si un paquete no llegó, rechaza el cierre indicando cuál falta.</p>
+        </div>
+      </sc-if>
+
+      <!-- indemnizar incidentes -->
+      <sc-if value="{{d.esIncidentes}}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <div style="border:1px solid #e7e5e4;border-radius:10px;background:#ffffff;padding:14px 16px;display:grid;grid-template-columns:1.4fr 200px;gap:12px;align-items:end">
+            <div style="display:flex;flex-direction:column;gap:2px;font-size:14px"><strong style="font-weight:600">REM-5001 · Beto Ruiz</strong><span style="color:#44403c">Guía 5001 · Tienda Norte · Paquete dañado</span><span style="color:#44403c">Causa: golpe en el transporte</span></div>
+            <label style="display:flex;flex-direction:column;gap:4px;font-size:13px;font-weight:500">Monto de la indemnización<input type="text" value="12500.00" style="font:inherit;font-size:14px;height:38px;padding:0 10px;border:1px solid #e7e5e4;border-radius:8px"></label>
+          </div>
+          <p style="margin:0;font-size:13px;color:#44403c">Mayor que 0, con hasta 2 decimales. Al aprobar, la suma sale de la caja principal como un solo egreso.</p>
+        </div>
+      </sc-if>
+
+      <!-- corregir métodos de pago -->
+      <sc-if value="{{d.esDesglose}}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-direction:column;gap:10px;font-size:14px">
+          <div style="display:grid;grid-template-columns:1fr 1fr 40px;gap:8px;align-items:center"><input type="text" aria-label="Método de pago línea 1" value="Efectivo" style="font:inherit;height:38px;padding:0 10px;border:1px solid #e7e5e4;border-radius:8px"><input type="text" aria-label="Monto línea 1" value="15000" style="font:inherit;height:38px;padding:0 10px;border:1px solid #e7e5e4;border-radius:8px"><button type="button" aria-label="Quitar línea 1" style="height:38px;border:0;background:transparent;cursor:pointer;color:#44403c">✕</button></div>
+          <div style="display:grid;grid-template-columns:1fr 1fr 40px;gap:8px;align-items:center"><input type="text" aria-label="Método de pago línea 2" value="SINPE" style="font:inherit;height:38px;padding:0 10px;border:1px solid #e7e5e4;border-radius:8px"><input type="text" aria-label="Monto línea 2" value="10000" style="font:inherit;height:38px;padding:0 10px;border:1px solid #e7e5e4;border-radius:8px"><button type="button" aria-label="Quitar línea 2" style="height:38px;border:0;background:transparent;cursor:pointer;color:#44403c">✕</button></div>
+          <button type="button" style="align-self:flex-start;font:inherit;font-size:13px;height:32px;padding:0 12px;border-radius:8px;border:1px solid #e7e5e4;background:#ffffff;cursor:pointer">Añadir método</button>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:10px 12px;border-radius:10px;background:#f5f5f4"><span>A cobrar <strong>₡25.000,00</strong></span><span>Capturado <strong>₡25.000,00</strong></span><span>Diferencia <strong>₡0,00</strong></span></div>
+        </div>
+      </sc-if>
+
+      <!-- evidencia -->
+      <sc-if value="{{d.esEvidencia}}" hint-placeholder-val="{{ false }}">
+        <div role="img" aria-label="Evidencia fotográfica de la gestión" style="height:360px;border-radius:10px;background:#d6d3d1;display:flex;align-items:center;justify-content:center;color:#44403c;font-size:14px">Foto de la evidencia</div>
+      </sc-if>
+
+      <!-- opciones (anular un reparto) -->
+      <sc-if value="{{d.hayOpciones}}" hint-placeholder-val="{{ false }}">
+        <fieldset style="margin:0;padding:12px 14px;border:1px solid #e7e5e4;border-radius:10px;display:flex;flex-direction:column;gap:6px;font-size:14px">
+          <legend style="font-weight:600;padding:0 4px">Qué se anula</legend>
+          <label style="display:flex;gap:8px;align-items:center"><input type="radio" name="alcance" checked>Solo este pago</label>
+          <label style="display:flex;gap:8px;align-items:center"><input type="radio" name="alcance">Todas las imputaciones de este reparto</label>
+          <span style="font-size:13px;color:#44403c">Este pago se repartió entre varios cierres. Anular el reparto completo deshace todas sus imputaciones con este mismo motivo.</span>
+        </fieldset>
+      </sc-if>
+
+      <sc-for list="{{d.campos}}" as="c" hint-placeholder-count="2">
+        <label style="display:flex;flex-direction:column;gap:4px;font-size:14px;font-weight:500">
+          <span>{{c.label}}</span>
+          <span style="font-size:13px;font-weight:400;color:#44403c">{{c.ayuda}}</span>
+          <sc-if value="{{c.esArea}}" hint-placeholder-val="{{ false }}"><textarea rows="3" style="font:inherit;font-size:14px;padding:8px 10px;border:1px solid #e7e5e4;border-radius:8px;resize:vertical">{{c.valor}}</textarea></sc-if>
+          <sc-if value="{{c.esLinea}}" hint-placeholder-val="{{ true }}"><input type="text" value="{{c.valor}}" style="font:inherit;font-size:14px;height:38px;padding:0 10px;border:1px solid #e7e5e4;border-radius:8px"></sc-if>
+          <sc-if value="{{c.hayError}}" hint-placeholder-val="{{ false }}"><span role="alert" style="font-size:13px;font-weight:400;color:#b91c1c">{{c.error}}</span></sc-if>
+        </label>
+      </sc-for>
+
+      <sc-if value="{{d.hayNota}}" hint-placeholder-val="{{ false }}">
+        <p style="margin:0;font-size:13px;color:#44403c">{{d.nota}}</p>
+      </sc-if>
+
+      <footer style="display:flex;justify-content:flex-end;gap:8px;padding-top:4px">
+        <sc-for list="{{d.botones}}" as="b" hint-placeholder-count="2">
+          <button type="button" style="{{b.style}}">{{b.label}}</button>
+        </sc-for>
+      </footer>
+    </section>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dialogo":{"editor":"enum","options":["rechazar","paquetes","indemnizar","destrabar","ajustarPago","registrarPago","anularPago","corregirMetodos","corregirResultado","evidencia","solicitarBodega","marcarRecibido","corregirRecibido","desmarcar","solicitarCierre","reenviarVencido","reenviarRechazado","devolverGestion"],"default":"rechazar"},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(p) { super(p); this.state = { sel: null }; }
+  renderVals() {
+    const sel = this.state.sel ?? this.props.dialogo ?? 'rechazar';
+    const B = (kind) => {
+      const base = 'font:inherit;font-size:14px;font-weight:500;height:38px;padding:0 16px;border-radius:8px;cursor:pointer;';
+      if (kind === 'p') return base + 'border:0;background:#111111;color:#ffffff';
+      if (kind === 'd') return base + 'border:0;background:#b91c1c;color:#ffffff';
+      return base + 'border:1px solid #e7e5e4;background:#ffffff;color:#111111';
+    };
+    const cancelar = { label: 'Cancelar', style: B() };
+    const campo = (label, ayuda, valor, area, error) => ({ label, ayuda: ayuda || '', valor: valor || '', esArea: !!area, esLinea: !area, hayError: !!error, error: error || '' });
+    const base = { desc: '', resumen: [], lista: [], listaTitulo: '', campos: [], nota: '', esEscaner: false, esIncidentes: false, esDesglose: false, esEvidencia: false, hayOpciones: false, ancho: 560 };
+    const D = {
+      rechazar: { titulo: 'Rechazar cierre', desc: 'Indica el motivo del rechazo. Ana Mensajera lo verá para corregir.',
+        campos: [campo('Motivo del rechazo', '', 'Faltan 2 paquetes de Tienda Norte', true)], botones: [cancelar, { label: 'Rechazar cierre', style: B('d') }] },
+      paquetes: { titulo: 'Confirmar los paquetes que vuelven', desc: 'Antes de aprobar, ten delante cada paquete que vuelve a bodega y confirma su guía: escanea el código o escribe el número.',
+        esEscaner: true, ancho: 820, botones: [cancelar, { label: 'Continuar', style: B('p') }] },
+      indemnizar: { titulo: 'Indemnizar los incidentes del cierre', desc: 'Este cierre trae paquetes dañados, perdidos o robados. Indica cuánto se indemniza por cada uno.',
+        esIncidentes: true, ancho: 680, botones: [cancelar, { label: 'Aprobar e indemnizar', style: B('p') }] },
+      destrabar: { titulo: 'Destrabar cierre vencido', desc: 'Acción de excepción. Enviarás a aprobación el cierre vencido de Carla Mensajera en su nombre, porque no lo solicitó. Después lo apruebas o rechazas por la vía normal. No se recalculan los montos ya registrados.',
+        botones: [cancelar, { label: 'Destrabar (excepción)', style: B('d') }] },
+      ajustarPago: { titulo: 'Ajustar el pago al mensajero', desc: 'Orden REM-001 · Beto Ruiz. Cambia solo lo que el mensajero gana por esta orden: no cambia la tarifa ni el pago de las demás. Queda registrado quién lo ajustó, cuándo y con qué motivo.',
+        resumen: [{ l: 'Pago vigente', v: '₡2.500,00' }],
+        campos: [campo('Valor nuevo', 'Puede ser 0. Solo números, con punto para los decimales (hasta 2).', '1800'), campo('Motivo del ajuste', 'Obligatorio. Queda en el historial del ajuste.', 'Entrega compartida con Luis', true)],
+        botones: [cancelar, { label: 'Guardar ajuste', style: B('p') }] },
+      registrarPago: { titulo: 'Registrar pago a Ana Mensajera', desc: 'El pago queda anotado como documento y no se puede editar: si algo sale mal, se anula y se registra de nuevo.',
+        resumen: [{ l: 'Disponible', v: '₡47.500,00' }],
+        campos: [campo('Monto', 'Puedes registrar un pago parcial: escribe un monto menor.', '47500.00'), campo('Método', '', 'SINPE'), campo('Referencia', 'Número de SINPE o de la transferencia.', '', false, 'La referencia es obligatoria en SINPE y transferencia.'), campo('Fecha del pago', 'El día en que se entregó el dinero. No puede ser posterior a hoy.', '08/11/2026'), campo('Nota', 'Opcional. Queda guardada junto al comprobante.', '', true)],
+        nota: 'Si lo abres justo después de aprobar, el botón de cancelar dice «Ahora no».', ancho: 600,
+        botones: [cancelar, { label: 'Registrar pago', style: B('p') }] },
+      anularPago: { titulo: 'Anular el pago a Ana Mensajera', desc: 'El pago no se borra: queda a la vista, marcado y con el motivo, y el dinero vuelve al saldo con un movimiento nuevo.',
+        resumen: [{ l: 'Pago', v: '₡30.000,00 del 08/11/2026, en SINPE' }], hayOpciones: true,
+        campos: [campo('Motivo de la anulación', 'Obligatorio. Se guarda junto al pago.', '', true)],
+        botones: [cancelar, { label: 'Anular pago', style: B('d') }] },
+      corregirMetodos: { titulo: 'Corregir métodos de pago', desc: 'Orden REM-001 · Beto Ruiz. El total recibido no cambia: se reparte entre los métodos. Queda registrado quién hizo la corrección.',
+        esDesglose: true, botones: [cancelar, { label: 'Guardar', style: B('p') }] },
+      corregirResultado: { titulo: 'Corregir el resultado de la entrega', desc: 'Orden REM-001 · Beto Ruiz. La entrega pasa a ser Devolución a origen por rechazo. Queda registrado quién la corrigió, cuándo y con qué motivo.',
+        listaTitulo: 'Al corregir:', lista: ['El cobro registrado de esa entrega desaparece del cierre.', 'El pago al mensajero por esa entrega pasa a cero.', 'El paquete se tratará como una devolución al aprobar el cierre.', 'La orden sigue «En reparto» hasta entonces.'],
+        campos: [campo('Motivo de la corrección', 'Obligatorio. Explica por qué cambió el dinero de este cierre.', '', true)],
+        botones: [cancelar, { label: 'Marcar como Devolución a origen por rechazo', style: B('d') }] },
+      evidencia: { titulo: 'Evidencia de la gestión', desc: 'Orden REM-011 · Andrés Mora · foto 1 de 2', esEvidencia: true, ancho: 720,
+        botones: [{ label: 'Anterior', style: B() }, { label: 'Siguiente', style: B() }, { label: 'Cerrar', style: B('p') }] },
+      solicitarBodega: { titulo: 'Solicitar cierre de bodega', desc: 'Se consolidarán los 3 cierres del día aprobados de Limón en una solicitud a la bodega central. No se puede deshacer.',
+        resumen: [{ l: 'Recaudado', v: '₡529.764,07' }, { l: 'Pago a mensajeros', v: '₡88.000,80' }, { l: 'Gana la bodega satélite', v: '₡3.600,00' }, { l: 'Debe llegar a la central', v: '₡438.163,27' }],
+        botones: [cancelar, { label: 'Solicitar cierre de bodega', style: B('p') }] },
+      marcarRecibido: { titulo: 'Marcar recibido', desc: 'Cierre de bodega de Limón del 07/11/2026.',
+        resumen: [{ l: 'Declarado por la bodega', v: '₡438.163,27' }],
+        campos: [campo('Monto recibido', 'Viene con lo declarado. Cámbialo solo si contaste una cantidad distinta.', '438163.27'), campo('Nota', 'Opcional. Por ejemplo: «faltaron ₡15.000, entran el lunes».', '', true)],
+        nota: 'Marcar recibido asienta el dinero en la caja. Si el monto no es el correcto, después se usa «Corregir».',
+        botones: [cancelar, { label: 'Marcar recibido', style: B('p') }] },
+      corregirRecibido: { titulo: 'Corregir el monto recibido', desc: 'Cierre de bodega de Limón del 06/11/2026.',
+        resumen: [{ l: 'Declarado por la bodega', v: '₡349.100,00' }, { l: 'Hoy consta recibido', v: '₡334.100,00' }],
+        campos: [campo('Monto recibido', '', '349100.00'), campo('Nota', '', 'Llegaron los ₡15.000 que faltaban', true)],
+        botones: [cancelar, { label: 'Corregir', style: B('p') }] },
+      desmarcar: { titulo: 'Desmarcar', desc: 'Cierre de bodega de Limón del 05/11/2026. Ahora mismo consta recibido por ₡414.980,50.',
+        nota: 'Si el dinero ya entró a la caja no se puede desmarcar: corrige el monto en vez de revertir.',
+        botones: [cancelar, { label: 'Desmarcar', style: B('d') }] },
+      solicitarCierre: { titulo: 'Solicitar cierre del día', desc: 'Se agruparán todas tus gestiones pendientes en una solicitud de cierre. No se puede deshacer.',
+        resumen: [{ l: 'Gestiones', v: '19' }, { l: 'Recaudado', v: '₡285.275,00' }, { l: 'Tu ganancia', v: '₡45.000,55' }],
+        botones: [cancelar, { label: 'Solicitar cierre', style: B('p') }] },
+      reenviarVencido: { titulo: 'Solicitar aprobación del cierre vencido', desc: 'Se enviará tu cierre vencido a tu bodega para aprobación. No se recalculan los montos ya registrados.',
+        botones: [cancelar, { label: 'Solicitar aprobación', style: B('p') }] },
+      reenviarRechazado: { titulo: 'Solicitar aprobación del cierre rechazado', desc: 'Se enviará de nuevo tu cierre rechazado a tu bodega, con los totales de las gestiones que tenga al enviarlo.',
+        nota: 'Hay 1 orden que deshiciste y no volviste a gestionar: saldrá del cierre al enviarlo.',
+        botones: [cancelar, { label: 'Solicitar aprobación', style: B('p') }] },
+      devolverGestion: { titulo: 'Devolver la orden a gestión', desc: 'Orden REM-007 · Sofía Arias. La gestión quedará anulada (queda el registro de quién la hizo y cuándo) y la orden volverá a tu lista para gestionar.',
+        botones: [cancelar, { label: 'Devolver a gestión', style: B('p') }] }
+    };
+    const d0 = Object.assign({}, base, D[sel]);
+    d0.lista = d0.lista.map((t) => ({ t }));
+    const d = Object.assign(d0, { hayResumen: d0.resumen.length > 0, hayLista: d0.lista.length > 0, hayNota: !!d0.nota });
+
+    const item = (k, label) => ({ label, pick: () => this.setState({ sel: k }),
+      style: 'font:inherit;font-size:14px;text-align:left;height:34px;padding:0 10px;border-radius:8px;border:0;cursor:pointer;background:' + (k === sel ? '#111111' : 'transparent') + ';color:' + (k === sel ? '#ffffff' : '#111111') });
+    const grupos = [
+      { titulo: 'DECIDIR UN CIERRE · central y satélite', items: [item('rechazar', 'Rechazar cierre'), item('paquetes', 'Confirmar paquetes que vuelven'), item('indemnizar', 'Indemnizar incidentes'), item('destrabar', 'Destrabar cierre vencido')] },
+      { titulo: 'FILA DE UNA GESTIÓN', items: [item('ajustarPago', 'Ajustar pago · central y satélite'), item('corregirMetodos', 'Corregir métodos · central'), item('corregirResultado', 'Corregir el resultado · central'), item('evidencia', 'Ver evidencia · todos')] },
+      { titulo: 'PAGO AL MENSAJERO · central', items: [item('registrarPago', 'Registrar pago'), item('anularPago', 'Anular pago')] },
+      { titulo: 'CIERRE DE BODEGA', items: [item('solicitarBodega', 'Solicitar cierre de bodega · satélite'), item('marcarRecibido', 'Marcar recibido · central'), item('corregirRecibido', 'Corregir recibido · central'), item('desmarcar', 'Desmarcar · central')] },
+      { titulo: 'EL MENSAJERO', items: [item('solicitarCierre', 'Solicitar cierre del día'), item('reenviarVencido', 'Enviar cierre vencido'), item('reenviarRechazado', 'Enviar cierre rechazado'), item('devolverGestion', 'Devolver a gestión')] }
+    ];
+    const ancho = d.ancho;
+    return {
+      grupos, d,
+      paquetes: [
+        { guia: '1007', dest: 'Sofía Arias', tienda: 'Tienda Norte', res: 'Reprogramado', est: 'Confirmada', estStyle: 'font-size:12px;font-weight:500;padding:2px 10px;border-radius:999px;background:#d1fae5;color:#047857' },
+        { guia: '1011', dest: 'Andrés Mora', tienda: 'Tienda Sur', res: 'Devolución a origen', est: 'Confirmada', estStyle: 'font-size:12px;font-weight:500;padding:2px 10px;border-radius:999px;background:#d1fae5;color:#047857' },
+        { guia: '1015', dest: 'Paula Jiménez', tienda: 'Tienda Sur', res: 'Novedad', est: 'Pendiente', estStyle: 'font-size:12px;font-weight:500;padding:2px 10px;border-radius:999px;background:#fef3c7;color:#92400e' },
+        { guia: '1020', dest: 'Raúl Céspedes', tienda: 'Tienda Norte', res: 'Novedad interna', est: 'Pendiente', estStyle: 'font-size:12px;font-weight:500;padding:2px 10px;border-radius:999px;background:#fef3c7;color:#92400e' },
+        { guia: '1022', dest: 'Inés Vargas', tienda: 'Tienda Norte', res: 'Reprogramado', est: 'Confirmada', estStyle: 'font-size:12px;font-weight:500;padding:2px 10px;border-radius:999px;background:#d1fae5;color:#047857' },
+        { guia: '1030', dest: 'Tomás León', tienda: 'Tienda Sur', res: 'Devolución a origen', est: 'Confirmada', estStyle: 'font-size:12px;font-weight:500;padding:2px 10px;border-radius:999px;background:#d1fae5;color:#047857' }
+      ],
+      caja: 'position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:' + ancho + 'px;max-height:820px;overflow:auto;box-sizing:border-box;background:#ffffff;border:1px solid #e7e5e4;border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,0.18);padding:20px;display:flex;flex-direction:column;gap:14px'
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -6,6 +6,7 @@ import {
 } from "@/lib/config/composicion-detalle";
 import { listarMovimientosDeFilaSchema } from "@/lib/types/wallet";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 /**
  * Ficha 339 (T3.1, design §4.6) — el tamano de pagina del DETALLE de una fila y su tope salen
  * de la CONFIGURACION. Cubre **R29 y R30**.
@@ -98,19 +99,19 @@ describe("lib/config/composicion-detalle (R29/R30)", () => {
     // La otra mitad de R29: que la config exista no sirve de nada si el schema del detalle
     // escribiera sus propios numeros. Se mide por COMPORTAMIENTO del schema, que es lo que
     // corre en produccion.
-    const sinPagina = listarMovimientosDeFilaSchema.parse({ fila: "egreso_pago_mensajero" });
+    const sinPagina = listarMovimientosDeFilaSchema(ZONA_CR).parse({ fila: "egreso_pago_mensajero" });
     expect(sinPagina.pageSize).toBe(composicionDetalleConfig.DEFAULT_PAGE_SIZE);
     expect(sinPagina.pageSize).toBe(10);
     expect(sinPagina.page).toBe(1);
 
     // El tope, en sus dos lados: justo en el maximo pasa, uno por encima es ZodError.
-    const enElTope = listarMovimientosDeFilaSchema.parse({
+    const enElTope = listarMovimientosDeFilaSchema(ZONA_CR).parse({
       fila: "egreso_pago_mensajero",
       pageSize: composicionDetalleConfig.MAX_PAGE_SIZE,
     });
     expect(enElTope.pageSize).toBe(50);
     expect(() =>
-      listarMovimientosDeFilaSchema.parse({
+      listarMovimientosDeFilaSchema(ZONA_CR).parse({
         fila: "egreso_pago_mensajero",
         pageSize: composicionDetalleConfig.MAX_PAGE_SIZE + 1,
       }),
@@ -118,7 +119,7 @@ describe("lib/config/composicion-detalle (R29/R30)", () => {
     // Y el tope del detalle NO es el del libro (100): si el schema hubiera heredado el literal
     // del listado en vez de leer la config, 100 seria admisible y esto lo dice.
     expect(() =>
-      listarMovimientosDeFilaSchema.parse({ fila: "egreso_pago_mensajero", pageSize: 100 }),
+      listarMovimientosDeFilaSchema(ZONA_CR).parse({ fila: "egreso_pago_mensajero", pageSize: 100 }),
     ).toThrow();
   });
 });

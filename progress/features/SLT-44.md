@@ -40,3 +40,7 @@ R25 literal no sale vacío hasta que el PR #44 (SLT-43) entre en `dev`. Siguient
 - 2026-11-04 · F2.3 · Merge `d4fe9fe5` de SLT-43 con las migraciones renombradas a `20261104120000`–`120500` (después de SLT-52). Los conflictos se resolvieron con el lado de SLT-43. Contra la base nueva `logistic_slt44_r1104` están en verde las migraciones SLT-43, los 13 `geo-*` de integración, `zona-distrito-unica`, `catalogo-y-choke-point` y el typecheck. ABIERTO: `logistic_slt44` quedó con los nombres viejos (P3009), y recrearla con `migrate reset` necesita el consentimiento del humano. Detalle en `progress/impl_SLT-44.md`.
 - 2026-11-04 · Merge de SLT-43 con el arreglo del rojo de CI de SLT-76 R15 (`salida-a-reparto-sql-real`, id de la
   provincia del test). Verde contra `logistic_slt44_r1104` (7/7). Detalle en `progress/impl_SLT-44.md`.
+
+- 2026-11-19 · Puesta al día con `geo_jerarquica` (tras #44) y con la rama de SLT-43 (`ed186693`, `02bb1160`). Tamaño contra `geo_jerarquica`: 32/40 archivos, 1998/1000 prod, 2562/3000 tests. El humano acepta el tamaño de toda la pila geo (#55 a #225): fichas ya revisadas, integración en rama épica.
+
+<!-- tamano-pr-aceptado: 2026-11-19 · pila geo integrada en geo_jerarquica, fichas ya revisadas · aceptado por el humano -->

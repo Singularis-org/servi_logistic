@@ -48,6 +48,87 @@ analítica y los PDF siguen solo en v1.
 
 Contrato: `lib/api/openapi-spec.ts` y su espejo `docs/api/api-key-openapi.yaml` (etiqueta `v2`);
 colección de Postman: carpeta «v2».
+---
+
+## 2026-11-18 — Sin ruptura — La guía, Postman y el contrato apuntan a producción y se corrigen contra el código
+
+> **Sin ruptura.** El comportamiento del canal no cambia: ninguna ruta, ningún código de respuesta,
+> ningún campo. Lo que cambia es lo que la documentación decía de él, que en varios puntos no
+> coincidía con el código.
+
+**La URL base de producción es `https://www.servilogistic.co`.** La guía decía `https://app.example.com`
+y la colección de Postman `http://localhost:3000`. El contrato vuelve a declarar el bloque `servers`
+(retirado el 2026-09-01) con dos entradas: primero `/` («Este servidor», el host donde se abrió Swagger,
+que es el que usa «Try it out») y después producción, que es la base que debe tomar su cliente si lo
+genera desde el contrato (`https://www.servilogistic.co/api/docs/openapi`). Si generás tu cliente desde el `.yaml` y fijaste la base a mano, no hace falta
+cambiar nada.
+
+| Dónde | Qué decía | Qué hace el código |
+|---|---|---|
+| Carga, campos de la fila | `direccion`, `peso` y `monto_cobrar` obligatorios | Obligatorios: `num_remision`, `destinatario`, `telefono`, `producto`, `provincia`, `canton`, `distrito`. `direccion` y `monto_cobrar` son opcionales; `peso` se acepta y se ignora. `CargaRow.required` lo refleja |
+| Carga, error de fila por campo vacío o ausente | `["requerido"]` | Vacío: `["<campo> es obligatorio"]` (por ejemplo `telefono es obligatorio`); clave ausente: `["Este campo es obligatorio"]` |
+| Carga y cotización, tiempo | Nada | 60 segundos por petición; si se pasa, error de la plataforma sin la forma uniforme |
+| Dónde se genera la clave | «Configuración › API keys, personal de oficina» | Menú Configuración, opción API (`/configuracion/api`), solo el rol maestro, botón «Generar API key» |
+| Rotación | La empresa genera una key nueva y desactiva la anterior | La empresa rota la misma key: secreto nuevo, el anterior responde `401` al instante |
+| `409` | «Lea el `message`: distingue los casos» | Solo la falta de tarifa y el nombre de lote repetido traen mensaje propio; el resto lleva el genérico |
+| `403` de la analítica | Solo por métrica no publicable | También con el módulo de Analítica apagado (`details.codigo: "modulo_inactivo"`) |
+| `desde`/`hasta` del listado y la analítica | «hora CR» | Zona horaria del país de la empresa (ya lo decía la entrada del 2026-11-05) |
+| Postman, listado y habilitación | Sus tests leían `b.limit` y `b.habilitadas` | La respuesta trae `pagination.limit` y `resumen.habilitadas` |
+| Postman, cancelación | Esperaba `200` sobre una orden recién cargada | Una orden recién cargada está en la tienda: `409` hasta que llega a la bodega |
+
+**Nuevo en la guía:** ejemplos `curl` de cotización, detalle y habilitación (la habilitación ahora
+manda las tres filas de su respuesta de ejemplo), un ejemplo de firma de webhook con secreto,
+timestamp, cuerpo y firma esperada para comprobar la implementación, y una sección sobre varias
+empresas con una misma URL: la clave identifica a la empresa y a la tienda, y una orden de otra
+empresa responde `404`, igual que una inexistente. Las referencias internas se escriben «sección
+5.9». Cada `curl` de la guía y cada petición de la colección se ejecutan en un E2E contra la
+aplicación (`e2e/guia-api-ejemplos-ejecutables.spec.ts`).
+
+Contrato: `lib/api/openapi-spec.ts` y su espejo `docs/api/api-key-openapi.yaml`; guía de
+integración: `docs/ayuda/oficina/guia-integracion-api.md` (secciones 3, 4.8, 5 y 6.3, y el historial
+de la sección 9); colección: `docs/api/servi-logistic-api-key.postman_collection.json`.
+
+---
+
+## 2026-11-18 — Sin ruptura — El contrato publica `manifiesto.filas[].intentos` de la carga
+
+> **Sin ruptura.** La respuesta de `POST /api/ordenes/api-key/carga` **ya traía** esta clave en
+> cada fila del manifiesto; lo que cambia es que el contrato ahora la declara. Ningún valor, ruta ni
+> código de respuesta cambia. Si validás con un esquema cerrado o generado, regeneralo: `intentos`
+> pasa a ser una propiedad **obligatoria** de `ManifiestoFila`.
+
+| Dónde | Clave | Qué es |
+|---|---|---|
+| `POST /api/ordenes/api-key/carga` → `manifiesto.filas[]` (`ManifiestoFila`) | `intentos` | Entero ≥ 0, nunca `null`. Intentos de entrega de la orden: visitas de entrega sin entrega, contadas una por cierre aprobado con al menos una gestión no anulada de resultado `novedad`, `reprogramado` o `devolucion_a_origen_por_rechazo`. Sin intentos vale `0`; en la respuesta de la carga las órdenes acaban de crearse, así que vale `0`. |
+
+**Lo que NO cambia:** ningún otro endpoint gana el conteo (listado, detalle, webhook y el resto de
+la carga siguen sin él).
+
+Contrato: `lib/api/openapi-spec.ts` y su espejo `docs/api/api-key-openapi.yaml`; guía de
+integración: `docs/ayuda/oficina/guia-integracion-api.md` (§5.1).
+
+---
+
+## 2026-11-05 — Sin ruptura — Las fechas de calendario se miden en la zona horaria del país de tu empresa
+
+> **Sin ruptura para las empresas de Costa Rica.** Solo cambian **textos de descripción** del
+> contrato. Ningún campo, ruta, código de respuesta ni forma de cuerpo cambia, y con una empresa de
+> Costa Rica las fechas dan exactamente lo mismo que hoy.
+
+**Qué cambia, en una frase:** `desde` y `hasta` (listado de órdenes y analítica), el «hoy» que se usa
+cuando no mandás `hasta` y el eco `rango.hasta` de la analítica se miden en la **zona horaria del
+país de la empresa de tu API key**, no en «hora de Costa Rica (UTC-6)». Para una empresa de Costa
+Rica esa zona es la de siempre.
+
+| Dónde | Antes | Ahora |
+|---|---|---|
+| `GET /api/ordenes/api-key` → `desde`, `hasta` | «el día se mide en hora de Costa Rica (UTC-6)» | «el día se mide en la zona horaria del país de la empresa de la key» |
+| `GET /api/ordenes/api-key/analitica` → `desde`, `hasta` | «Fecha calendario de Costa Rica (UTC-6)» | «Fecha calendario en la zona horaria del país de la empresa de la key» |
+| `GET /api/ordenes/api-key/analitica` → `rango.hasta` | «Inclusivo, hora de Costa Rica.» | «Inclusivo, en la zona horaria del país de la empresa de la key.» |
+
+Contrato: `lib/api/openapi-spec.ts` y su espejo `docs/api/api-key-openapi.yaml`. La guía de
+integración (`docs/api/guia-integracion/guia-integracion.html`) todavía dice «hora de Costa Rica
+(UTC-6)»: se actualiza con la release (SLT-42).
 
 ---
 
@@ -110,9 +191,7 @@ que se pide y se recibe por este canal es el mismo).
 
 ## 2026-09-24 — ⚠️ RUPTURA — Los estados cambian de código y ganan su nombre
 
-> **Fecha de despliegue: PENDIENTE — se avisará con antelación y se escribirá aquí.** Este cambio
-> **rompe** a quien compare códigos de estado o de resultado: hasta ese día el canal sigue
-> respondiendo con los códigos anteriores.
+> **Fecha de despliegue: en producción desde el primer despliegue de la plataforma (2026-10-22).**
 
 **Qué cambia, en una frase:** cada estado de una orden se llama igual en todas partes —en la
 aplicación, en el rastreo público y en este canal—. Siete estados cambian de **código**, los cuatro

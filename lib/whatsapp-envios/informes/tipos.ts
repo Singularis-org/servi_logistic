@@ -11,6 +11,7 @@
 import type { z } from "zod";
 import type { RolValue } from "@prisma/client";
 import type { NotificacionEvento } from "@/lib/types/notificacion";
+import type { FormatoMoneda } from "@/lib/config/moneda";
 
 export interface VariableInforme {
   /** `[a-z0-9_]+`, unica en el informe y distinta de las comunes (R46/R53). */
@@ -95,6 +96,14 @@ export interface DatosAviso {
 export interface ContextoInforme<P> {
   parametros: P;
   ahora: Date;
+  /** SLT-42 (R22): zona IANA del pais de la empresa del envio; fechas y horas del informe, en ella. */
+  zona: string;
+  /**
+   * SL-21 (R12, R13): la moneda del pais de la empresa del envio, PEREZOSA. La pide solo el informe
+   * que pinta importes (transito); picking, aviso y prueba no la leen, asi que un pais sin moneda no
+   * los rompe. Sin ella, el informe que la necesita lanza.
+   */
+  moneda?: () => Promise<FormatoMoneda>;
   /** La plantilla lleva cabecera documento. */
   conDocumento: boolean;
   /** Solo origen `evento`. */

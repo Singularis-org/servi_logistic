@@ -13,6 +13,7 @@ import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { ConteoPorMensajero, PremioRankingDTO } from "@/lib/types/ranking";
 import { ventanaDelDia } from "@/lib/ranking/snapshot-dia";
 
+import { ZONA_DE_CR, reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 // Feature 196 (T2.4) — servicio del snapshot con repos fake (sin DB). Cubre R2 (congela D−1),
 // R3 (mismo orden y mismo podio que el vivo, fila a fila), R5 (0/0 no produce fila), R6 (la
 // fila lleva las columnas de negocio), R7/R8 (premio solo en el podio), R11 (dia sin
@@ -102,9 +103,9 @@ function buildService(datos: Datos, opts: SnapshotRepoOpts = {}) {
     repos.rankingRepo,
     repos.userRepo,
     repos.premioRepo,
-    config,
+    config, reglasPaisFijas(),
   );
-  const vivo = new RankingService(repos.rankingRepo, repos.userRepo, repos.premioRepo, config);
+  const vivo = new RankingService(repos.rankingRepo, repos.userRepo, repos.premioRepo, config, reglasPaisFijas());
   return { service, vivo, escrituras, crearSnapshot, obtenerPorFecha, ...repos };
 }
 
@@ -143,7 +144,7 @@ describe("congelar — fecha objetivo y ventana (R2)", () => {
     const res = await service.congelar(CORRIDA);
 
     expect(res.fecha).toBe(FECHA_OBJETIVO);
-    const { desde, hasta } = ventanaDelDia(FECHA_OBJETIVO);
+    const { desde, hasta } = ventanaDelDia(FECHA_OBJETIVO, ZONA_DE_CR);
     expect(contarEntregadasPorMensajero).toHaveBeenCalledWith(desde, hasta);
     // Feature 246 (T6.3, D7): el denominador recibe un TERCER valor —el dia como `@db.Date`— y es
     // EXACTAMENTE el mismo que se congela en la cabecera. Las DOS convenciones conviven en la
@@ -587,7 +588,7 @@ describe("246/R41/R42/R46 — el denominador congelado usa el MISMO criterio que
     const repos = reposDelRanking(datos);
     const vivo = new RankingService(repos.rankingRepo, repos.userRepo, repos.premioRepo, {
       MIN_ASIGNADAS_PODIO: datos.minPodio ?? 1,
-    });
+    }, reglasPaisFijas());
     await vivo.obtenerRanking(MAESTRO, DENTRO_DEL_DIA);
 
     return {

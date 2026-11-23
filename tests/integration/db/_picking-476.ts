@@ -31,8 +31,15 @@ export async function sembrarBase476(tx: TxDeTest): Promise<Base476> {
     select: { id: true, canton: { select: { id: true, provinciaId: true } } },
   });
   if (distrito === null) throw new Error("476: la base no tiene catalogo geografico (distrito)");
-  const zona = await tx.zona.findFirst({ select: { id: true } });
-  if (zona === null) throw new Error("476: la base no tiene ninguna zona");
+  // SLT-177 (R737): la zona es dato de negocio; la base migrada no trae ninguna. Se crea aqui, en la
+  // transaccion revertida del test, en vez de leer «la primera».
+  const zona = await tx.zona.create({
+    data: { nombre: `Zona 476 ${randomUUID().slice(0, 12)}`, sinpeNumero: "80000000", sinpeNombre: "Titular de Prueba" },
+    select: { id: true },
+  });
+  // Control positivo (R739): la zona sembrada se lee de vuelta, exactamente una.
+  const zonasSembradas = await tx.zona.count({ where: { id: zona.id } });
+  if (zonasSembradas !== 1) throw new Error(`476: la zona sembrada no esta en la base (${zonasSembradas})`);
   const tipo = await tx.tipoIdentificacion.findFirst({ select: { id: true } });
   if (tipo === null) throw new Error("476: la base no tiene tipos de identificacion");
   const roles = new Map((await tx.rol.findMany({ select: { id: true, value: true } })).map((r) => [r.value as string, r.id]));
@@ -57,7 +64,10 @@ export function estatusId(base: Base476, value: string): string {
   return id;
 }
 
-/** Un usuario (por defecto una TIENDA `adminTienda` ACTIVA) con el fulfillment pedido. */
+/**
+ * Un usuario (por defecto una TIENDA `adminTienda` ACTIVA) con el fulfillment pedido. SLT-94 (R7):
+ * `fulfillment` aqui = «con paquetes en bodega», que se guarda como `seRecogeEnTienda = !fulfillment`.
+ */
 export async function crearTienda(
   tx: TxDeTest,
   base: Base476,
@@ -77,7 +87,7 @@ export async function crearTienda(
       tipoIdentificacionId: base.tipoIdentificacionId,
       rolId,
       estado: o.estado ?? "activo",
-      fulfillment: o.fulfillment,
+      seRecogeEnTienda: !o.fulfillment,
     },
     select: { id: true },
   });

@@ -1,0 +1,762 @@
+// @vitest-environment jsdom
+import { describe, it, expect, vi, afterEach } from "vitest";
+import { cleanup, render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+
+import { FilaGestion, plantillaFila } from "@/components/private/cierres/fila/FilaGestion";
+import { columnasDe } from "@/components/private/cierres/fila/fila-gestion-vista";
+import { GestionesCierre } from "@/components/private/cierres/fila/GestionesCierre";
+import type { AccionesFila, AudienciaFila } from "@/components/private/cierres/fila/fila-gestion-vista";
+import type { CierreDetalleGestion } from "@/lib/interfaces/services/ICierreDiaService";
+import type { EvidenciaAbierta } from "@/components/private/cierres/dialogos/VisorEvidencia";
+import {
+  CONGELADO_AT,
+  gestionCanvas,
+  gestionFila,
+  ingresoNuevo,
+  ingresoViejo,
+} from "@/tests/fixtures/gestion-cierre-fila";
+
+// SLT-101 «Fila de gestión única y lista con filtros» (T3.3) — la fila única de una gestión, montada
+// con dobles para las cuatro audiencias. Los esperados van escritos a mano: son los textos del canvas
+// (`Fila2.dc.html`) pasados por el formateador compartido de la app (`money()`, que no pinta «,00»).
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ replace: vi.fn(), push: vi.fn(), refresh: vi.fn() }),
+  usePathname: () => "/cierres-admin",
+  useSearchParams: () => new URLSearchParams(),
+}));
+
+afterEach(cleanup);
+
+function montar(
+  g: CierreDetalleGestion,
+  opciones: {
+    audiencia?: AudienciaFila;
+    central?: boolean;
+    acciones?: AccionesFila;
+    onVerEvidencia?: (evidencia: EvidenciaAbierta) => void;
+    mensajero?: string;
+  } = {},
+) {
+  const audiencia = opciones.audiencia ?? "central";
+  render(
+    <FilaGestion
+      gestion={g}
+      audiencia={audiencia}
+      quienMiraEsCentral={opciones.central ?? audiencia === "central"}
+      congeladoAt={CONGELADO_AT}
+      acciones={opciones.acciones ?? {}}
+      onVerEvidencia={opciones.onVerEvidencia}
+      mensajeroNombre={opciones.mensajero}
+      columnaMensajero={opciones.mensajero !== undefined}
+    />,
+  );
+  return userEvent.setup();
+}
+
+async function desplegar(user: ReturnType<typeof userEvent.setup>, g: CierreDetalleGestion) {
+  const nombre = g.ingresoEmpresa
+    ? `Desglose de ingreso de la orden ${g.numRemision} · ${g.destinatario}`
+    : `Detalle de la orden ${g.numRemision} · ${g.destinatario}`;
+  await user.click(screen.getByRole("button", { name: nombre }));
+}
+
+/** [rótulo, importe] de cada línea de una tarjeta, como se leen. */
+function cuenta(nombre: string): string[][] {
+  const region = screen.getByRole("region", { name: nombre });
+  return Array.from(region.querySelectorAll("[data-tipo]")).map((l) => [
+    l.querySelector("[data-rotulo]")?.textContent ?? "",
+    l.querySelector("[data-monto]")?.textContent ?? "",
+  ]);
+}
+
+const DE_CANVAS = "de la orden REM-001 · Beto Ruiz";
+
+/** SLT-152: la celda de la rejilla de una columna de la fila cerrada. */
+function celda(id: string): HTMLElement {
+  const el = document.querySelector<HTMLElement>(`[data-gestion] [data-columna="${id}"]`);
+  if (!el) throw new Error(`sin celda ${id}`);
+  return el;
+}
+
+/** SLT-152 (R444): el elemento que lleva el texto de la celda (su único hijo). */
+function textoDe(id: string): HTMLElement {
+  const hijo = celda(id).firstElementChild;
+  if (!(hijo instanceof HTMLElement)) throw new Error(`la celda ${id} no tiene elemento de texto`);
+  return hijo;
+}
+
+describe("R86 — fila cerrada", () => {
+  it("central: guía, destinatario, tienda, resultado con su botón de información, importes y señales", () => {
+    montar(gestionCanvas());
+    expect(screen.getByText("1001")).toBeInTheDocument();
+    expect(celda("destinatario").textContent).toBe("Beto Ruiz");
+    expect(celda("tienda").textContent).toBe("Tienda Norte");
+    expect(screen.getByRole("button", { name: "Qué significa «Entregado»" })).toBeInTheDocument();
+    expect(screen.getByText("₡25.000")).toBeInTheDocument();
+    expect(screen.getByText("₡4.520")).toBeInTheDocument();
+    expect(screen.getByText("₡1.800")).toBeInTheDocument();
+    expect(screen.getByText("Pago ajustado")).toBeInTheDocument();
+  });
+
+  it("los importes nulos son «—», nunca ₡0", () => {
+    montar(gestionFila({ gestionId: "p", resultado: "novedad", montoRecibido: null, pagoMensajero: null, ingresoEmpresa: null, pagos: [] }));
+    expect(screen.getAllByText("—")).toHaveLength(3);
+    expect(screen.queryByText("₡0")).toBeNull();
+  });
+
+  it("mensajero: recibido y ganancia, sin cobro a la tienda", () => {
+    montar(gestionCanvas(), { audiencia: "mensajero" });
+    expect(screen.getByText("₡25.000")).toBeInTheDocument();
+    expect(screen.getByText("₡1.800")).toBeInTheDocument();
+    expect(screen.queryByText("₡4.520")).toBeNull();
+    expect(screen.queryByText("Pago ajustado")).toBeNull();
+  });
+
+  it("SLT-147 (D66, R415): mensajero, un Incidente con pago 1250.00 pinta «₡1.250» en Ganancia", () => {
+    montar(
+      gestionFila({
+        gestionId: "i",
+        resultado: "incidente",
+        montoRecibido: "3000.00",
+        pagos: [{ metodo: "efectivo", monto: "3000.00" }],
+        pagoMensajero: "1250.00",
+      }),
+      { audiencia: "mensajero" },
+    );
+    expect(screen.getByText("₡1.250")).toBeInTheDocument();
+    expect(screen.queryByText("₡0")).toBeNull();
+    expect(screen.queryByText("—")).toBeNull();
+  });
+
+  it("R24: una gestión sin señales deja la celda vacía", () => {
+    montar(gestionFila({ gestionId: "e" }));
+    expect(screen.queryByText(/Vuelve a bodega|Pago ajustado|Sin tarifa/)).toBeNull();
+  });
+
+  it("R23: con mensajero (bodega), su nombre en la fila", () => {
+    montar(gestionFila({ gestionId: "e" }), { audiencia: "solo lectura", mensajero: "Ana Mensajera" });
+    expect(screen.getByText("Ana Mensajera")).toBeInTheDocument();
+  });
+});
+
+// SLT-152 «Tablas de cierres legibles»: una columna por dato. SLT-156 «PWA de los mensajeros: tablas
+// usables en el móvil» (R490-R492): el texto ya no se recorta con «…» ni se lee por `title` (en el
+// móvil no hay tooltip): envuelve en varias líneas, y los importes van en una columna fija.
+describe("R442, R490, R491, R445 — Destinatario, Tienda y Mensajero en su columna, enteros", () => {
+  const LARGO = "Mensajero Satélite Demo QA A con un nombre larguísimo";
+
+  it("R442: destinatario y tienda, cada uno en su celda y sin «·» entre ambos", () => {
+    for (const audiencia of ["central", "satelite", "solo lectura", "mensajero"] as const) {
+      montar(gestionCanvas(), { audiencia });
+      expect(celda("destinatario").textContent).toBe("Beto Ruiz");
+      expect(celda("tienda").textContent).toBe("Tienda Norte");
+      expect(celda("destinatario").textContent).not.toContain("·");
+      expect(celda("tienda").textContent).not.toContain("·");
+      cleanup();
+    }
+  });
+
+  it("R490, R491: destinatario, tienda y mensajero enteros, que envuelven, sin «…» ni `title`", () => {
+    montar(gestionFila({ gestionId: "e", destinatario: "Beatriz Elena Ruiz Montoya", tiendaNombre: "Tienda Norte Principal" }), {
+      audiencia: "solo lectura",
+      mensajero: LARGO,
+    });
+    const esperado: Record<string, string> = {
+      destinatario: "Beatriz Elena Ruiz Montoya",
+      tienda: "Tienda Norte Principal",
+      mensajero: LARGO,
+    };
+    for (const [id, texto] of Object.entries(esperado)) {
+      const el = textoDe(id);
+      expect(el.textContent).toBe(texto);
+      expect(el.hasAttribute("title")).toBe(false);
+      for (const clase of ["truncate", "text-ellipsis", "whitespace-nowrap", "overflow-hidden"]) {
+        expect(el.classList.contains(clase)).toBe(false);
+      }
+      // Envuelve en varias líneas y parte una palabra sin espacios si hace falta.
+      for (const clase of ["min-w-0", "whitespace-normal", "wrap-anywhere"]) expect(el.classList.contains(clase)).toBe(true);
+      expect(celda(id).querySelector("[title]")).toBeNull();
+    }
+  });
+
+  it("R445: sin nombre de mensajero, la celda «Mensajero» dice «—» (sin `title`)", () => {
+    render(
+      <FilaGestion
+        gestion={gestionFila({ gestionId: "e" })}
+        audiencia="solo lectura"
+        quienMiraEsCentral
+        congeladoAt={CONGELADO_AT}
+        acciones={{}}
+        columnaMensajero
+      />,
+    );
+    expect(textoDe("mensajero").textContent).toBe("—");
+    expect(textoDe("mensajero").hasAttribute("title")).toBe(false);
+  });
+
+  it("R492: guía en pista `max-content` e importes en `minmax(max-content,1fr)`, en las cuatro audiencias", () => {
+    for (const audiencia of ["central", "satelite", "solo lectura", "mensajero"] as const) {
+      const columnas = columnasDe(audiencia, audiencia === "solo lectura", audiencia === "central");
+      // SLT-165 (R524): la plantilla viaja en `--plantilla-fila` (solo la aplica `md:`).
+      const pistas = String((plantillaFila(columnas) as Record<string, string>)["--plantilla-fila"]).split(" ");
+      columnas.forEach((c, i) => {
+        if (c.id === "guia") expect(pistas[i]).toBe("max-content");
+        if (["recibido", "cobro", "ganaBodega", "pago", "ganancia"].includes(c.id)) expect(pistas[i]).toBe("minmax(max-content,1fr)");
+      });
+    }
+    // La ganancia del mensajero es el importe que se veía montado en la columna vecina.
+    const mensajero = columnasDe("mensajero", false, false);
+    const i = mensajero.findIndex((c) => c.id === "ganancia");
+    expect(i).toBeGreaterThan(-1);
+    expect(String((plantillaFila(mensajero) as Record<string, string>)["--plantilla-fila"]).split(" ")[i]).toBe("minmax(max-content,1fr)");
+  });
+
+  it("R492: el importe va en columna fija, alineado a la derecha y sin partirse", () => {
+    montar(gestionCanvas(), { audiencia: "mensajero" });
+    const importe = textoDe("ganancia");
+    expect(importe.textContent).toBe("₡1.800");
+    for (const clase of ["shrink-0", "whitespace-nowrap", "tabular-nums", "text-right"]) {
+      expect(importe.classList.contains(clase)).toBe(true);
+    }
+  });
+});
+
+describe("R25 — fila desplegada: solo los datos de la orden", () => {
+  it("Orden, Producto y Dirección; nada de indemnización, ingreso de bodega, nueva fecha ni motivo", async () => {
+    const g = gestionFila({
+      gestionId: "i",
+      resultado: "incidente",
+      causaIncidente: "danado",
+      indemnizacion: "5000.00",
+      ingresoBodegaRechazo: "450.00",
+      motivo: "Cliente ausente",
+      fechaReprogramacion: "2026-11-09",
+      montoRecibido: null,
+      pagos: [],
+      ingresoEmpresa: ingresoViejo(),
+    });
+    const user = montar(g);
+    await desplegar(user, g);
+    const terminos = Array.from(document.querySelectorAll("dt")).map((d) => d.textContent);
+    expect(terminos).toEqual(["Orden", "Producto", "Dirección"]);
+    expect(Array.from(document.querySelectorAll("dd")).map((d) => d.textContent)).toEqual([
+      "REM-001",
+      "Caja",
+      "Calle 1, Barrio Amón, San José",
+    ]);
+    for (const retirado of [/Indemnización/, /Ingreso de bodega/, /Nueva fecha/, /Motivo/, /Cliente ausente/]) {
+      expect(screen.queryByText(retirado)).toBeNull();
+    }
+  });
+});
+
+describe("R25, R27, R30, R93-R98 — tarjetas del canvas (central)", () => {
+  it("las cuatro tarjetas en cascada, con las cifras del servidor", async () => {
+    const g = gestionCanvas();
+    const user = montar(g);
+    await desplegar(user, g);
+    expect(cuenta(`Recibió el mensajero ${DE_CANVAS}`)).toEqual([
+      ["Efectivo", "₡15.000"],
+      ["+ SINPE", "₡10.000"],
+      ["Recibió", "₡25.000"],
+    ]);
+    expect(cuenta(`Se le cobra a la tienda ${DE_CANVAS}`)).toEqual([
+      ["Flete por entregado + IVA", "₡3.955"],
+      ["+ Comisión COD + IVA", "₡565"],
+      ["Se le cobra", "₡4.520"],
+    ]);
+    const cobro = screen.getByRole("region", { name: `Se le cobra a la tienda ${DE_CANVAS}` });
+    expect(cobro.querySelector("[data-aparte]")?.textContent).toBe("de eso, IVA (no es de la empresa)₡520");
+    expect(cuenta(`Se le paga al mensajero ${DE_CANVAS}`)).toEqual([
+      ["Por tarifa · precio propio del mensajero", "₡2.500"],
+      ["− Ajuste", "₡700"],
+      ["Se le paga", "₡1.800"],
+    ]);
+    const pago = screen.getByRole("region", { name: `Se le paga al mensajero ${DE_CANVAS}` });
+    // La insignia «Ajustado» es la marca de hoy (SLT-56), que abre el historial.
+    const marca = within(pago).getByRole("button", { name: "Pago ajustado: ver el ajuste" });
+    expect(marca).toHaveTextContent("Ajustado");
+    expect(pago.className).toMatch(/border-warning/);
+    expect(within(pago).getByText("Motivo: «Entrega compartida con Luis»")).toBeInTheDocument();
+    expect(within(pago).getByText("Ajustó Carlos R. · 07/11 19:02")).toBeInTheDocument();
+    expect(cuenta(`Fulfillment · se cobró al crear la orden ${DE_CANVAS}`)).toEqual([
+      ["Fulfillment", "₡600"],
+      ["+ IVA 13 %", "₡78"],
+      ["Se cobró", "₡678"],
+    ]);
+    expect(
+      screen.getByText(
+        "Se cargó al saldo de la tienda el 06/11/2026, una vez por paquete. No depende de esta gestión ni de este cierre.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("R27: sin snapshot ni pago, «Sin dato» en lugar de ₡0", async () => {
+    const g = gestionFila({ gestionId: "p", resultado: "novedad", montoRecibido: null, pagoMensajero: null, ingresoEmpresa: null, pagos: [] });
+    const user = montar(g);
+    await desplegar(user, g);
+    expect(screen.getAllByText("Sin dato")).toHaveLength(3);
+    expect(screen.queryByRole("button", { name: "Ver cómo se calculó" })).toBeNull();
+  });
+
+  it("R93: sin IVA incluido no hay «de eso, IVA»", async () => {
+    const g = gestionCanvas({ ingresoEmpresa: ingresoNuevo({ ivaIncluido: null }) });
+    const user = montar(g);
+    await desplegar(user, g);
+    expect(screen.queryByText("de eso, IVA (no es de la empresa)")).toBeNull();
+  });
+
+  it("R94: sin fecha de cargo, la nota sin la primera frase", async () => {
+    const g = gestionCanvas({ ingresoEmpresa: ingresoNuevo({ fulfillmentCargadoAt: null }) });
+    const user = montar(g);
+    await desplegar(user, g);
+    expect(screen.getByText("No depende de esta gestión ni de este cierre.")).toBeInTheDocument();
+    expect(screen.queryByText(/Se cargó al saldo/)).toBeNull();
+  });
+});
+
+describe("R25, R30 — tarjetas por audiencia", () => {
+  it.each([
+    // SLT-154 (R475): sin la central, sin «Se le cobra a la tienda».
+    ["satelite", false, ["Recibió el mensajero", "Se le paga al mensajero"]],
+    ["mensajero", false, ["Recibió el mensajero", "Tu ganancia"]],
+    ["solo lectura", true, ["Recibió el mensajero", "Se le cobra a la tienda", "Se le paga al mensajero", "Fulfillment · se cobró al crear la orden"]],
+    ["solo lectura", false, ["Recibió el mensajero", "Se le paga al mensajero"]],
+  ] as const)("%s (mira la central: %s)", async (audiencia, central, titulos) => {
+    const g = gestionCanvas();
+    const user = montar(g, { audiencia, central });
+    await desplegar(user, g);
+    expect(Array.from(document.querySelectorAll("section h3")).map((h) => h.textContent)).toEqual(titulos);
+  });
+});
+
+describe("R28, R29, R97 — «Ver cómo se calculó»", () => {
+  it("nuevo: abre y pliega, con una tarjeta por concepto y la nota con fecha y hora", async () => {
+    const g = gestionCanvas();
+    const user = montar(g);
+    await desplegar(user, g);
+    const boton = screen.getByRole("button", { name: "Ver cómo se calculó" });
+    expect(boton).toHaveAttribute("aria-expanded", "false");
+    await user.click(boton);
+    expect(screen.getByRole("button", { name: "Ocultar cómo se calculó" })).toHaveAttribute("aria-expanded", "true");
+    const calculo = screen.getByRole("region", { name: "Cómo se calculó el cobro a la tienda" });
+    expect(within(calculo).getByText("Tarifa: grupo «San José centro» de la zona GAM")).toBeInTheDocument();
+    expect(cuenta(`Flete por entregado ${DE_CANVAS}`)).toEqual([
+      ["Monto fijo", "₡3.500"],
+      ["+ IVA 13 %", "₡455"],
+      ["Flete por entregado", "₡3.955"],
+    ]);
+    expect(within(calculo).getByText("Tarifa: valor base de la zona GAM")).toBeInTheDocument();
+    expect(cuenta(`Comisión COD ${DE_CANVAS}`)).toEqual([
+      ["2 % de ₡25.000", "₡500"],
+      ["+ IVA 13 %", "₡65"],
+      ["Comisión COD", "₡565"],
+    ]);
+    expect(
+      within(calculo).getByText(
+        "Tarifas tal como estaban al crear el cierre (07/11/2026 18:42). Si después cambian, aquí no cambia nada.",
+      ),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Ocultar cómo se calculó" }));
+    expect(screen.queryByRole("region", { name: "Cómo se calculó el cobro a la tienda" })).toBeNull();
+  });
+
+  it("viejo GAM: la columna aplicada con los rótulos de hoy", async () => {
+    const g = gestionFila({ gestionId: "v", ingresoEmpresa: ingresoViejo() });
+    const user = montar(g);
+    await desplegar(user, g);
+    await user.click(screen.getByRole("button", { name: "Ver cómo se calculó" }));
+    expect(cuenta(`Flete por entregado ${DE_CANVAS}`)).toEqual([
+      ["tarifa GAM", "₡4.000"],
+      ["+ IVA flete (13 % de ₡4.000)", "₡520"],
+      ["Flete por entregado", "₡4.520"],
+    ]);
+    expect(cuenta(`Comisión COD ${DE_CANVAS}`)).toEqual([
+      ["Comisión COD (4 % de ₡25.000)", "₡1.000"],
+      ["+ IVA comisión (13 % de ₡1.000)", "₡130"],
+      ["Comisión COD", "₡1.130"],
+    ]);
+  });
+
+  it("paridad: pacto especial", async () => {
+    const ing = ingresoViejo({
+      fleteOrigen: "especial",
+      esZonaEspecial: true,
+      flete: "5000.00",
+      ivaFlete: "650.00",
+      fleteConIva: "5650.00",
+      tarifa: { ...ingresoViejo().tarifa!, tarifaEspecial: "5000.00" },
+    });
+    const g = gestionFila({ gestionId: "v", ingresoEmpresa: ing });
+    const user = montar(g);
+    await desplegar(user, g);
+    await user.click(screen.getByRole("button", { name: "Ver cómo se calculó" }));
+    expect(cuenta(`Flete por entregado ${DE_CANVAS}`)[0]).toEqual(["tarifa especial pactada", "₡5.000"]);
+    expect(
+      screen.getByText("El flete salió de la tarifa especial pactada para el distrito, no de la tabla de precios normal."),
+    ).toBeInTheDocument();
+  });
+
+  it("paridad: especial sin pacto (columna normal y su aviso)", async () => {
+    const g = gestionFila({
+      gestionId: "v",
+      ingresoEmpresa: ingresoViejo({ fleteOrigen: "especial_sin_pacto", esZonaEspecial: true }),
+    });
+    const user = montar(g);
+    await desplegar(user, g);
+    await user.click(screen.getByRole("button", { name: "Ver cómo se calculó" }));
+    expect(cuenta(`Flete por entregado ${DE_CANVAS}`)[0]).toEqual(["tarifa GAM", "₡4.000"]);
+    expect(screen.getByRole("note")).toHaveTextContent(/se cobró la tarifa normal/);
+  });
+
+  it("paridad: sin comisión", async () => {
+    const g = gestionFila({
+      gestionId: "v",
+      ingresoEmpresa: ingresoViejo({ cobraComision: false, comisionCod: null, ivaComisionCod: null, comisionConIva: null, total: "4520.00" }),
+    });
+    const user = montar(g);
+    await desplegar(user, g);
+    await user.click(screen.getByRole("button", { name: "Ver cómo se calculó" }));
+    expect(screen.getByText("Esta orden no cobra comisión COD.")).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: `Comisión COD ${DE_CANVAS}` })).toBeNull();
+  });
+
+  it("paridad: sin tarifa congelada", async () => {
+    const g = gestionFila({ gestionId: "v", ingresoEmpresa: ingresoViejo({ tarifa: null }) });
+    const user = montar(g);
+    await desplegar(user, g);
+    await user.click(screen.getByRole("button", { name: "Ver cómo se calculó" }));
+    expect(
+      screen.getByText(
+        "La tienda no tenía tarifa vigente al solicitar el cierre: no se derivó ningún ingreso para esta orden.",
+      ),
+    ).toBeInTheDocument();
+  });
+});
+
+describe("R26, R89 — acciones con los nombres de hoy y sus callbacks", () => {
+  it("central: corregir métodos, ajustar pago, corregir el resultado y ver evidencia", async () => {
+    const acciones = { corregirMetodos: vi.fn(), ajustarPago: vi.fn(), corregirResultado: vi.fn() };
+    const onVerEvidencia = vi.fn();
+    const g = gestionCanvas({ evidenciaUrls: ["https://firmada/1"] });
+    const user = montar(g, { acciones, onVerEvidencia });
+    await desplegar(user, g);
+    await user.click(screen.getByRole("button", { name: `Corregir métodos de pago ${DE_CANVAS}` }));
+    expect(acciones.corregirMetodos).toHaveBeenCalledWith(g);
+    await user.click(screen.getByRole("button", { name: "Ajustar pago al mensajero de la orden REM-001 · Beto Ruiz" }));
+    expect(acciones.ajustarPago).toHaveBeenCalledWith(g);
+    await user.click(screen.getByRole("button", { name: `Corregir el resultado ${DE_CANVAS}` }));
+    expect(acciones.corregirResultado).toHaveBeenCalledWith(g);
+    await user.click(screen.getByRole("button", { name: `Ver evidencia ${DE_CANVAS}` }));
+    // SLT-103 (R137): el visor recibe las URL y el contexto «Orden <remisión> · <destinatario>».
+    expect(onVerEvidencia).toHaveBeenCalledWith({
+      urls: ["https://firmada/1"],
+      contexto: "Orden REM-001 · Beto Ruiz",
+    });
+  });
+
+  it("satélite: solo ajustar pago, aunque le pasaran los demás callbacks", async () => {
+    const g = gestionCanvas();
+    const user = montar(g, {
+      audiencia: "satelite",
+      acciones: { corregirMetodos: vi.fn(), ajustarPago: vi.fn(), corregirResultado: vi.fn() },
+    });
+    await desplegar(user, g);
+    expect(screen.getByRole("button", { name: /Ajustar pago al mensajero/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Corregir métodos de pago/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Corregir el resultado/ })).toBeNull();
+  });
+
+  it("solo lectura: ninguna acción salvo la evidencia", async () => {
+    const g = gestionCanvas({ evidenciaUrls: ["https://firmada/1"] });
+    const user = montar(g, {
+      audiencia: "solo lectura",
+      central: true,
+      acciones: { corregirMetodos: vi.fn(), ajustarPago: vi.fn(), corregirResultado: vi.fn(), devolver: vi.fn() },
+      onVerEvidencia: vi.fn(),
+    });
+    await desplegar(user, g);
+    expect(screen.queryByRole("button", { name: /Corregir|Ajustar|Devolver/ })).toBeNull();
+    expect(screen.getByRole("button", { name: `Ver evidencia ${DE_CANVAS}` })).toBeInTheDocument();
+  });
+
+  it("mensajero: «Devolver a gestión» en la fila cerrada, con su callback", async () => {
+    const devolver = vi.fn();
+    const g = gestionCanvas();
+    const user = montar(g, { audiencia: "mensajero", acciones: { devolver } });
+    await user.click(screen.getByRole("button", { name: "Devolver a gestión la orden REM-001 · Beto Ruiz" }));
+    expect(devolver).toHaveBeenCalledWith(g);
+  });
+
+  it("SLT-109 (R244): gestión de la tienda → «Devolver a gestión» deshabilitado, con el motivo en `title` y en el nombre", () => {
+    const motivo =
+      "Esta orden la resolvió la tienda desde su pantalla de ayuda; solo ella puede corregirlo. Escríbele por el chat de la orden.";
+    montar(gestionCanvas({ desdeAyudaTienda: true }), { audiencia: "mensajero", acciones: { devolver: vi.fn() } });
+    const boton = screen.getByRole("button", {
+      name: `Devolver a gestión la orden REM-001 · Beto Ruiz — no disponible: ${motivo}`,
+    });
+    expect(boton).toBeDisabled();
+    expect(boton).toHaveAttribute("title", motivo);
+  });
+
+  it("SLT-109 (R244): una gestión del mensajero sale habilitada y sin `title`", () => {
+    montar(gestionCanvas({ desdeAyudaTienda: false }), { audiencia: "mensajero", acciones: { devolver: vi.fn() } });
+    const boton = screen.getByRole("button", { name: "Devolver a gestión la orden REM-001 · Beto Ruiz" });
+    expect(boton).toBeEnabled();
+    expect(boton).not.toHaveAttribute("title");
+  });
+
+  it("SLT-109 (R244): con su deshacer en vuelo, el botón de ESA gestión está deshabilitado", () => {
+    const g = gestionCanvas({ desdeAyudaTienda: false });
+    render(
+      <FilaGestion
+        gestion={g}
+        audiencia="mensajero"
+        quienMiraEsCentral={false}
+        congeladoAt={null}
+        acciones={{ devolver: vi.fn() }}
+        enVuelo={g.gestionId}
+      />,
+    );
+    expect(screen.getByRole("button", { name: "Devolver a gestión la orden REM-001 · Beto Ruiz" })).toBeDisabled();
+  });
+
+  it("SLT-103 (R54, R138): varias evidencias, UN botón «Ver evidencia (2)» con todas las fotos", async () => {
+    const onVerEvidencia = vi.fn();
+    const g = gestionCanvas({ evidenciaUrls: ["https://firmada/1", "https://firmada/2"] });
+    const user = montar(g, { onVerEvidencia });
+    await desplegar(user, g);
+    expect(screen.getAllByRole("button", { name: /Ver evidencia/ })).toHaveLength(1);
+    const boton = screen.getByRole("button", { name: "Ver evidencia (2) de la orden REM-001 · Beto Ruiz" });
+    expect(boton).toHaveTextContent(/^Ver evidencia \(2\)$/);
+    await user.click(boton);
+    expect(onVerEvidencia).toHaveBeenCalledWith({
+      urls: ["https://firmada/1", "https://firmada/2"],
+      contexto: "Orden REM-001 · Beto Ruiz",
+    });
+  });
+
+  it("sin snapshot, el botón de desplegar se llama «Detalle de la orden …»", () => {
+    montar(gestionFila({ gestionId: "p", ingresoEmpresa: null }));
+    expect(screen.getByRole("button", { name: "Detalle de la orden REM-001 · Beto Ruiz" })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
+  });
+});
+
+// SLT-154 «Vista de la bodega satélite: solo lo suyo» (R474, R475, R477): la lista y la fila de quien
+// no es la central. La gestión rechazada trae el cobro (defensa: aunque llegara, no se pinta) y lo que
+// gana la bodega por ella, ₡500 (corpus de `e2e/cierre-bodega-satelite.spec.ts`).
+describe("SLT-154 — quien no es la central (R474, R475)", () => {
+  const rechazo = () =>
+    gestionCanvas({ resultado: "devolucion_a_origen_por_rechazo", ingresoBodegaRechazo: "500.00" });
+
+  function montarLista(central: boolean) {
+    render(
+      <GestionesCierre
+        gestiones={[{ gestion: rechazo(), mensajeroNombre: "Ana Mensajera" }]}
+        audiencia="solo lectura"
+        quienMiraEsCentral={central}
+        congeladoAt={CONGELADO_AT}
+        acciones={{}}
+        columnaMensajero
+      />,
+    );
+    return userEvent.setup();
+  }
+
+  function cabecera(): string[] {
+    const region = screen.getByRole("region", { name: "Órdenes del cierre" });
+    const fila = region.firstElementChild as HTMLElement;
+    return Array.from(fila.querySelectorAll("[data-columna]")).map((c) => c.textContent ?? "");
+  }
+
+  it("R474 — la cabecera trae «Gana bodega» en el sitio de «Cobro a la tienda»", () => {
+    montarLista(false);
+    expect(cabecera()).toEqual([
+      "Guía",
+      "Destinatario",
+      "Tienda",
+      "Mensajero",
+      "Resultado",
+      "Recibido",
+      "Gana bodega",
+      "Pago al mensajero",
+      "Señales",
+    ]);
+  });
+
+  it("R474 — la fila del rechazo muestra ₡500 en «Gana bodega»", () => {
+    montarLista(false);
+    expect(celda("ganaBodega")).toHaveTextContent("₡500");
+    expect(document.querySelector('[data-gestion] [data-columna="cobro"]')).toBeNull();
+  });
+
+  it("R475 — desplegada, sin «Se le cobra a la tienda» ni «Ver cómo se calculó»; conserva Recibió y el pago", async () => {
+    const user = montarLista(false);
+    await desplegar(user, rechazo());
+    expect(screen.queryByText("Se le cobra a la tienda")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Ver cómo se calculó" })).toBeNull();
+    expect(Array.from(document.querySelectorAll("section h3")).map((h) => h.textContent)).toEqual([
+      "Recibió el mensajero",
+      "Se le paga al mensajero",
+    ]);
+  });
+
+  it("R477 — la central, con la misma gestión, conserva el cobro y «Ver cómo se calculó»", async () => {
+    const user = montarLista(true);
+    expect(cabecera()).toContain("Cobro a la tienda");
+    expect(cabecera()).not.toContain("Gana bodega");
+    await desplegar(user, rechazo());
+    expect(screen.getByText("Se le cobra a la tienda")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Ver cómo se calculó" })).toBeInTheDocument();
+  });
+});
+
+// SLT-165 «PWA del mensajero: Cierre del día en tarjetas» (D1; R523-R525, R493). Las clases van
+// escritas a mano: son el contrato de la tarjeta (por debajo de 768 px) y de la rejilla de escritorio.
+describe("SLT-165 R523-R525 — la fila es una tarjeta en el teléfono y la rejilla de hoy desde 768 px", () => {
+  function rejilla(): HTMLElement {
+    const el = document.querySelector<HTMLElement>("[data-gestion]")?.firstElementChild;
+    if (!(el instanceof HTMLElement)) throw new Error("sin rejilla");
+    return el;
+  }
+
+  it("R524: la plantilla de columnas solo la aplica `md:`; nada de `gridTemplateColumns` en línea", () => {
+    montar(gestionCanvas(), { audiencia: "mensajero" });
+    const r = rejilla();
+    expect(r.style.gridTemplateColumns).toBe("");
+    expect(r.style.getPropertyValue("--plantilla-fila")).toBe(
+      "max-content minmax(0,1.2fr) minmax(0,1fr) minmax(110px,1.2fr) minmax(max-content,1fr) minmax(max-content,1fr) minmax(0,1.3fr) auto",
+    );
+    expect(r.classList.contains("md:[grid-template-columns:var(--plantilla-fila)]")).toBe(true);
+  });
+
+  it("R523: en la tarjeta, destinatario; guía · tienda; resultado y acciones; la Ganancia a la derecha", () => {
+    montar(gestionCanvas(), { audiencia: "mensajero" });
+    const r = rejilla();
+    expect(r.classList.contains("max-md:grid-cols-[max-content_minmax(0,1fr)_max-content]")).toBe(true);
+    expect(
+      r.classList.contains(
+        "max-md:[grid-template-areas:'dest_dest_ganancia'_'guia_tienda_ganancia'_'resultado_resultado_acciones'_'senales_senales_senales']",
+      ),
+    ).toBe(true);
+    const areas: Record<string, string> = {
+      guia: "max-md:[grid-area:guia]",
+      destinatario: "max-md:[grid-area:dest]",
+      tienda: "max-md:[grid-area:tienda]",
+      resultado: "max-md:[grid-area:resultado]",
+      ganancia: "max-md:[grid-area:ganancia]",
+    };
+    for (const [id, area] of Object.entries(areas)) expect(celda(id).classList.contains(area), id).toBe(true);
+    // «Recibido» va en el detalle desplegado («Recibió el mensajero»), no en la tarjeta.
+    expect(celda("recibido").classList.contains("max-md:hidden")).toBe(true);
+    // Las acciones, en su área.
+    expect(r.lastElementChild?.classList.contains("max-md:[grid-area:acciones]")).toBe(true);
+  });
+
+  it("R523, para cualquier audiencia: en la administración el «Pago» (la ganancia del mensajero) ocupa el sitio de la Ganancia", () => {
+    // SLT-154 (R477): la central mirando un cierre de satélite (con el cobro); la satélite, abajo.
+    montar(gestionFila({ gestionId: "c" }), { audiencia: "solo lectura", central: true, mensajero: "Ana Mensajera" });
+    expect(celda("pago").classList.contains("max-md:[grid-area:ganancia]")).toBe(true);
+    for (const id of ["recibido", "cobro"]) expect(celda(id).classList.contains("max-md:hidden"), id).toBe(true);
+    expect(celda("destinatario").classList.contains("max-md:[grid-area:dest]")).toBe(true);
+  });
+
+  it("R491 (B1 de la review de SLT-165): con la columna «Mensajero», la tarjeta dice de quién es la gestión en su línea", () => {
+    // SLT-154: la central (sin la línea de «Gana bodega», que es de la satélite; abajo).
+    montar(gestionFila({ gestionId: "m" }), { audiencia: "solo lectura", central: true, mensajero: "Ana Mensajera" });
+    const m = celda("mensajero");
+    expect(m.classList.contains("max-md:hidden")).toBe(false);
+    expect(m.classList.contains("max-md:[grid-area:mensajero]")).toBe(true);
+    expect(textoDe("mensajero").textContent).toBe("Ana Mensajera");
+    // En la tarjeta no hay cabecera: el rótulo, solo en el teléfono y sin tocar el texto de la celda.
+    expect(m.classList.contains("max-md:before:content-['Mensajero:']")).toBe(true);
+    expect(m.textContent).toBe("Ana Mensajera");
+    expect(
+      rejilla().classList.contains(
+        "max-md:[grid-template-areas:'dest_dest_ganancia'_'guia_tienda_ganancia'_'mensajero_mensajero_mensajero'_'resultado_resultado_acciones'_'senales_senales_senales']",
+      ),
+    ).toBe(true);
+  });
+
+  it("SLT-154 R474 con R523: en el teléfono, la satélite ve «Gana bodega» en su línea, bajo «Mensajero»", () => {
+    montar(gestionFila({ gestionId: "gb", resultado: "devolucion_a_origen_por_rechazo", ingresoBodegaRechazo: "500.00" }), {
+      audiencia: "solo lectura",
+      central: false,
+      mensajero: "Ana Mensajera",
+    });
+    const gb = celda("ganaBodega");
+    expect(gb.classList.contains("max-md:hidden")).toBe(false);
+    expect(gb.classList.contains("max-md:[grid-area:ganabodega]")).toBe(true);
+    expect(gb.classList.contains("max-md:before:content-['Gana_bodega:']")).toBe(true);
+    expect(gb.textContent).toBe("₡500");
+    expect(
+      rejilla().classList.contains(
+        "max-md:[grid-template-areas:'dest_dest_ganancia'_'guia_tienda_ganancia'_'mensajero_mensajero_mensajero'_'ganabodega_ganabodega_ganabodega'_'resultado_resultado_acciones'_'senales_senales_senales']",
+      ),
+    ).toBe(true);
+  });
+
+  it("SLT-154 R474 con R523: el cierre del mensajero visto por la satélite, «Gana bodega» sin línea de «Mensajero»", () => {
+    montar(gestionFila({ gestionId: "gs" }), { audiencia: "satelite", central: false });
+    expect(celda("ganaBodega").classList.contains("max-md:[grid-area:ganabodega]")).toBe(true);
+    expect(
+      rejilla().classList.contains(
+        "max-md:[grid-template-areas:'dest_dest_ganancia'_'guia_tienda_ganancia'_'ganabodega_ganabodega_ganabodega'_'resultado_resultado_acciones'_'senales_senales_senales']",
+      ),
+    ).toBe(true);
+    // R524: su pista en la plantilla de escritorio, con el ancho de un importe.
+    expect(rejilla().style.getPropertyValue("--plantilla-fila")).toBe(
+      "max-content minmax(0,1.2fr) minmax(0,1fr) minmax(110px,1.2fr) minmax(max-content,1fr) minmax(max-content,1fr) minmax(max-content,1fr) minmax(0,1.3fr) auto",
+    );
+  });
+
+  it("R523: sin la columna «Mensajero», la tarjeta no reserva su línea", () => {
+    montar(gestionCanvas(), { audiencia: "mensajero" });
+    expect(rejilla().className).not.toContain("mensajero_mensajero");
+  });
+
+  it("R523: sin señales, la tarjeta no reserva su línea; con señales, va debajo", () => {
+    montar(gestionFila({ gestionId: "s" }), { audiencia: "mensajero" });
+    expect(celda("senales").classList.contains("max-md:hidden")).toBe(true);
+    cleanup();
+    montar(gestionFila({ gestionId: "t", tarifaFaltante: true }), { audiencia: "mensajero" });
+    expect(celda("senales").classList.contains("max-md:[grid-area:senales]")).toBe(true);
+  });
+
+  it("R523, R493: «Devolver a gestión» y el desplegable, una sola vez y de 44 px en el teléfono", () => {
+    const g = gestionCanvas();
+    montar(g, { audiencia: "mensajero", acciones: { devolver: vi.fn() } });
+    const devolver = screen.getAllByRole("button", { name: `Devolver a gestión la orden ${g.numRemision} · ${g.destinatario}` });
+    expect(devolver).toHaveLength(1);
+    const desplegar = screen.getAllByRole("button", { name: /^(Detalle|Desglose de ingreso) de la orden REM-001/ });
+    expect(desplegar).toHaveLength(1);
+    for (const b of [devolver[0], desplegar[0]]) {
+      expect(b.classList.contains("max-md:min-h-11"), b.textContent ?? "").toBe(true);
+      expect(b.classList.contains("max-md:min-w-11"), b.textContent ?? "").toBe(true);
+    }
+  });
+
+  it("R525: desplegada, el detalle de hoy en una sola columna por debajo de 768 px", async () => {
+    const g = gestionCanvas();
+    const user = montar(g, { audiencia: "mensajero" });
+    await desplegar(user, g);
+    const orden = screen.getByText("Orden", { selector: "dt" }).closest("dl");
+    expect(orden?.classList.contains("grid-cols-1")).toBe(true);
+    expect(orden?.classList.contains("md:grid-cols-[140px_140px_minmax(0,1fr)]")).toBe(true);
+    const tarjetas = screen.getByRole("region", { name: `Tu ganancia ${DE_CANVAS}` }).parentElement;
+    expect(tarjetas?.classList.contains("grid-cols-1")).toBe(true);
+    expect(tarjetas?.classList.contains("md:grid-cols-2")).toBe(true);
+  });
+
+  it("R493: «Ver cómo se calculó» mide 44 px de alto en el teléfono", async () => {
+    const g = gestionCanvas();
+    const user = montar(g);
+    await desplegar(user, g);
+    expect(screen.getByRole("button", { name: "Ver cómo se calculó" }).classList.contains("max-md:min-h-11")).toBe(true);
+  });
+});

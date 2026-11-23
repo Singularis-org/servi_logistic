@@ -16,6 +16,7 @@ import type { ParadaRutaRow } from "@/lib/interfaces/repositories/IOrdenReposito
 import type { RouteOptimizationConfig } from "@/lib/config/route-optimization";
 import { codificarPolilinea } from "@/lib/geo/polilinea";
 
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 // SLT-59 (R11-R20, design §2.2 y §3.2) — una gestion que solo QUITA paradas reutiliza el orden
 // previo sin `optimizeTours` (D6), y el trazado se rehace con los tramos guardados (D7). La
 // unica llamada admitida es UN `computeRoutes` para el tramo puente de una entrega fuera de
@@ -154,7 +155,7 @@ function build(opts: {
     CONFIG,
     () => T0,
     undefined,
-    opts.sinRoutes ? null : ({ trazar } as unknown as IRoutesClient),
+    opts.sinRoutes ? null : ({ trazar } as unknown as IRoutesClient), reglasPaisFijas(),
   );
   const reduccion = () => rutas.reducirSecuencia.mock.calls[0];
   return { service, rutas, paradasRepo, client, trazar, reduccion };

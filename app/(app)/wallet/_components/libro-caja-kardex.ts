@@ -15,6 +15,7 @@ import { fechaDiaMovimientoCR } from "@/lib/utils/fecha-dia-iso";
 
 import { ORIGEN_LABEL, conceptoDeMovimientoCaja } from "./wallet-labels";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 /** R17 — el Concepto: la MISMA etiqueta que pinta la tabla (el valor del enum si no tuviera etiqueta). */
 export function conceptoDeCaja(movimiento: WalletMovimientoDTO): string {
   return conceptoDeMovimientoCaja(movimiento) ?? movimiento.categoria;
@@ -22,7 +23,8 @@ export function conceptoDeCaja(movimiento: WalletMovimientoDTO): string {
 
 /** La fecha del movimiento como la pinta la tabla: el día de Costa Rica. */
 export function fechaDeCaja(movimiento: WalletMovimientoDTO): string {
-  return fechaDiaMovimientoCR(movimiento.fechaMovimiento);
+  // SLT-81: la UI sigue en la zona de CR
+  return fechaDiaMovimientoCR(movimiento.fechaMovimiento, ZONA_CR);
 }
 
 /**

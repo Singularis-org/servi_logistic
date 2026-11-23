@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { TACTIL_MOVIL } from "@/components/shared/texto-entero";
 import { usePreferenciaSonido } from "@/hooks/usePreferenciaSonido";
 import { useTonoAlIncrementar } from "@/hooks/useTonoAlIncrementar";
 import { usePushEnVentana } from "@/hooks/usePushEnVentana";
@@ -256,6 +257,10 @@ export function NotificationsBell({ notifications }: NotificationsBellProps) {
         className={cn(
           "relative flex cursor-pointer items-center gap-1.5 rounded-full p-1 text-foreground transition-colors hover:bg-foreground/10",
           ANILLO_FOCO,
+          // SLT-193 (R911, R913): 44 × 44 en móvil para cualquier rol, con el icono centrado; en
+          // escritorio no cambia.
+          TACTIL_MOVIL,
+          "max-md:justify-center",
           // R11: con trabajo pendiente el disparador es una PÍLDORA que dice la cifra con
           // palabras. R10: a cero vuelve a ser un icono apagado, sin distintivo de ninguna clase.
           porHacer > 0 &&

@@ -7,6 +7,7 @@ import type { CrearMovimientoInput } from "@/lib/interfaces/repositories/IWallet
 import type { Alcance } from "@/lib/interfaces/repositories/ICierresAdminRepository";
 import { APLICACION_GESTIONES } from "@/tests/fixtures/anclaje-devolucion";
 import { idEstado, sembrarCatalogoEstados } from "@/tests/fixtures/catalogo-estados";
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 
 // Feature 42/T9 — idempotencia + no-doble-conteo (R6/R13). Simula el constraint unico
 // parcial (origen_tipo, origen_id, categoria) WHERE origen_id IS NOT NULL con una tienda
@@ -366,7 +367,7 @@ describe("wallet idempotencia (R6/R13)", () => {
     const repo = makeRepo(prisma);
 
     const aprobar = () =>
-      repo.resolverCierre({
+      repo.resolverCierre({ zonaHoraria: ZONA_DE_CR,
         cierreId: "c1",
         alcance: ALCANCE,
         nuevoEstado: "aprobado",
@@ -423,7 +424,7 @@ describe("wallet idempotencia (R6/R13)", () => {
     const repo = makeRepo(prisma);
 
     const aprobar = () =>
-      repo.resolverCierre({
+      repo.resolverCierre({ zonaHoraria: ZONA_DE_CR,
         cierreId: "c1",
         alcance: ALCANCE,
         nuevoEstado: "aprobado",
@@ -494,7 +495,7 @@ describe("wallet idempotencia (R6/R13)", () => {
     const repo = makeRepo(prisma);
 
     const aprobar = () =>
-      repo.resolverCierre({
+      repo.resolverCierre({ zonaHoraria: ZONA_DE_CR,
         cierreId: "c1",
         alcance: ALCANCE,
         nuevoEstado: "aprobado",

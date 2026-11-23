@@ -33,6 +33,7 @@ import { fechaDiaMovimientoCR } from "@/lib/utils/fecha-dia-iso";
 
 import { DETALLE_SIN_GUIA_MOTIVO, LIBRO_KARDEX_TEXTO, SEPARADOR_DETALLE } from "./libro-kardex-labels";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 /** Las filas de una hoja y cuáles van en negrita (índice 0 = la primera fila de datos). */
 export interface HojaColocada {
   filas: DescargaFila[];
@@ -136,7 +137,8 @@ export function filaCabeceraDeGuia(
     destinatario: bloque.destinatario,
     tienda: bloque.tiendaNombre,
     mensajero: bloque.mensajeroNombre,
-    cierre: bloque.cierres.map((c) => fechaDiaMovimientoCR(c)).join(", "),
+    // SLT-81: la UI sigue en la zona de CR
+    cierre: bloque.cierres.map((c) => fechaDiaMovimientoCR(c, ZONA_CR)).join(", "),
     resultado: resultadosTexto(bloque.resultados),
     concepto: null,
     detalle: null,
@@ -185,7 +187,8 @@ export function filasDetallePorGuia<M>(args: FilasDetallePorGuiaArgs<M>): HojaCo
     for (const fila of bloque.filas) {
       filas.push({
         guia,
-        cierre: fechaDiaMovimientoCR(fila.cierreFecha),
+        // SLT-81: la UI sigue en la zona de CR
+        cierre: fechaDiaMovimientoCR(fila.cierreFecha, ZONA_CR),
         resultado: args.resultadosTexto(fila.resultados),
         concepto: args.conceptoDe(movimiento(fila.movimientoId)),
         detalle: null,
@@ -209,7 +212,8 @@ export function filasDetallePorGuia<M>(args: FilasDetallePorGuiaArgs<M>): HojaCo
     filas.push({
       concepto: LIBRO_KARDEX_TEXTO.diferencia,
       detalle: LIBRO_KARDEX_TEXTO.detalleDiferencia(
-        fechaDiaMovimientoCR(fila.cierreFecha),
+        // SLT-81: la UI sigue en la zona de CR
+        fechaDiaMovimientoCR(fila.cierreFecha, ZONA_CR),
         args.conceptoDe(m),
         money(fila.montoMovimiento),
         money(fila.sumaGuias),

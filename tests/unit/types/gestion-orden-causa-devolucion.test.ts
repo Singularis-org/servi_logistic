@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import type { ZodError } from "zod";
 import { gestionarSchema } from "@/lib/types/gestion-orden";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 // ⚠️ Feature 193 (R10), decision humana del 2026-08-10: la gestion pasa a EXIGIR la ubicacion
 // del mensajero (o un motivo tecnico de por que falta). Los casos validos de abajo se AMPLIAN
 // con `ubicacion` —no se relajan—, mismo criterio que aplicaron la 73 y la 75 al endurecer
@@ -55,7 +56,7 @@ describe("Feature 73 · rama `devuelta` — causa obligatoria (R1/R6)", () => {
   it.each(["not_found", "wrong_number", "wrong_address"])(
     "R1: acepta la causa del catalogo `%s` junto al motivo",
     (causa) => {
-      const r = gestionarSchema.safeParse(devuelta({ causaDevolucion: causa }));
+      const r = gestionarSchema(ZONA_CR).safeParse(devuelta({ causaDevolucion: causa }));
       expect(r.success).toBe(true);
       if (r.success && r.data.resultado === "novedad") {
         expect(r.data.causaDevolucion).toBe(causa);
@@ -65,7 +66,7 @@ describe("Feature 73 · rama `devuelta` — causa obligatoria (R1/R6)", () => {
   );
 
   it("R6: SIN causa -> invalido, con el error asociado al campo `causaDevolucion`", () => {
-    const r = gestionarSchema.safeParse(devueltaSin("causaDevolucion"));
+    const r = gestionarSchema(ZONA_CR).safeParse(devueltaSin("causaDevolucion"));
     expect(r.success).toBe(false);
     if (!r.success) {
       expect(fieldErrorsDe(r.error).causaDevolucion).toBeDefined();
@@ -74,7 +75,7 @@ describe("Feature 73 · rama `devuelta` — causa obligatoria (R1/R6)", () => {
 
   it("R1/R6: causa FUERA del catalogo -> invalido (no hay 'Otro')", () => {
     for (const invalida of ["otro", "desconocido", "NOT_FOUND", "", "cliente_no_localizado"]) {
-      const r = gestionarSchema.safeParse(devuelta({ causaDevolucion: invalida }));
+      const r = gestionarSchema(ZONA_CR).safeParse(devuelta({ causaDevolucion: invalida }));
       expect(r.success, `deberia rechazar '${invalida}'`).toBe(false);
       if (!r.success) {
         expect(fieldErrorsDe(r.error).causaDevolucion).toBeDefined();
@@ -83,7 +84,7 @@ describe("Feature 73 · rama `devuelta` — causa obligatoria (R1/R6)", () => {
   });
 
   it("pedido: SIN evidencia -> invalido con el error asociado al campo lista `evidencias`", () => {
-    const r = gestionarSchema.safeParse(devueltaSin("evidencias"));
+    const r = gestionarSchema(ZONA_CR).safeParse(devueltaSin("evidencias"));
     expect(r.success).toBe(false);
     if (!r.success) {
       // Feature 119 (R6): la evidencia es una LISTA -> el error cuelga de `evidencias`.
@@ -94,7 +95,7 @@ describe("Feature 73 · rama `devuelta` — causa obligatoria (R1/R6)", () => {
 
 describe("Feature 73 · el motivo SIGUE obligatorio y no lo sustituye la causa (R7/R8/R12)", () => {
   it("R7: causa valida pero motivo en blanco -> invalido con `motivo requerido`", () => {
-    const r = gestionarSchema.safeParse(devuelta({ motivo: "   " }));
+    const r = gestionarSchema(ZONA_CR).safeParse(devuelta({ motivo: "   " }));
     expect(r.success).toBe(false);
     if (!r.success) {
       expect(fieldErrorsDe(r.error).motivo).toContain("motivo requerido");
@@ -102,13 +103,13 @@ describe("Feature 73 · el motivo SIGUE obligatorio y no lo sustituye la causa (
   });
 
   it("R7: causa valida pero SIN motivo -> invalido (la causa no afloja la validacion del motivo)", () => {
-    const r = gestionarSchema.safeParse(devueltaSin("motivo"));
+    const r = gestionarSchema(ZONA_CR).safeParse(devueltaSin("motivo"));
     expect(r.success).toBe(false);
     if (!r.success) expect(fieldErrorsDe(r.error).motivo).toBeDefined();
   });
 
   it("R8: sin causa Y sin motivo -> AMBOS errores por campo en la MISMA respuesta", () => {
-    const r = gestionarSchema.safeParse({ ordenId: "o1", resultado: "novedad" });
+    const r = gestionarSchema(ZONA_CR).safeParse({ ordenId: "o1", resultado: "novedad" });
     expect(r.success).toBe(false);
     if (!r.success) {
       const fieldErrors = fieldErrorsDe(r.error);
@@ -119,7 +120,7 @@ describe("Feature 73 · el motivo SIGUE obligatorio y no lo sustituye la causa (
 
   it("R12: el motivo se parsea EXACTAMENTE como se escribio, sin decorarlo con la causa", () => {
     const crudo = "  no vive aqui  ";
-    const r = gestionarSchema.safeParse(devuelta({ motivo: crudo }));
+    const r = gestionarSchema(ZONA_CR).safeParse(devuelta({ motivo: crudo }));
     expect(r.success).toBe(true);
     if (r.success && r.data.resultado === "novedad") {
       // `motivoSchema` ya hacia trim (feature 36): lo unico que se afirma es que la causa NO
@@ -132,12 +133,12 @@ describe("Feature 73 · el motivo SIGUE obligatorio y no lo sustituye la causa (
 
 describe("Feature 75 · la evidencia (foto) pasa a ser obligatoria en `devuelta`", () => {
   it("acepta un `devuelta` completo con causa + motivo + evidencia", () => {
-    const r = gestionarSchema.safeParse(devuelta());
+    const r = gestionarSchema(ZONA_CR).safeParse(devuelta());
     expect(r.success).toBe(true);
   });
 
   it("SIN evidencia -> invalido, con el error asociado al campo lista `evidencias`", () => {
-    const r = gestionarSchema.safeParse(devueltaSin("evidencias"));
+    const r = gestionarSchema(ZONA_CR).safeParse(devueltaSin("evidencias"));
     expect(r.success).toBe(false);
     if (!r.success) {
       // Feature 119 (R6): la evidencia es una LISTA -> el error cuelga de `evidencias`.
@@ -146,7 +147,7 @@ describe("Feature 75 · la evidencia (foto) pasa a ser obligatoria en `devuelta`
   });
 
   it("evidencia no-imagen (pdf) -> invalido en el campo lista `evidencias`", () => {
-    const r = gestionarSchema.safeParse(devuelta({ evidencias: [{ type: "application/pdf", size: 10 }] }));
+    const r = gestionarSchema(ZONA_CR).safeParse(devuelta({ evidencias: [{ type: "application/pdf", size: 10 }] }));
     expect(r.success).toBe(false);
     if (!r.success) {
       // Feature 119 (R8): la foto invalida cuelga del campo lista `evidencias` (validacion por archivo).
@@ -157,7 +158,7 @@ describe("Feature 75 · la evidencia (foto) pasa a ser obligatoria en `devuelta`
 
 describe("Feature 73 · la causa vive SOLO en la rama `devuelta` (R10/R19)", () => {
   it("R10: enviada en `entregada` -> NO aparece en el objeto parseado (no se puede persistir)", () => {
-    const r = gestionarSchema.safeParse({
+    const r = gestionarSchema(ZONA_CR).safeParse({
       ordenId: "o1",
       ubicacion: UBICACION_193,
       resultado: "entregado",
@@ -171,7 +172,7 @@ describe("Feature 73 · la causa vive SOLO en la rama `devuelta` (R10/R19)", () 
   });
 
   it("R10: enviada en `rechazada` -> NO aparece en el objeto parseado (conserva motivo+evidencia)", () => {
-    const r = gestionarSchema.safeParse({
+    const r = gestionarSchema(ZONA_CR).safeParse({
       ordenId: "o1",
       ubicacion: UBICACION_193,
       resultado: "devolucion_a_origen_por_rechazo",
@@ -184,7 +185,7 @@ describe("Feature 73 · la causa vive SOLO en la rama `devuelta` (R10/R19)", () 
   });
 
   it("R5/R10: enviada en `reprogramada` -> NO aparece en el objeto parseado", () => {
-    const r = gestionarSchema.safeParse({
+    const r = gestionarSchema(ZONA_CR).safeParse({
       ordenId: "o1",
       ubicacion: UBICACION_193,
       resultado: "reprogramado",
@@ -197,7 +198,7 @@ describe("Feature 73 · la causa vive SOLO en la rama `devuelta` (R10/R19)", () 
   });
 
   it("R19: las otras 3 ramas NO exigen causa (siguen validando sin ella)", () => {
-    const entregada = gestionarSchema.safeParse({
+    const entregada = gestionarSchema(ZONA_CR).safeParse({
       ordenId: "o1",
       ubicacion: UBICACION_193,
       resultado: "entregado",
@@ -205,14 +206,14 @@ describe("Feature 73 · la causa vive SOLO en la rama `devuelta` (R10/R19)", () 
       metodoPago: "efectivo",
       evidencias: [evidenciaValida()],
     });
-    const rechazada = gestionarSchema.safeParse({
+    const rechazada = gestionarSchema(ZONA_CR).safeParse({
       ordenId: "o1",
       ubicacion: UBICACION_193,
       resultado: "devolucion_a_origen_por_rechazo",
       motivo: "cliente rechazo",
       evidencias: [evidenciaValida()],
     });
-    const reprogramada = gestionarSchema.safeParse({
+    const reprogramada = gestionarSchema(ZONA_CR).safeParse({
       ordenId: "o1",
       ubicacion: UBICACION_193,
       resultado: "reprogramado",

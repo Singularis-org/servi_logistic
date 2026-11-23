@@ -22,6 +22,7 @@ import type { IPostulacionRepository } from "@/lib/interfaces/repositories/IPost
 import type { IFileStorage } from "@/lib/interfaces/external/IFileStorage";
 import type { PostularMensajeroCommand } from "@/lib/interfaces/services/IPostulacionMensajeroService";
 import { DOCUMENTO_TIPOS } from "@/lib/types/postulacion-mensajero";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // Feature 146 — camino REAL de los notificadores best-effort (R22, R23, R24, R25).
 //
@@ -323,9 +324,10 @@ describe("el notificador real, cableado en un service, emite de punta a punta", 
       primerApellido: "Perez",
       segundoApellido: undefined,
       email: "ana@example.com",
-      telefono: "0991234567",
-      tipoIdentificacionId: "tipo-1",
-      cedula: "1710034065",
+      // SLT-42: datos válidos del país de `reglasPaisFijas()` (Costa Rica).
+      telefono: "88887777",
+      tipoIdentificacionId: "tipo-cr-cedula",
+      cedula: "112223333",
       vehiculoId: "veh-1",
       placa: "ABC123",
       password: "Abcdef1!",
@@ -339,6 +341,7 @@ describe("el notificador real, cableado en un service, emite de punta a punta", 
       repoPostulacion(),
       storageFake(),
       notificarPostulacionPendienteCon(notificaciones),
+      reglasPaisFijas(),
     );
 
     expect(await service.postular(comando())).toEqual({ status: "ok" });
@@ -356,7 +359,7 @@ describe("el notificador real, cableado en un service, emite de punta a punta", 
       findDistritosByCantonIds: vi.fn().mockResolvedValue([]),
       // Feature 155: `cargarViaApi` resuelve el estado inicial con el flag de la tienda
       // dueña de la key, asi que el doble del repositorio debe exponerlo.
-      findUsuarioFulfillment: vi.fn().mockResolvedValue(false),
+      findUsuarioSeRecogeEnTienda: vi.fn().mockResolvedValue(true),
       createManyOrdenesConGuia: vi.fn().mockResolvedValue([]),
     };
     const service = new BulkOrdenService(
@@ -381,8 +384,14 @@ describe("el DEFAULT de un service con notificador es inocuo POR CONSTRUCCION", 
   });
 
   it("un service construido sin cablear el notificador no puede emitir nada", async () => {
-    // Se construye tal y como lo hacen los dobles de las suites ajenas: sin tercer argumento.
-    const service = new PostulacionMensajeroService(repoPostulacionSinCablear(), storageSinCablear());
+    // Se construye tal y como lo hacen los dobles de las suites ajenas: sin tercer argumento
+    // (`undefined` = el default). SLT-42: las reglas del país sí, porque sin ellas `postular` lanza.
+    const service = new PostulacionMensajeroService(
+      repoPostulacionSinCablear(),
+      storageSinCablear(),
+      undefined,
+      reglasPaisFijas(),
+    );
     // No hay forma de observar una emision porque el default NO tiene repositorio detras.
     // Lo que se fija aqui es que el camino termina en `ok` sin tocar nada externo.
     expect(await service.postular(comandoMinimo())).toEqual({ status: "ok" });
@@ -413,9 +422,10 @@ describe("el DEFAULT de un service con notificador es inocuo POR CONSTRUCCION", 
       primerApellido: "Perez",
       segundoApellido: undefined,
       email: "ana@example.com",
-      telefono: "0991234567",
-      tipoIdentificacionId: "tipo-1",
-      cedula: "1710034065",
+      // SLT-42: datos válidos del país de `reglasPaisFijas()` (Costa Rica).
+      telefono: "88887777",
+      tipoIdentificacionId: "tipo-cr-cedula",
+      cedula: "112223333",
       vehiculoId: "veh-1",
       placa: "ABC123",
       password: "Abcdef1!",
@@ -441,6 +451,9 @@ describe("el DEFAULT de un service con notificador es inocuo POR CONSTRUCCION", 
       { findUsuarioZonaId: vi.fn(), findBloqueoDetalle: vi.fn() } as never,
       { createSignedUrls: vi.fn() } as never,
       { resolvePagoTarifa: vi.fn() } as never,
+      undefined,
+      undefined,
+      reglasPaisFijas(),
     );
 
     const r = await service.solicitarCierre({
@@ -987,5 +1000,29 @@ describe("guardia derivada: ningun notificador REAL puede quedarse sin compositi
       .filter((d) => d.cableadoEn.length === 0);
 
     expect(muertos).toEqual([]);
+  });
+});
+
+describe("SLT-136/R23 — `emitirFacturaEmitidaReal` hereda el push por `repoReal()`", () => {
+  const fuente = fs.readFileSync(path.join(ROOT, "lib", "notificaciones", "notificadores.ts"), "utf8");
+  /** El cuerpo del binding: desde su `export const` hasta el `export` siguiente (o el final). */
+  function cuerpo(nombre: string): string {
+    const i = fuente.indexOf(`export const ${nombre}`);
+    expect(i, `no se encontro ${nombre}`).toBeGreaterThan(-1);
+    const siguiente = fuente.indexOf("\nexport ", i + 1);
+    return fuente.slice(i, siguiente === -1 ? fuente.length : siguiente);
+  }
+
+  it("⭑ resuelve su repositorio por `repoReal()` y no construye uno propio", () => {
+    const c = cuerpo("emitirFacturaEmitidaReal");
+    expect(c).toContain("emitirFacturaEmitida(repoReal(), ctx)");
+    expect(c).not.toContain("new NotificacionRepository(");
+    // No es best-effort: el job debe fallar si el aviso no se creó (design §7.2).
+    expect(c).not.toContain("emitirBestEffort");
+  });
+
+  it("⭑ el composition root del job lo cablea", () => {
+    const job = fs.readFileSync(path.join(ROOT, "lib", "planes", "jobs-factura-aviso.ts"), "utf8");
+    expect(job).toMatch(/emitirAviso:\s*emitirFacturaEmitidaReal/);
   });
 });

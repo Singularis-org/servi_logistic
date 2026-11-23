@@ -34,10 +34,13 @@ import { CambiarDiaRepartoSateliteModal } from "./CambiarDiaRepartoSateliteModal
 import { filaDescargaSatelite } from "./satelite-descarga-columnas";
 import {
   FILTRO_SATELITE_VACIO,
+  ORDEN_BODEGA_INICIAL,
   filtroSinResultados,
   serializarFiltroSatelite,
   type FiltroBodegaSatelite,
+  type OrdenBodega,
 } from "./satelite-ordenes-filtros";
+import { claveDeOrden } from "@/lib/types/ordenamiento-listado";
 import {
   BODEGA_BLOQUEADA_TITULO,
   BODEGA_CIERRES_ABIERTOS_DETALLE,
@@ -117,11 +120,12 @@ export interface OrdenesBodegaPagina {
  */
 async function leerPagina(
   filtro: FiltroBodegaSatelite,
+  orden: OrdenBodega,
   page: number,
   pageSize: number,
 ): Promise<OrdenesBodegaPagina> {
   if (filtroSinResultados(filtro)) return { items: [], total: 0, pageSize };
-  const res = await listarOrdenesBodegaPaginado({ ...filtro, page, pageSize });
+  const res = await listarOrdenesBodegaPaginado({ ...filtro, ...orden, page, pageSize });
   if (res.status !== "ok") throw new Error(res.status);
   return { items: res.items, total: res.total, pageSize: res.pageSize };
 }
@@ -262,19 +266,28 @@ export function RecepcionSateliteModule({
   const [filtro, setFiltro] = useState<FiltroBodegaSatelite>({});
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(ordenesBodega.pageSize);
+  // SLT-210 (R1401/R1402): el orden vigente. Arranca en el de siempre, que es el que resolvió
+  // el Server Component para la página pre-cargada.
+  const [orden, setOrden] = useState<OrdenBodega>(ORDEN_BODEGA_INICIAL);
 
   // R45/R61: la clave de SWR lleva el filtro serializado a un ESCALAR estable, para que la
   // caché sea por combinación de filtros y dos selecciones equivalentes no refetcheen.
+  // SLT-210 (R1402): y el orden, con `claveDeOrden`: sin él, la caché serviría la página de un
+  // orden como respuesta al otro.
   const filtroKey = serializarFiltroSatelite(filtro);
+  const ordenKey = claveDeOrden(orden);
   const { data, error, mutate } = useSWR(
-    ["satelite:bodega", filtroKey, page, pageSize],
-    () => leerPagina(filtro, page, pageSize),
+    ["satelite:bodega", filtroKey, ordenKey, page, pageSize],
+    () => leerPagina(filtro, orden, page, pageSize),
     {
-      // Lo que el Server Component ya resolvió: página 1, sin filtros, tamaño de origen.
+      // Lo que el Server Component ya resolvió: página 1, sin filtros, tamaño de origen y el
+      // orden por defecto. Con otro orden NO se usa (R1402): pintaría filas en el orden viejo
+      // como si respondieran al nuevo.
       fallbackData:
         page === 1 &&
         pageSize === ordenesBodega.pageSize &&
-        filtroKey === FILTRO_SATELITE_VACIO
+        filtroKey === FILTRO_SATELITE_VACIO &&
+        ordenKey === claveDeOrden(ORDEN_BODEGA_INICIAL)
           ? ordenesBodega
           : undefined,
     },
@@ -291,29 +304,42 @@ export function RecepcionSateliteModule({
     setPage(1);
   }
 
+  /** SLT-210 (R1402): otro orden es otra secuencia del mismo conjunto: vuelve a la página 1. */
+  function cambiarOrden(nuevo: OrdenBodega) {
+    setOrden(nuevo);
+    setPage(1);
+  }
+
   /**
-   * Feature 184 — Tanda A (T A.5, R18/R19/R21/R22) — cuáles de los identificadores marcados
-   * SIGUEN perteneciendo al conjunto filtrado.
+   * Feature 184 — Tanda A (T A.5, R18/R21/R22) — cuáles de los identificadores marcados
+   * SIGUEN perteneciendo al listado de la bodega.
    *
-   * Vive aquí y baja como callback por lo mismo que `obtenerFilasDescarga`: los filtros
-   * vigentes son de este módulo y la selección es del listado. Se construye EN EL RENDER, así
-   * que el closure lee el `filtro` de ESTE render y la comprobación se hace sobre el conjunto
-   * que el usuario está viendo (R19). El alcance por zona lo impone el servidor: aquí no viaja
-   * ninguna clave de alcance (R21).
+   * SLT-222 R1514 (sustituye R19/R25 de la 188): se pregunta SIN el `filtro` vigente, sólo con
+   * los `ids`. La selección sobrevive ahora a la búsqueda, y preguntar con el término actual
+   * retiraría lo marcado en la búsqueda anterior por no cumplirlo. Lo que se poda es lo que
+   * SALIÓ del listado (incidente, transición), no lo que no se ve. Por lo mismo, el corte de
+   * `filtroSinResultados` (FICHA 355) ya no entra aquí: un filtro imposible no vacía lo marcado;
+   * sigue cortando la lectura de la página y la descarga. El alcance por zona lo impone el
+   * servidor: aquí no viaja ninguna clave de alcance (R21).
    *
    * Devuelve `null` en CUALQUIER respuesta que no sea `ok` —incluida la de pasarse del tope de
    * identificadores— y el listado lo trata como «no podar»: la selección queda intacta (R22).
    * El tope lo decide el servidor y no se replica aquí, para que no haya dos números.
    */
   async function comprobarVigencia(ids: string[]): Promise<readonly string[] | null> {
-    // FICHA 355: con la selección imposible el conjunto filtrado es VACÍO, así que ninguna
-    // marca sigue en él. Se responde sin consultar por la misma razón que en `leerPagina`:
-    // preguntarlo devolvería el conjunto de los cinco estados y conservaría marcas que ya no
-    // pertenecen a lo que se está viendo. `[]` es «ninguno vigente», no «no se pudo
-    // comprobar» (eso es `null`, R22), que es exactamente lo que corresponde aquí.
-    if (filtroSinResultados(filtro)) return [];
-    const res = await listarIdsVigentesBodega({ ...filtro, ids });
+    const res = await listarIdsVigentesBodega({ ids });
     return res.status === "ok" ? res.ids : null;
+  }
+
+  /**
+   * SLT-222 R1508 — señal para el listado de «desmarca todo». Se incrementa tras cada acción
+   * por lote con éxito (asignar, deshacer, cambiar día, enviar a central, recuperar): las
+   * órdenes actuadas ya cambiaron de estado y dejarlas marcadas —también las que no se ven—
+   * invita a repetir la acción sobre algo que ya no la admite.
+   */
+  const [resetSeleccion, setResetSeleccion] = useState(0);
+  function vaciarSeleccion() {
+    setResetSeleccion((n) => n + 1);
   }
 
   /**
@@ -355,6 +381,7 @@ export function RecepcionSateliteModule({
     setRecuperando(false);
     if (recuperadas > 0) {
       toast.success(`${recuperadas} orden(es) recuperada(s) a bodega.`);
+      vaciarSeleccion();
     }
     if (errores.length > 0) toast.error(errores[0]);
     await releerBodega();
@@ -378,6 +405,7 @@ export function RecepcionSateliteModule({
   function handleSuccess() {
     setOrdenesAAsignar([]);
     setModalOpen(false);
+    vaciarSeleccion();
     void releerBodega(); // relee el estado del servidor (patrón feature 33)
   }
 
@@ -397,6 +425,7 @@ export function RecepcionSateliteModule({
   function handleDeshacerSuccess() {
     setOrdenesADeshacer([]);
     setDeshacerOpen(false);
+    vaciarSeleccion();
     void releerBodega();
   }
 
@@ -420,6 +449,7 @@ export function RecepcionSateliteModule({
   function handleCambiarDiaSuccess() {
     setOrdenesACambiarDia([]);
     setCambiarDiaOpen(false);
+    vaciarSeleccion();
     void releerBodega();
   }
 
@@ -450,6 +480,7 @@ export function RecepcionSateliteModule({
     setUltimoEnvioACentral(enviadasIds);
     if (enviadas > 0) {
       toast.success(`${enviadas} orden(es) enviada(s) a bodega central.`);
+      vaciarSeleccion();
     }
     if (errores.length > 0) toast.error(errores[0]);
     await releerBodega();
@@ -571,6 +602,7 @@ export function RecepcionSateliteModule({
           totalSinFiltros={ordenesBodega.total}
           catalogo={catalogoFiltros}
           onFiltroChange={cambiarFiltro}
+          onOrdenChange={cambiarOrden}
           cargando={cargando}
           errorCarga={error ? ERROR_CARGA : null}
           /**
@@ -609,7 +641,8 @@ export function RecepcionSateliteModule({
                     items: [],
                     total: 0,
                   })
-                : descargarDatos("listarOrdenesBodegaCompleto", { ...filtro }),
+                : // SLT-210 (R1406): el archivo sale en el orden vigente en pantalla.
+                  descargarDatos("listarOrdenesBodegaCompleto", { ...filtro, ...orden }),
               filaDescargaSatelite,
             )
           }
@@ -620,6 +653,7 @@ export function RecepcionSateliteModule({
            * fuera de la página visible (R23).
            */
           comprobarVigencia={comprobarVigencia}
+          resetSeleccion={resetSeleccion}
           zonaNombre={zonaNombre}
           puedeAsignar={!bloqueoBodega.bloqueada}
           onAsignar={abrirAsignacion}

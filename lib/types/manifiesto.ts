@@ -28,6 +28,9 @@ export const MANIFIESTO_FLUJOS = [
   "devolucion_central",
   "envio_tienda",
   "recoleccion_tienda", // feature 155/R24
+  // SLT-197 (R982): la central retira paquetes del estante de una satelite. Mismo movimiento
+  // fisico que `devolucion_central` (zona -> central), pero otra operacion: el papel la nombra.
+  "retiro_satelite",
 ] as const;
 
 export type ManifiestoFlujo = (typeof MANIFIESTO_FLUJOS)[number];

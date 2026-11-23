@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { GestionOrdenRepository } from "@/lib/repositories/GestionOrdenRepository";
 import { idEstado, sembrarCatalogoEstados } from "@/tests/fixtures/catalogo-estados";
+import { inicioDelDiaCR } from "@/tests/fabricas/reglas-pais";
 
 // ⏳ 2026-09-23 (FICHA 454, T1.4): `crearGestionYTransicionar` se sustituye por
 // `registrarGestionPendiente` (registra SIN transicionar la orden). Lo que esta suite mide —las N
@@ -64,6 +65,7 @@ describe("registrarGestionPendiente — N filas hijas en la misma tx (R9)", () =
     const { repo, gestionCreate, evidenciaCreateMany, ordenUpdate, $transaction } = buildTxRepo();
 
     const r = await repo.registrarGestionPendiente({
+      inicioDelDia: inicioDelDiaCR(),
       ordenId: "o1",
       mensajeroId: "m1",
       gestion: { resultado: "entregado", montoRecibido: 100, metodoPago: "efectivo", evidencias: evidencias3 },
@@ -88,6 +90,7 @@ describe("registrarGestionPendiente — N filas hijas en la misma tx (R9)", () =
   it("R2: preserva el indice 0..N-1 EXACTO de cada evidencia en las filas hijas", async () => {
     const { repo, evidenciaCreateMany } = buildTxRepo();
     await repo.registrarGestionPendiente({
+      inicioDelDia: inicioDelDiaCR(),
       ordenId: "o1",
       mensajeroId: "m1",
       gestion: { resultado: "novedad", motivo: "x", evidencias: evidencias3 },
@@ -101,6 +104,7 @@ describe("crearGestionYTransicionar — dual-write de la portada (R12)", () => {
   it("R12: la evidencia indice 0 se copia a evidencia_storage_path/_content_type en el MISMO insert", async () => {
     const { repo, gestionCreate } = buildTxRepo();
     await repo.registrarGestionPendiente({
+      inicioDelDia: inicioDelDiaCR(),
       ordenId: "o1",
       mensajeroId: "m1",
       gestion: { resultado: "entregado", montoRecibido: 100, metodoPago: "efectivo", evidencias: evidencias3 },
@@ -117,6 +121,7 @@ describe("crearGestionYTransicionar — dual-write de la portada (R12)", () => {
       { storagePath: "p0", contentType: "image/jpeg", indice: 0 },
     ];
     await repo.registrarGestionPendiente({
+      inicioDelDia: inicioDelDiaCR(),
       ordenId: "o1",
       mensajeroId: "m1",
       gestion: { resultado: "novedad", motivo: "x", evidencias: desordenadas },
@@ -131,6 +136,7 @@ describe("crearGestionYTransicionar — ramas sin foto (reprogramada)", () => {
   it("sin evidencias: NO llama createMany y la portada queda NULL", async () => {
     const { repo, gestionCreate, evidenciaCreateMany } = buildTxRepo();
     await repo.registrarGestionPendiente({
+      inicioDelDia: inicioDelDiaCR(),
       ordenId: "o1",
       mensajeroId: "m1",
       gestion: { resultado: "reprogramado", fechaReprogramacion: "2027-01-01", motivo: "x" },
@@ -154,6 +160,7 @@ describe("crearGestionYTransicionar — evidencias del INCIDENTE (158/R10)", () 
     const { repo, gestionCreate, evidenciaCreateMany, $transaction } = buildTxRepo();
 
     await repo.registrarGestionPendiente({
+      inicioDelDia: inicioDelDiaCR(),
       ordenId: "o1",
       mensajeroId: "m1",
       gestion: {

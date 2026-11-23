@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Undo2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { BOTON_TACTIL_MOVIL } from "@/components/shared/texto-entero";
 import { useToast } from "@/hooks/useToast";
 import { recuperarOrdenAyuda } from "@/lib/actions/orden-ayuda";
 
@@ -77,8 +78,9 @@ export function RecuperarAyudaButton({
     <Button
       type="button"
       variant="outline"
+      // SLT-202 (Carlos, 2026-11-18): `sm` de prod desde `md`; 44 px en el móvil (SLT-156, R493).
       size="sm"
-      className="shrink-0"
+      className={`shrink-0 ${BOTON_TACTIL_MOVIL}`}
       disabled={enviando}
       onClick={handleClick}
       aria-label={`Retirar la solicitud de ayuda de la orden ${numRemision}`}

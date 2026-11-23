@@ -8,6 +8,7 @@ import {
 } from "@/lib/repositories/TableroDiaRepository";
 import { ventanaDelDiaEnCursoCR } from "@/lib/utils/ventana-dia-cr";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 // Feature 258 (B3.2) — R51, R52, R53, R55, R58.
 //
 // Mide EL SQL QUE EL REPOSITORIO EMITE (espia la llamada real a `$queryRaw` y reconstruye el
@@ -18,7 +19,7 @@ import { ventanaDelDiaEnCursoCR } from "@/lib/utils/ventana-dia-cr";
 // cifras correctas. Eso son hechos del motor y se prueban contra Postgres real en
 // `tests/integration/tablero-dia-ritmo.test.ts`. Aqui se comprueba la FORMA.
 
-const VENTANA = ventanaDelDiaEnCursoCR(new Date("2026-08-08T19:00:00.000Z"));
+const VENTANA = ventanaDelDiaEnCursoCR(new Date("2026-08-08T19:00:00.000Z"), ZONA_CR);
 const ZONA = "11111111-1111-4111-8111-111111111111";
 
 interface Espia {

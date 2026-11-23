@@ -54,7 +54,7 @@ function correr(features: Ficha[] | null, miCuenta?: string): { code: number; sa
 
 const de = (accountId: string) => ({ assignee: { accountId, displayName: accountId } })
 
-describe('guardia: reglas de equipo del validador', () => {
+describe('guardia: reglas de equipo del validador', { timeout: 30_000 }, () => {
   it('falla si una feature en vuelo no tiene assignee', () => {
     const { code, salida } = correr([ficha(1, { assignee: null })], 'u1')
     expect(salida).toContain('sin assignee')

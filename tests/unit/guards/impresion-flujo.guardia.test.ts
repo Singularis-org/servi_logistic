@@ -943,7 +943,8 @@ describe("feature 223 — que NO se parte, y donde NO se aplica (R19, R20)", () 
     //     razon: se repite N veces y es la que decide donde caen los cortes. Partida, deja la
     //     guia en una pagina y el destinatario en la siguiente. Es el gemelo de la pieza 1 sin
     //     desplegable (la fila no es un boton: la seccion es de consulta, R31).
-    "mb-2 grid break-inside-avoid items-center gap-2 rounded-[10px] border border-border px-2 py-2.5",
+    //     SLT-156 «PWA de los mensajeros: tablas usables en el móvil» (R494): `py-2.5` → `py-3`, escala de 4 px.
+    "mb-2 grid break-inside-avoid items-center gap-2 rounded-[10px] border border-border px-2 py-3",
     // 7 — el ENCABEZADO de esa seccion (titulo + conteo + la nota que dice que no tienen dinero
     //     asociado). Mismo criterio que la pieza 4, la cabecera de la hoja: partido, la primera
     //     pagina deja una lista de ordenes sin decir que son ni por que no llevan importe. La
@@ -1036,14 +1037,33 @@ describe("feature 223 — la pantalla no se toca (R12)", () => {
    * descarto por escrito: quitar el `max-h`/`overflow` del modal arregla la impresion y deja el
    * detalle sin barra de desplazamiento, con el contenido saliendose de la caja.
    */
-  it("el modulo del admin conserva su `max-h-[70vh]` y su `overflow-y-auto`", () => {
+  /**
+   * SLT-100 «Detalle de cierre único en /cierres-admin (mensajeros)» (D12, R21): el admin ya no
+   * imprime el detalle. Aquí se vigilaba el `max-h-[70vh]` del modal que montaba la hoja; ese modal
+   * se sustituyó por el detalle único (con un solo scroll propio, R11 de SLT-95), así que el caso se
+   * retira y se sustituye por el que hace cierta la decisión: el módulo del admin no monta la hoja
+   * imprimible. SLT-108 hace lo mismo con el módulo del mensajero (caso gemelo, abajo).
+   */
+  it("el modulo del admin no monta `CierreFacturaDetalle` ni `HojaFactura` (SLT-100, D12)", () => {
     const modulo = codigoSinComentarios(MODULO_ADMIN);
-    expect(modulo, "desaparecio `max-h-[70vh]` del detalle del admin").toContain("max-h-[70vh]");
     expect(
       modulo,
-      "desaparecio `overflow-y-auto`: el papel no se arregla rompiendo el desplazamiento en " +
-        "pantalla. La cadena de ancestros se neutraliza SOLO para el medio impresion.",
-    ).toContain("overflow-y-auto");
+      "el detalle del admin vuelve a montar la hoja imprimible: D12 la quitó (se descarga)",
+    ).not.toMatch(/<CierreFacturaDetalle\b/);
+    expect(modulo).not.toMatch(/<HojaFactura\b/);
+    expect(modulo, "el detalle del admin tiene que ser el detalle único").toMatch(/<DetalleCierre\b/);
+  });
+
+  it("el modulo del mensajero no monta `CierreFacturaDetalle` ni `HojaFactura` (SLT-108, D12, R161)", () => {
+    // SLT-108 «/cierre-dia: detalle y cola únicos para el mensajero»: el cierre pasado del mensajero
+    // se abre en el detalle único, sin hoja imprimible (D12); quien la necesite usa «Descargar».
+    const modulo = codigoSinComentarios(MODULO_MENSAJERO);
+    expect(
+      modulo,
+      "el detalle del cierre pasado vuelve a montar la hoja imprimible: D12 la quitó (se descarga)",
+    ).not.toMatch(/<CierreFacturaDetalle\b/);
+    expect(modulo).not.toMatch(/<HojaFactura\b/);
+    expect(modulo, "el detalle del cierre pasado tiene que ser el detalle único").toMatch(/<DetalleCierre\b/);
   });
 
   it("el `Modal` conserva su `overflow-auto`", () => {

@@ -144,6 +144,7 @@ import {
 } from "./cierre-labels";
 import { CLAVE_MEDIO_PAGO, MEDIOS_PAGO, montoPorMetodo } from "./desglose-pago";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 /**
  * UNA COLUMNA POR MEDIO DE PAGO (2026-08-19), en el orden de `MEDIOS_PAGO` —el de declaración
  * del enum, que es el mismo que el servidor garantiza en `pagos` (R24)—. El encabezado es la
@@ -304,12 +305,19 @@ export const COLUMNAS_DESCARGA_GESTIONES_FUNDIDA: DescargaColumna[] = [
 export type AudienciaDescargaGestionesFundida = "admin" | "satelite";
 
 /**
- * Columnas que son dato de la CENTRAL y no salen en la hoja del `adminSatelite`. Hoy solo el
- * fulfillment congelado de la tarifa: el servidor ya se lo manda en `null`
- * (`ocultarFulfillmentSiNoCentral`), y aquí se retira además la COLUMNA, para que no quede un
- * encabezado «Fulfillment» vacío en su archivo ni una casilla en su selector.
+ * Columnas que son dato de la CENTRAL y no salen en la hoja del `adminSatelite`: el fulfillment
+ * congelado de la tarifa y, desde SLT-161 (R483), el cobro a la tienda (flete, comisión, flete de
+ * devolución e ingreso total). El servidor ya le manda `ingresoEmpresa` en `null`
+ * (`ocultarDineroEmpresaDescargaSiNoCentral`), y aquí se retira además la COLUMNA, para que no quede
+ * un encabezado vacío en su archivo ni una casilla en su selector.
  */
-const CLAVES_SOLO_CENTRAL: ReadonlySet<string> = new Set(["fulfillment"]);
+const CLAVES_SOLO_CENTRAL: ReadonlySet<string> = new Set([
+  "fulfillment",
+  "fleteConIva",
+  "comisionConIva",
+  "fleteDevolucionConIva",
+  "ingresoTotal",
+]);
 
 /**
  * Las columnas de la hoja fundida para una audiencia. La central recibe la declaración ENTERA,
@@ -436,7 +444,8 @@ function ubicacion(gestion: CierreGestionDescargaDTO): string | null {
 function celdasComunes(gestion: CierreGestionDescargaDTO): DescargaFila {
   return {
     mensajero: gestion.mensajeroNombre,
-    fechaCierre: fechaDiaInstanteCR(gestion.cierreSolicitadoAt),
+    // SLT-81: la UI sigue en la zona de CR
+    fechaCierre: fechaDiaInstanteCR(gestion.cierreSolicitadoAt, ZONA_CR),
     // Las dos fechas nuevas llegan YA como día calendario `YYYY-MM-DD` del servidor, así que
     // aquí NO se les aplica `fechaDiaInstanteCR` ni ningún recorte: no hay nada que recortar, y pasar
     // un día por un extractor de días sugeriría que puede ser un instante, que es justo la
@@ -488,8 +497,9 @@ function celdasEspecificas(
   const mediosPago = montoPorMetodo(gestion.pagos);
   return {
     // `null` cuando la orden no tenía tarifa vigente al solicitar (gap conocido de la feature
-    // 69): celda VACÍA, que es lo que la pantalla enseña (R46).
-    montoCobrar: ingreso ? ingreso.montoCobrar : null,
+    // 69): celda VACÍA, que es lo que la pantalla enseña (R46). SLT-161 (R483): sin acceso total el
+    // bloque llega en `null` y el monto a cobrar viaja aparte, en la gestión.
+    montoCobrar: ingreso ? ingreso.montoCobrar : (gestion.montoCobrar ?? null),
     // Monto FIJO de la tarifa CONGELADA (2026-08-19). No es un concepto derivado: no lo calcula
     // `derivarIngresoOrden` y no entra en `ingresoTotal`. Vacío si el cierre no lo congeló.
     fulfillment: fulfillmentDeIngreso(ingreso),
@@ -536,8 +546,9 @@ export function filaDescargaGestionFundida(gestion: CierreGestionDescargaDTO): D
   const especificas = celdasEspecificas(gestion);
   const pobladas: readonly ClaveEspecifica[] =
     ESPECIFICAS_POR_RESULTADO[gestion.resultado] ?? CLAVES_ESPECIFICAS;
+  // SLT-161 (R483): el modelo viaja aparte cuando el servidor anula el bloque de la empresa.
   const extra: readonly ClaveEspecifica[] =
-    gestion.ingresoEmpresa?.tarifaModelo === "nuevo"
+    (gestion.ingresoEmpresa?.tarifaModelo ?? gestion.tarifaModelo) === "nuevo"
       ? (ESPECIFICAS_EXTRA_MODELO_NUEVO[gestion.resultado] ?? [])
       : [];
   const fila: DescargaFila = { ...celdasComunes(gestion) };

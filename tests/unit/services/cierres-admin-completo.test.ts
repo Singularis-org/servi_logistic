@@ -15,6 +15,8 @@ import type { RangoPagina } from "@/lib/utils/rango-pagina";
 import { ESTADOS_COLA_CIERRE_DIA } from "@/lib/utils/colas-cierre";
 import { descargaConfig } from "@/lib/config/descarga";
 import { listarHistoricoCierresAdminSchema } from "@/lib/types/cierres-admin";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
+import { dobleCierresAdmin } from "@/tests/fixtures/dobles/cierres-admin-repository";
 
 // Ficha 470 (T1.3, riesgo K6) — el tope real de la descarga es ahora el limite de Excel
 // (1.048.575 filas). Este archivo prueba la MECANICA del tope (N entra, N+1 no), que no depende
@@ -70,6 +72,7 @@ const ROLES_SIN_ACCESO: Actor[] = [
 
 function fila(over: Partial<CierreAdminResumenRow> & { cierreId: string }): CierreAdminResumenRow {
   return {
+    pagoIndependienteEfectivo: false, // SLT-123: la marca es obligatoria en la fila del repositorio
     mensajeroId: `m-${over.cierreId}`,
     mensajeroNombre: `Mensajero ${over.cierreId}`,
     estado: "aprobado",
@@ -223,17 +226,13 @@ function repoEnMemoria(filas: CierreAdminResumenRow[] = ALMACEN) {
     return { items: conjunto.slice(rango.skip, rango.skip + rango.take), total: conjunto.length };
   });
 
-  const repo = {
+  const repo = dobleCierresAdmin({
     findCierresByAlcance,
     findHistoricoCompleto,
     findColaCompleta,
     findHistoricoPaginado,
     findColaPaginada,
-    findCierreByIdEnAlcance: vi.fn(async () => null),
-    findGestionesIncidenteDelCierre: vi.fn(async () => []),
-    resolverCierre: vi.fn(async () => "updated" as const),
-    forzarSolicitudVencido: vi.fn(async () => "updated" as const),
-  } as unknown as ICierresAdminRepository;
+  });
 
   return { repo, llamadas, filasLeidas, findHistoricoCompleto, findColaCompleta };
 }
@@ -268,6 +267,11 @@ function servicio(repo: ICierresAdminRepository) {
     // que miden el tope y el orden del listado, no se mueven ni un centimo.
     { sumarPremiosVivosPorCierre },
     sinRetenidas(), // FICHA 462: 7.o argumento requerido; este archivo no mide la marca
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    reglasPaisFijas(),
   );
   return { svc, createSignedUrls, sumarVigentesPorCierre };
 }

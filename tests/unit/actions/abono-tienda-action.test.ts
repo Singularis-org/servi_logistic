@@ -4,6 +4,17 @@ import * as acciones from "@/lib/actions/abono-tienda";
 import type { IAbonoTiendaService } from "@/lib/interfaces/services/IAbonoTiendaService";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 
+// SLT-42 (T5.4): la zona del pais de la empresa, sin sesion ni base: la de CR, como antes. El borde
+// (`zonaDelBorde`) y los composition roots leen `construirReglasPaisEmpresa`; la zona en si la mide
+// `tests/unit/services/hora-por-pais-wallet.test.ts`.
+vi.mock("@/lib/services/ReglasPaisEmpresaService", async (importOriginal) => {
+  const { reglasPaisFijas } = await import("@/tests/fabricas/reglas-pais");
+  return {
+    ...(await importOriginal<typeof import("@/lib/services/ReglasPaisEmpresaService")>()),
+    construirReglasPaisEmpresa: () => reglasPaisFijas(),
+  };
+});
+
 /**
  * FICHA 457 / T5.1 — el BORDE de las tres actions, con el servicio doble: la sesion va ANTES de mirar la
  * entrada (R3), zod `.strict()` rechaza lo no previsto (R12/R13/R34), el `File` del `FormData` llega

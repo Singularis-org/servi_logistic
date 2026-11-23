@@ -10,6 +10,7 @@ import type { RangoPagina } from "@/lib/utils/rango-pagina";
 import { listarCierresBodegaPaginadoSchema } from "@/lib/types/cierre-bodega";
 
 import { marcaPorEstado } from "@/tests/fixtures/marca-conciliacion";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 // Feature 170 — FASE 2, T I.1 (R40/R41/R44/R51/R54) — «Cierres de bodega solicitados» paginado.
 //
 // PUNTO CALIENTE de la tanda: el alcance no lo fija el rol sino un DATO derivado del actor (la
@@ -111,6 +112,11 @@ function repoEnMemoria(filas: CierreBodegaResumenRow[] = ALMACEN) {
       llamadas.push("contarCierresDiaSolicitados");
       return 0;
     }),
+    // SLT-106 (R199): los nombres de los cierres sin resolver; lo lee `listarConsolidacion`.
+    findMensajerosConCierreSinResolver: vi.fn(async () => {
+      llamadas.push("findMensajerosConCierreSinResolver");
+      return [] as string[];
+    }),
     // ⭑ FICHA 431: `existeCierreBodegaSolicitado` se retiro del contrato con su indice unico parcial.
     crearCierreBodega: vi.fn(async () => "cb-nuevo"),
   } as unknown as ICierreBodegaRepository;
@@ -125,7 +131,7 @@ function servicio(repo: ICierreBodegaRepository, contarZona?: { n: number }) {
       return ZONA_POR_USUARIO[usuarioId] ?? null;
     }),
   } as unknown as IOrdenRepository;
-  return new CierreBodegaService(repo, ordenRepo);
+  return new CierreBodegaService(repo, ordenRepo, reglasPaisFijas());
 }
 
 function input(extra: Record<string, unknown> = {}) {

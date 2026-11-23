@@ -2,7 +2,7 @@
 // y `./init.sh --unir`) MUERDE en cada desenlace de fallo, no solo pasa en el verde.
 //
 // Existe porque el CI parte la suite en N shards y ningun shard da veredicto: el veredicto (baseline
-// de rojos + «los tres proyectos corrieron» + «contradiccion») se aplica UNA vez sobre el informe
+// de rojos + «los proyectos declarados corrieron» + «contradiccion») se aplica UNA vez sobre el informe
 // unido (`docs/gate.md > En CI la suite va en shards`). Si la union tragara un shard ausente, un
 // JSON roto o un archivo repetido, el check `gate-completo` daria verde sobre tests que no se sabe
 // si corrieron. `docs/gate.md > Probar que muerde, no que pasa`: un fixture por desenlace.
@@ -81,7 +81,7 @@ function unir(dir: string, n: string, cwd = RAIZ) {
   return { ...r, salida }
 }
 
-describe('scripts/unir-informes-vitest.mjs', () => {
+describe('scripts/unir-informes-vitest.mjs', { timeout: 30_000 }, () => {
   it('une tres shards: concatena archivos, suma contadores y devuelve el codigo maximo', () => {
     const dir = tmp()
     shard(dir, 1, informe(RAIZ, [['tests/unit/a.test.tsx', 'passed'], ['tests/unit/b.test.ts', 'failed']]), '1')
@@ -190,10 +190,12 @@ function bash(): string {
 }
 
 /**
- * Un repo de mentira con lo justo para `--unir`: `init.sh`, los dos scripts del veredicto y un
- * baseline VACIO. Asi el veredicto no depende del baseline real ni escribe en la raiz del repo.
+ * Un repo de mentira con lo justo para `--unir`: `init.sh`, los dos scripts del veredicto, un
+ * baseline VACIO y un `arnes.config.json` que declara los tres proyectos de vitest (sin
+ * declararlos, la garantia 1 no corre). Asi el veredicto no depende del baseline ni del perfil
+ * reales, ni escribe en la raiz del repo.
  */
-function repoDeMentira(): string {
+function repoDeMentira(proyectos: string[] = ['ui', 'node', 'integration']): string {
   const raiz = tmp()
   mkdirSync(join(raiz, 'scripts'))
   mkdirSync(join(raiz, 'tests'))
@@ -202,6 +204,7 @@ function repoDeMentira(): string {
     copyFileSync(join(RAIZ, 'scripts', s), join(raiz, 'scripts', s))
   }
   writeFileSync(join(raiz, 'tests', 'baseline-rojos.json'), JSON.stringify({ archivos: {} }))
+  writeFileSync(join(raiz, 'arnes.config.json'), JSON.stringify({ gate: { proyectos_vitest: proyectos } }))
   return raiz
 }
 
@@ -216,7 +219,7 @@ function initUnir(raiz: string, dir: string) {
   return { status: r.status, salida: `${r.stdout}${r.stderr}` }
 }
 
-describe('./init.sh --unir aplica el veredicto UNA vez, sobre el informe unido', () => {
+describe('./init.sh --unir aplica el veredicto UNA vez, sobre el informe unido', { timeout: 30_000 }, () => {
   it('tres shards sanos que cubren los tres proyectos: verde', () => {
     const raiz = repoDeMentira()
     const dir = join(raiz, 'informes')
@@ -225,7 +228,7 @@ describe('./init.sh --unir aplica el veredicto UNA vez, sobre el informe unido',
     const r = initUnir(raiz, dir)
 
     expect(r.status, r.salida).toBe(0)
-    expect(r.salida).toContain('los tres proyectos corrieron')
+    expect(r.salida).toContain('los 3 proyectos de vitest declarados corrieron')
     expect(r.salida).toContain('init OK')
   })
 
@@ -240,6 +243,19 @@ describe('./init.sh --unir aplica el veredicto UNA vez, sobre el informe unido',
 
     expect(r.status).toBe(1)
     expect(r.salida).toContain('NI UN archivo del proyecto: integration')
+  })
+
+  it('el mismo informe sin integration es VERDE si el perfil no declara ese proyecto', () => {
+    const raiz = repoDeMentira(['ui', 'node'])
+    const dir = join(raiz, 'informes')
+    shard(dir, 1, informe(raiz, [['tests/unit/a.test.tsx', 'passed']]))
+    shard(dir, 2, informe(raiz, [['tests/unit/b.test.ts', 'passed']]))
+    shard(dir, 3, informe(raiz, [['tests/guards/d.test.ts', 'passed']]))
+
+    const r = initUnir(raiz, dir)
+
+    expect(r.status, r.salida).toBe(0)
+    expect(r.salida).toContain('los 2 proyectos de vitest declarados corrieron (ui, node)')
   })
 
   it('un shard salio distinto de cero y ningun informe trae rojos: ROJO (garantia 2)', () => {

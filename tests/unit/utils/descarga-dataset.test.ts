@@ -13,6 +13,7 @@ import {
 } from "@/lib/utils/descarga-dataset";
 import { XLSX_MIME } from "@/lib/utils/xlsx-template";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 // Feature 151 (T4) — despachador comun de la descarga: R1, R2, R3, R5, R6, R7, R8, R9, R10.
 // Los asertos de xlsx RELEEN el libro con la misma libreria (round-trip real, sin dobles).
 
@@ -102,7 +103,7 @@ describe("construirDescarga", () => {
   it("genera xlsx cuando no se declara tipo de archivo", async () => {
     const archivo = await construirDescarga(
       { titulo: "Órdenes", columnas: COLUMNAS, filas: FILAS },
-      FECHA,
+      ZONA_CR, FECHA,
     );
 
     expect(archivo.mime).toBe(XLSX_MIME);
@@ -115,7 +116,7 @@ describe("construirDescarga", () => {
   it("produce un libro de una hoja con cabecera y una fila por elemento, en orden", async () => {
     const archivo = await construirDescarga(
       { tipo: "xlsx", titulo: "Órdenes", columnas: COLUMNAS, filas: FILAS },
-      FECHA,
+      ZONA_CR, FECHA,
     );
 
     const workbook = await leerLibro(archivo.contenido);
@@ -137,7 +138,7 @@ describe("construirDescarga", () => {
   it("produce texto csv con cabecera y una línea por elemento cuando el tipo es csv", async () => {
     const archivo = await construirDescarga(
       { tipo: "csv", titulo: "Órdenes", columnas: COLUMNAS, filas: FILAS },
-      FECHA,
+      ZONA_CR, FECHA,
     );
 
     expect(typeof archivo.contenido).toBe("string");
@@ -162,7 +163,7 @@ describe("construirDescarga", () => {
 
     const csv = await construirDescarga(
       { tipo: "csv", titulo: "Órdenes", columnas: COLUMNAS, filas },
-      FECHA,
+      ZONA_CR, FECHA,
     );
     const parseado = parseCsv(csv.contenido as string);
 
@@ -174,7 +175,7 @@ describe("construirDescarga", () => {
 
     const xlsx = await construirDescarga(
       { tipo: "xlsx", titulo: "Órdenes", columnas: COLUMNAS, filas },
-      FECHA,
+      ZONA_CR, FECHA,
     );
     const worksheet = (await leerLibro(xlsx.contenido)).worksheets[0];
     expect(worksheet.columnCount).toBe(COLUMNAS.length);
@@ -191,7 +192,7 @@ describe("construirDescarga", () => {
 
     const csv = await construirDescarga(
       { tipo: "csv", titulo: "Órdenes", columnas: COLUMNAS, filas },
-      FECHA,
+      ZONA_CR, FECHA,
     );
     const parseado = parseCsv(csv.contenido as string);
 
@@ -202,7 +203,7 @@ describe("construirDescarga", () => {
 
     const xlsx = await construirDescarga(
       { tipo: "xlsx", titulo: "Órdenes", columnas: COLUMNAS, filas },
-      FECHA,
+      ZONA_CR, FECHA,
     );
     const worksheet = (await leerLibro(xlsx.contenido)).worksheets[0];
     expect(valoresFila(worksheet, 2, 3)).toEqual(["1001", "", ""]);
@@ -212,11 +213,11 @@ describe("construirDescarga", () => {
   it("devuelve el MIME y la extensión correspondientes al tipo", async () => {
     const xlsx = await construirDescarga(
       { tipo: "xlsx", titulo: "Órdenes", columnas: COLUMNAS, filas: FILAS },
-      FECHA,
+      ZONA_CR, FECHA,
     );
     const csv = await construirDescarga(
       { tipo: "csv", titulo: "Órdenes", columnas: COLUMNAS, filas: FILAS },
-      FECHA,
+      ZONA_CR, FECHA,
     );
 
     expect(xlsx.mime).toBe(XLSX_MIME);
@@ -233,7 +234,7 @@ describe("construirDescarga", () => {
         columnas: COLUMNAS,
         filas: FILAS,
       },
-      FECHA,
+      ZONA_CR, FECHA,
     );
 
     const workbook = await leerLibro(archivo.contenido);
@@ -245,14 +246,14 @@ describe("construirDescarga", () => {
     await expect(
       construirDescarga(
         { titulo: "Órdenes", columnas: [], filas: FILAS },
-        FECHA,
+        ZONA_CR, FECHA,
       ),
     ).rejects.toThrow();
 
     await expect(
       construirDescarga(
         { tipo: "csv", titulo: "Órdenes", columnas: [], filas: FILAS },
-        FECHA,
+        ZONA_CR, FECHA,
       ),
     ).rejects.toThrow();
   });
@@ -320,7 +321,7 @@ describe("nombreHoja — reglas de Excel sobre el nombre de la pestaña", () => 
     const titulo = "Desglose de Ana María Fernández Rodríguez";
     const archivo = await construirDescarga(
       { titulo, columnas: COLUMNAS, filas: FILAS },
-      FECHA,
+      ZONA_CR, FECHA,
     );
 
     const workbook = await leerLibro(archivo.contenido);
@@ -336,7 +337,7 @@ describe("nombreHoja — reglas de Excel sobre el nombre de la pestaña", () => 
   it("un título con una barra produce archivo en vez de reventar", async () => {
     const archivo = await construirDescarga(
       { titulo: "Entregadas · Ana/Beto", columnas: COLUMNAS, filas: FILAS },
-      FECHA,
+      ZONA_CR, FECHA,
     );
 
     const workbook = await leerLibro(archivo.contenido);
@@ -350,14 +351,14 @@ describe("nombreHoja — reglas de Excel sobre el nombre de la pestaña", () => 
 describe("nombreArchivoDescarga — la fecha del nombre es el dia calendario en Costa Rica", () => {
   it("a las 23:00 de CR (05:00Z del dia siguiente) el archivo se nombra con el dia de CR, no con el de UTC ni el de UTC−5", () => {
     const las23EnCR = new Date("2026-09-26T05:00:00.000Z"); // 2026-09-25 23:00 en CR
-    expect(nombreArchivoDescarga("Libro de movimientos", "xlsx", las23EnCR)).toBe(
+    expect(nombreArchivoDescarga("Libro de movimientos", "xlsx", las23EnCR, ZONA_CR)).toBe(
       "libro-de-movimientos-2026-09-25.xlsx",
     );
   });
 
   it("un minuto despues de la medianoche de CR ya es el dia siguiente", () => {
     const medianocheCR = new Date("2026-09-26T06:01:00.000Z"); // 2026-09-26 00:01 en CR
-    expect(nombreArchivoDescarga("Libro de movimientos", "csv", medianocheCR)).toBe(
+    expect(nombreArchivoDescarga("Libro de movimientos", "csv", medianocheCR, ZONA_CR)).toBe(
       "libro-de-movimientos-2026-09-26.csv",
     );
   });
@@ -365,7 +366,7 @@ describe("nombreArchivoDescarga — la fecha del nombre es el dia calendario en 
   it("construirDescarga usa el mismo nombre (a las 23:00 de CR)", async () => {
     const archivo = await construirDescarga(
       { tipo: "csv", titulo: "Ordenes", columnas: COLUMNAS, filas: FILAS },
-      new Date("2026-09-26T05:00:00.000Z"),
+      ZONA_CR, new Date("2026-09-26T05:00:00.000Z"),
     );
     expect(archivo.nombreArchivo).toBe("ordenes-2026-09-25.csv");
   });

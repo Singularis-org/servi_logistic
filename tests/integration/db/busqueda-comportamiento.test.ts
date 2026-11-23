@@ -11,9 +11,10 @@ import {
   HAY_BASE_DE_DATOS,
   crearPrismaDeTest,
   enTransaccionRevertida,
-  fksDeOrden,
   type FksDeOrden,
 } from "./_postgres-real";
+import { crearFksDeOrden } from "./_fixtures/orden-minima";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // Feature 169 / T2.6 (+ la mitad de COMPORTAMIENTO de T2.5) — que la busqueda ENCUENTRE lo
 // que tiene que encontrar, contra Postgres real: R5, R6, R7, R8, R13, R15, R16, R17, y la
@@ -127,7 +128,6 @@ const VIVAS = SEMILLAS.filter((s) => !s.borrada).length;
 
 describeSiHayBase("comportamiento de la busqueda contra Postgres", () => {
   let prisma: PrismaClient;
-  let fks: FksDeOrden | null;
   /** Ejecuta `fn` con un repositorio conectado al corpus recien sembrado, y revierte. */
   let conCorpus: <T>(
     fn: (ctx: {
@@ -135,16 +135,25 @@ describeSiHayBase("comportamiento de la busqueda contra Postgres", () => {
       service: OrdenService;
       idPorClave: Map<string, string>;
       marca: Date;
+      fks: FksDeOrden;
     }) => Promise<T>,
   ) => Promise<T>;
 
   beforeAll(async () => {
     prisma = crearPrismaDeTest();
-    fks = await fksDeOrden(prisma);
-    if (!fks) return;
-    const base = fks;
     conCorpus = (fn) =>
       enTransaccionRevertida(prisma, async (tx) => {
+        // SLT-181 — tienda y zona nacen en ESTA transaccion (nada de leer la primera orden de la
+        // base). Control positivo: si la siembra no llega, el caso cae nombrando la fila.
+        const base = await crearFksDeOrden(tx);
+        expect(
+          await tx.usuario.count({ where: { id: base.tiendaId } }),
+          "SLT-181: la tienda sembrada no esta en la base",
+        ).toBe(1);
+        expect(
+          await tx.zona.count({ where: { id: base.zonaId } }),
+          "SLT-181: la zona sembrada no esta en la base",
+        ).toBe(1);
         const marca = new Date();
         const idPorClave = new Map<string, string>();
         for (const semilla of SEMILLAS) {
@@ -169,8 +178,8 @@ describeSiHayBase("comportamiento de la busqueda contra Postgres", () => {
           idPorClave.set(semilla.clave, creada.id);
         }
         const repo = new OrdenRepository(tx as unknown as PrismaClient);
-        const service = new OrdenService(repo, fakeIntentosEnLote());
-        return fn({ repo, service, idPorClave, marca });
+        const service = new OrdenService(repo, fakeIntentosEnLote(), undefined, reglasPaisFijas());
+        return fn({ repo, service, idPorClave, marca, fks: base });
       });
   });
 
@@ -202,14 +211,19 @@ describeSiHayBase("comportamiento de la busqueda contra Postgres", () => {
     });
   }
 
-  it("hay ordenes de las que tomar las FKs", () => {
-    expect(fks).not.toBeNull();
+  it("hay ordenes de las que tomar las FKs", async () => {
+    // SLT-181 — las FKs y el corpus se siembran en la tx del caso; aqui se cuentan.
+    const sembrado = await conCorpus(async ({ fks, idPorClave }) => ({
+      fks,
+      ordenes: idPorClave.size,
+    }));
+    expect(sembrado.fks).not.toBeNull();
+    expect(sembrado.ordenes, "SLT-181: el corpus sembrado no esta completo").toBe(SEMILLAS.length);
   });
 
   it("el corpus queda acotado: sin termino solo salen las filas VIVAS sembradas (R17)", async () => {
     // Contrapeso de todo el archivo: si este caso fallara, los conteos de abajo no
     // afirmarian nada (podrian estar contando filas de la base de desarrollo).
-    if (!fks) return;
     const { claves, total } = await conCorpus(async ({ repo, idPorClave, marca }) => {
       const { items, total } = await repo.list({
         where: { createdAt: { gte: marca } },
@@ -375,13 +389,11 @@ describeSiHayBase("comportamiento de la busqueda contra Postgres", () => {
     });
 
     it("R15: el total respeta el AND con los demas filtros (R14)", async () => {
-      if (!fks) return;
       const conEstado = await buscar(SUFIJO, { estatusId: "no-existe" });
       expect(conEstado.total).toBe(0);
     });
 
     it("R16: el orden del listado es el mismo con termino y sin termino", async () => {
-      if (!fks) return;
       const { conTermino, sinTermino } = await conCorpus(async ({ repo, marca }) => {
         const comun = { sortBy: "created_at", sortDir: "asc", skip: 0, take: 50 } as const;
         const sin = await repo.list({ where: { createdAt: { gte: marca } }, ...comun });
@@ -419,7 +431,6 @@ describeSiHayBase("comportamiento de la busqueda contra Postgres", () => {
     }
 
     it("`2026-0912` encuentra la remision `REM-2026-0912` (R5, el falso negativo de M1)", async () => {
-      if (!fks) return;
       expect(await buscarConServicio("2026-0912")).toEqual(["remision-numerica"]);
     });
 
@@ -428,19 +439,16 @@ describeSiHayBase("comportamiento de la busqueda contra Postgres", () => {
       // M1 (la reduccion a digitos aplicada siempre): no casa nada, porque la remision se
       // indexa con sus guiones. Si algun dia esta asercion se volviera falsa, seria que
       // alguien amplio la columna generada — y entonces la de arriba habria que releerla.
-      if (!fks) return;
       expect(await buscarConServicio("20260912")).toEqual([]);
     });
 
     it("un telefono tecleado CON guiones sigue encontrando el guardado SIN ellos (R13)", async () => {
       // La mitad que motivo la reduccion a digitos, y que no se puede perder: `60011234`
       // esta guardado pelado, y aqui se teclea con guion.
-      if (!fks) return;
       expect(await buscarConServicio("6001-1234")).toEqual(["sin-tilde"]);
     });
 
     it("y un telefono guardado CON guiones se sigue encontrando de las dos maneras", async () => {
-      if (!fks) return;
       expect(await buscarConServicio("8712-3456")).toEqual(["telefono-guion"]);
       expect(await buscarConServicio("87123456")).toEqual(["telefono-guion"]);
     });
@@ -450,14 +458,12 @@ describeSiHayBase("comportamiento de la busqueda contra Postgres", () => {
       // igualdad contra `num_guia`, sin trigram y sin segunda forma. La guia 44559900 es la
       // de la fila de remision numerica, cuyo texto contiene ademas `2026`: si la ruta
       // rapida hubiera degradado a coincidencia parcial, saldrian mas filas.
-      if (!fks) return;
       expect(await buscarConServicio("44559900")).toEqual(["remision-numerica"]);
     });
 
     it("las dos formas SOLO ESTRECHAN: nunca devuelven mas que el corpus", async () => {
       // El OR de las dos formas vive dentro de la dimension de busqueda; el resto del
       // `where` sigue siendo AND. Con un estado inexistente, cero filas.
-      if (!fks) return;
       const r = await conCorpus(async ({ repo, marca }) =>
         repo.list({
           where: {
@@ -479,7 +485,6 @@ describeSiHayBase("comportamiento de la busqueda contra Postgres", () => {
 
   describe("ruta rapida y fallback, extremo a extremo (R9/R10)", () => {
     it("R9: un termino que ES una guia devuelve esa orden y SOLO esa", async () => {
-      if (!fks) return;
       const r = await conCorpus(({ service }) =>
         service.listar(listarOrdenesSchema.parse({ filter: { q: "44556614" } }), MAESTRO),
       );
@@ -492,7 +497,6 @@ describeSiHayBase("comportamiento de la busqueda contra Postgres", () => {
     });
 
     it("R10: un termino numerico que NO es guia cae a coincidencia parcial", async () => {
-      if (!fks) return;
       const r = await conCorpus(({ service, idPorClave }) =>
         service
           .listar(listarOrdenesSchema.parse({ filter: { q: "87123456" } }), MAESTRO)

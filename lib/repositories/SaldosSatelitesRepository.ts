@@ -12,7 +12,7 @@ import { APORTE_SATELITE_WHERE } from "@/lib/repositories/_shared/aporte-satelit
 // SLT-76 (R3/R4): el MISMO predicado con el que `revertirConciliacion` rechaza (`con_asientos`).
 import { consolidacionesConDinero } from "@/lib/repositories/_shared/conciliacion-con-dinero";
 import { consolidacionesConModeloNuevo } from "@/lib/repositories/_shared/detalle-modelo-nuevo";
-import { diasNaturalesCRDesde, inicioDelMesCREnUtc } from "@/lib/utils/fecha-cr";
+import { diasNaturalesDesde, inicioDelMesEnUtc } from "@/lib/utils/calendario-zona";
 import { CUENTA_USUARIO_SELECT, etiquetaDeCuenta } from "@/lib/utils/etiqueta-cuenta";
 import type { PaginaRepositorio, RangoPagina } from "@/lib/utils/rango-pagina";
 
@@ -146,7 +146,7 @@ type ClienteSaldosSatelites = Pick<
 export class SaldosSatelitesRepository implements ISaldosSatelitesRepository {
   constructor(private readonly prisma: ClienteSaldosSatelites) {}
 
-  async findSaldosPaginado(rango: RangoPagina): Promise<PaginaRepositorio<SaldoSateliteDTO>> {
+  async findSaldosPaginado(rango: RangoPagina, zonaHoraria: string): Promise<PaginaRepositorio<SaldoSateliteDTO>> {
     const [zonas, total] = await Promise.all([
       this.prisma.zona.findMany({
         where: ZONA_SATELITE_WHERE,
@@ -157,10 +157,10 @@ export class SaldosSatelitesRepository implements ISaldosSatelitesRepository {
       }),
       this.prisma.zona.count({ where: ZONA_SATELITE_WHERE }),
     ]);
-    return { items: await this.componerSaldos(zonas), total };
+    return { items: await this.componerSaldos(zonas, zonaHoraria), total };
   }
 
-  async findSaldosCompleto(): Promise<SaldoSateliteDTO[]> {
+  async findSaldosCompleto(zonaHoraria: string): Promise<SaldoSateliteDTO[]> {
     // MISMO `where` y MISMO `orderBy` que la pagina, a proposito: la pagina N tiene que ser el
     // segmento N de este conjunto o la descarga describiria otra cosa que la pantalla.
     const zonas = await this.prisma.zona.findMany({
@@ -168,7 +168,7 @@ export class SaldosSatelitesRepository implements ISaldosSatelitesRepository {
       orderBy: { nombre: "asc" },
       select: { id: true, nombre: true },
     });
-    return this.componerSaldos(zonas);
+    return this.componerSaldos(zonas, zonaHoraria);
   }
 
   /**
@@ -195,6 +195,7 @@ export class SaldosSatelitesRepository implements ISaldosSatelitesRepository {
    */
   private async componerSaldos(
     zonas: { id: string; nombre: string }[],
+    zonaHoraria: string,
   ): Promise<SaldoSateliteDTO[]> {
     if (zonas.length === 0) return [];
     const zonaIds = zonas.map((z) => z.id);
@@ -265,9 +266,9 @@ export class SaldosSatelitesRepository implements ISaldosSatelitesRepository {
         totalConsolidado: general.toFixed(2),
         totalRecibido: recibido.toFixed(2),
         consolidacionesSinConciliar: c?._count._all ?? 0,
-        // R21: los dias se derivan EN EL SERVIDOR con el calendario de Costa Rica. `null` = no hay
+        // R21: los dias se derivan EN EL SERVIDOR con el calendario del pais (SLT-42). `null` = no hay
         // cola, que NO es lo mismo que `0` («la mas vieja es de hoy»).
-        diasDeLaMasAntigua: masAntigua === null ? null : diasNaturalesCRDesde(masAntigua, ahora),
+        diasDeLaMasAntigua: masAntigua === null ? null : diasNaturalesDesde(masAntigua, ahora, zonaHoraria),
         fechaDeLaMasAntigua: masAntigua === null ? null : masAntigua.toISOString(),
         // La ULTIMA que llego. `null` = a esta bodega nunca se le marco ninguna. NO es el
         // acumulado `totalRecibido` que va arriba: es UNA fila, con su fecha y su importe.
@@ -416,7 +417,7 @@ export class SaldosSatelitesRepository implements ISaldosSatelitesRepository {
    * suma propia habria hecho que la cabecera y la columna de abajo pudieran decir cosas distintas
    * sobre el mismo dinero, que es el defecto que la ficha 359 censo en 13 pantallas.
    */
-  async findResumen(ahora: Date = new Date()): Promise<ResumenSatelitesDTO> {
+  async findResumen(zonaHoraria: string, ahora: Date = new Date()): Promise<ResumenSatelitesDTO> {
     const [filas, aportes] = await Promise.all([
       this.prisma.cierreBodega.findMany({
         where: { ...NO_RECHAZADAS, zona: ZONA_SATELITE_WHERE },
@@ -436,9 +437,9 @@ export class SaldosSatelitesRepository implements ISaldosSatelitesRepository {
       }),
     ]);
 
-    // El corte del mes, en el calendario de COSTA RICA y resuelto en el SERVIDOR: con el mes del
+    // El corte del mes, en el calendario del PAIS (SLT-42) y resuelto en el SERVIDOR: con el mes del
     // navegador, quien mirara la pantalla desde otro huso veria otra cifra de la misma caja.
-    const inicioDelMes = inicioDelMesCREnUtc(ahora);
+    const inicioDelMes = inicioDelMesEnUtc(ahora, zonaHoraria);
 
     let recibidoMes = new Prisma.Decimal(0);
     let diferencia = new Prisma.Decimal(0);

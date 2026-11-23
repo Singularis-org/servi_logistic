@@ -16,6 +16,7 @@ import {
   serializarEscriturasReales,
   type TxDeTest,
 } from "./_postgres-real";
+import { crearUsuarioDePrueba } from "./_fixtures/orden-minima";
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 // FICHA 373 / C3 (R2/R3/R4/R6/R11/R22/R23/R24/R26) — EL BORRADO, CONTRA POSTGRES DE VERDAD.
@@ -42,22 +43,25 @@ describeSiHayBase("373/C3 — eliminar una API key (Postgres real)", () => {
   let prisma: PrismaClient;
   let MAESTRO: Actor;
 
-  beforeAll(async () => {
+  beforeAll(() => {
     prisma = crearPrismaDeTest();
-    const maestro = await prisma.usuario.findFirst({
-      where: { rol: { value: "maestro" } },
-      select: { id: true },
-    });
-    // ⚠️ LANZA, no `return`: sin actor no se puede medir el congelado de R24, y un `return` aqui
-    // reportaria `passed` sin haber comprobado nada.
-    if (maestro === null) {
-      throw new Error(
-        "hay DATABASE_URL pero no hay ningun usuario con rol `maestro`: " +
-          "esta suite necesita crear su usuario en el test (SL-31).",
-      );
-    }
-    MAESTRO = { usuarioId: maestro.id, rol: "maestro" };
   });
+
+  /**
+   * SLT-183: el maestro (actor) se SIEMBRA en la tx revertida de cada caso; antes se leia «el
+   * primer maestro» de la base, y la base recien migrada no tiene ninguno. `MAESTRO` queda con el
+   * del caso en curso, para las aserciones que lo comparan despues del rollback.
+   */
+  function enTx<T>(fn: (tx: TxDeTest) => Promise<T>): Promise<T> {
+    return enTransaccionRevertida(prisma, async (tx) => {
+      const { id } = await crearUsuarioDePrueba(tx, "maestro");
+      // Control positivo (R1104): la siembra llego a la base. LANZA, no `return`.
+      const sembrados = await tx.usuario.count({ where: { id } });
+      if (sembrados !== 1) throw new Error("SLT-183: el maestro sembrado (actor) no esta en la base");
+      MAESTRO = { usuarioId: id, rol: "maestro" };
+      return fn(tx);
+    });
+  }
 
   afterAll(async () => {
     await prisma?.$disconnect();
@@ -99,7 +103,7 @@ describeSiHayBase("373/C3 — eliminar una API key (Postgres real)", () => {
   }
 
   it("⭑ R2: una key `inactiva` se lleva su fila, su cuenta dedicada y su webhook", async () => {
-    const r = await enTransaccionRevertida(prisma, async (tx) => {
+    const r = await enTx(async (tx) => {
       await serializarEscriturasReales(tx);
       const { apiKey } = await generarKey(tx, "r2");
       await sembrarWebhook(tx, apiKey.usuarioId);
@@ -118,7 +122,7 @@ describeSiHayBase("373/C3 — eliminar una API key (Postgres real)", () => {
   });
 
   it("R2: una key SIN webhook se borra igual (el `deleteMany` de cero filas no es un error)", async () => {
-    const r = await enTransaccionRevertida(prisma, async (tx) => {
+    const r = await enTx(async (tx) => {
       await serializarEscriturasReales(tx);
       const { apiKey } = await generarKey(tx, "sin-webhook");
       await tx.apiKey.update({ where: { id: apiKey.id }, data: { estado: "inactiva" } });
@@ -134,7 +138,7 @@ describeSiHayBase("373/C3 — eliminar una API key (Postgres real)", () => {
   it("⭑⭑ R11: la MISMA key, `activa`, sale `bloqueada` y no se borra NADA", async () => {
     // El caso que R11 existe para impedir: una key recien creada, en uso, sin ningun dato. El
     // guard por datos la daria por borrable. Y despues, desactivada, si se borra.
-    const r = await enTransaccionRevertida(prisma, async (tx) => {
+    const r = await enTx(async (tx) => {
       await serializarEscriturasReales(tx);
       const { apiKey } = await generarKey(tx, "r11");
       await sembrarWebhook(tx, apiKey.usuarioId);
@@ -170,7 +174,7 @@ describeSiHayBase("373/C3 — eliminar una API key (Postgres real)", () => {
   });
 
   it("⭑ R3: eliminar una key deja INTACTA a la otra, con su cuenta y su webhook", async () => {
-    const r = await enTransaccionRevertida(prisma, async (tx) => {
+    const r = await enTx(async (tx) => {
       await serializarEscriturasReales(tx);
       const victima = await generarKey(tx, "victima");
       const testigo = await generarKey(tx, "testigo");
@@ -202,7 +206,7 @@ describeSiHayBase("373/C3 — eliminar una API key (Postgres real)", () => {
   it("⭑ R6: tras eliminar, el identificador vuelve a estar LIBRE", async () => {
     // Es la prueba de por que se borra tambien la cuenta dedicada: sin ella, el email y la cedula
     // sinteticos seguirian ocupados y regenerar daria `conflict` sin que nada lo explicase.
-    const r = await enTransaccionRevertida(prisma, async (tx) => {
+    const r = await enTx(async (tx) => {
       await serializarEscriturasReales(tx);
       const { identificador, apiKey } = await generarKey(tx, "reutilizable");
       await tx.apiKey.update({ where: { id: apiKey.id }, data: { estado: "inactiva" } });
@@ -222,7 +226,7 @@ describeSiHayBase("373/C3 — eliminar una API key (Postgres real)", () => {
   });
 
   it("⭑ R22/R24: escribe EXACTAMENTE UNA fila, con el actor congelado y el estado previo", async () => {
-    const r = await enTransaccionRevertida(prisma, async (tx) => {
+    const r = await enTx(async (tx) => {
       await serializarEscriturasReales(tx);
       const { identificador, apiKey } = await generarKey(tx, "registro");
       await tx.apiKey.update({ where: { id: apiKey.id }, data: { estado: "inactiva" } });
@@ -254,7 +258,7 @@ describeSiHayBase("373/C3 — eliminar una API key (Postgres real)", () => {
   });
 
   it("⭑ R23: la fila no contiene el secreto, ni el hash, ni el prefijo, en NINGUNA columna", async () => {
-    const r = await enTransaccionRevertida(prisma, async (tx) => {
+    const r = await enTx(async (tx) => {
       await serializarEscriturasReales(tx);
       const { apiKey, plainKey } = await generarKey(tx, "sin-secreto");
       await tx.apiKey.update({ where: { id: apiKey.id }, data: { estado: "inactiva" } });
@@ -295,7 +299,7 @@ describeSiHayBase("373/C3 — eliminar una API key (Postgres real)", () => {
     // El rastro sobrevive al borrado fisico por diseno: `entidad_id` es opaco y sin FK, y la
     // etiqueta va denormalizada. Se comprueba por el repositorio REAL del registro, que es lo que
     // pinta la pantalla, no por un `findMany` a mano.
-    const r = await enTransaccionRevertida(prisma, async (tx) => {
+    const r = await enTx(async (tx) => {
       await serializarEscriturasReales(tx);
       const { identificador, apiKey } = await generarKey(tx, "sobrevive");
       await tx.apiKey.update({ where: { id: apiKey.id }, data: { estado: "inactiva" } });
@@ -333,7 +337,7 @@ describeSiHayBase("373/C3 — eliminar una API key (Postgres real)", () => {
     // El test que mas importa de la ficha en su segunda direccion: no hay desaparicion sin rastro.
     // Se fuerza el fallo con un Proxy sobre `historialAccion.createMany`; el repositorio real corre
     // entero, con su `$transaction` real traducida a un savepoint.
-    const r = await enTransaccionRevertida(prisma, async (tx) => {
+    const r = await enTx(async (tx) => {
       await serializarEscriturasReales(tx);
       const { apiKey } = await generarKey(tx, "r4");
       await sembrarWebhook(tx, apiKey.usuarioId);
@@ -366,7 +370,7 @@ describeSiHayBase("373/C3 — eliminar una API key (Postgres real)", () => {
   });
 
   it("R21: un id que no existe -> `not_found`, sin efectos", async () => {
-    const r = await enTransaccionRevertida(prisma, async (tx) => {
+    const r = await enTx(async (tx) => {
       await serializarEscriturasReales(tx);
       const antes = await tx.historialAccion.count({ where: { accion: "api_key_eliminada" } });
       const salida = await repo(tx).eliminar(randomUUID(), MAESTRO.usuarioId);

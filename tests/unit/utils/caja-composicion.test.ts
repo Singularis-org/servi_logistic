@@ -284,7 +284,8 @@ function importeDe(indice: number): string {
 describe("derivarComposicionGanancia — la ganancia concepto por concepto (R23/R26)", () => {
   it("CONTROL DE NO-VACUIDAD: el catalogo tiene categorias propias de los dos tipos", () => {
     // SL-39: los ingresos de la ganancia son cinco (los ocho propios menos los tres de IVA).
-    expect(INGRESOS_PROPIOS.length).toBe(5);
+    // SLT-94: + el fulfillment por paquete = 6.
+    expect(INGRESOS_PROPIOS.length).toBe(6);
     expect(EGRESOS_PROPIOS.length).toBeGreaterThan(5);
     // …y hay dinero de terceros que dejar fuera, que es la mitad del trabajo de esta funcion.
     expect(
@@ -413,7 +414,7 @@ describe("derivarComposicionGanancia — la ganancia concepto por concepto (R23/
     const composicion = derivarComposicionGanancia([]);
     // SL-39: las cinco de la ganancia (los propios sin IVA), no las ocho propias.
     expect(Object.keys(composicion.ingresos).sort()).toEqual([...INGRESOS_PROPIOS].sort());
-    expect(Object.keys(composicion.ingresos)).toHaveLength(5);
+    expect(Object.keys(composicion.ingresos)).toHaveLength(6); // SLT-94: + ingreso_fulfillment
     for (const importe of Object.values(composicion.ingresos)) expect(importe).toBe("0.00");
     expect(composicion).toMatchObject({
       totalIngresos: "0.00",

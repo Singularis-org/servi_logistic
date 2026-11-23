@@ -8,10 +8,11 @@ import {
   HAY_BASE_DE_DATOS,
   crearPrismaDeTest,
   enTransaccionRevertida,
-  fksDeOrden,
   serializarEscriturasReales,
+  type FksDeOrden,
   type TxDeTest,
 } from "./_postgres-real";
+import { crearFksDeOrden } from "./_fixtures/orden-minima";
 
 // FICHA 413 (T3.2, R1/R3/R4) — EL `WHERE` DE LA FICHA, CONTRA POSTGRES DE VERDAD.
 //
@@ -53,6 +54,18 @@ const RELOJ_TARDE_CR = new Date("2026-09-11T22:00:00.000Z"); // 16:00 CR del 11
 /** `YYYY-MM-DD` como `DATE` de Postgres, escrito a mano para no depender de ningún helper. */
 function fechaDate(iso: string): Date {
   return new Date(`${iso}T00:00:00.000Z`);
+}
+
+/**
+ * SLT-179 — la tienda (modelo de los mensajeros) y la geografia del caso, sembradas en SU tx: antes
+ * se leia «la primera orden» de la base. Control positivo: si la siembra no llega, el caso cae
+ * nombrando la fila; un `return` temprano lo reportaria `passed`.
+ */
+async function sembrarFks(tx: TxDeTest): Promise<FksDeOrden> {
+  const fks = await crearFksDeOrden(tx);
+  const filas = await tx.usuario.count({ where: { id: fks.tiendaId } });
+  expect(filas, "SLT-179: la tienda sembrada no esta en la base").toBe(1);
+  return fks;
 }
 
 /** Crea una zona propia del test para que ninguna otra fila de la base la ensucie. */
@@ -141,21 +154,17 @@ describeSiHayBase("413/R1 — el conteo del reparto de mañana, contra Postgres"
   });
 
   it("⭑ R1: 3 para mañana + 2 para hoy + 1 borrada para mañana ⇒ el conteo da 3", async () => {
-    const fks = await fksDeOrden(prisma);
-    // ⚠️ FALLA RUIDOSAMENTE si la base está vacía: un `if (!fks) return` reportaría `passed` sin
-    // haber comprobado nada.
-    expect(fks, "la tabla `orden` está vacía: el caso no se puede medir").not.toBeNull();
-
     const r = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      const fks = await sembrarFks(tx);
       const zona = await crearZona(tx);
-      const mensajero = await crearUsuario(tx, fks!.tiendaId, "mensajero A");
+      const mensajero = await crearUsuario(tx, fks.tiendaId, "mensajero A");
       const porRecoger = await estatusIdDe(tx, "mensajero_recogiendo_en_bodega");
       const base = {
-        tiendaId: fks!.tiendaId,
+        tiendaId: fks.tiendaId,
         zonaId: zona,
-        provinciaId: fks!.provinciaId,
-        cantonId: fks!.cantonId,
+        provinciaId: fks.provinciaId,
+        cantonId: fks.cantonId,
         estatusId: porRecoger,
         mensajeroId: mensajero,
       };
@@ -190,20 +199,18 @@ describeSiHayBase("413/R1 — el conteo del reparto de mañana, contra Postgres"
   });
 
   it("⭑ R1: el `GROUP BY` reparte por mensajero, cada uno con SU número", async () => {
-    const fks = await fksDeOrden(prisma);
-    expect(fks).not.toBeNull();
-
     const r = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      const fks = await sembrarFks(tx);
       const zona = await crearZona(tx);
-      const a = await crearUsuario(tx, fks!.tiendaId, "mensajero A");
-      const b = await crearUsuario(tx, fks!.tiendaId, "mensajero B");
+      const a = await crearUsuario(tx, fks.tiendaId, "mensajero A");
+      const b = await crearUsuario(tx, fks.tiendaId, "mensajero B");
       const porRecoger = await estatusIdDe(tx, "mensajero_recogiendo_en_bodega");
       const base = {
-        tiendaId: fks!.tiendaId,
+        tiendaId: fks.tiendaId,
         zonaId: zona,
-        provinciaId: fks!.provinciaId,
-        cantonId: fks!.cantonId,
+        provinciaId: fks.provinciaId,
+        cantonId: fks.cantonId,
         estatusId: porRecoger,
         fechaReparto: "2026-09-12",
       };
@@ -254,19 +261,17 @@ describeSiHayBase("413/R3 — LA TRAMPA DE LAS SEIS HORAS, con el reloj a las 23
     //
     // MUTACIÓN OBLIGATORIA (design §13.1): cambiar `startOfDayCR` por `inicioDelDiaCREnUtc` en la
     // cota ⇒ LOS DOS ASERTOS DE ABAJO ROJOS.
-    const fks = await fksDeOrden(prisma);
-    expect(fks, "la tabla `orden` está vacía: el caso no se puede medir").not.toBeNull();
-
     const r = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      const fks = await sembrarFks(tx);
       const zona = await crearZona(tx);
-      const mensajero = await crearUsuario(tx, fks!.tiendaId, "mensajero 2350");
+      const mensajero = await crearUsuario(tx, fks.tiendaId, "mensajero 2350");
       const porRecoger = await estatusIdDe(tx, "mensajero_recogiendo_en_bodega");
       const base = {
-        tiendaId: fks!.tiendaId,
+        tiendaId: fks.tiendaId,
         zonaId: zona,
-        provinciaId: fks!.provinciaId,
-        cantonId: fks!.cantonId,
+        provinciaId: fks.provinciaId,
+        cantonId: fks.cantonId,
         estatusId: porRecoger,
         mensajeroId: mensajero,
       };
@@ -308,20 +313,18 @@ describeSiHayBase("413/R3 — LA TRAMPA DE LAS SEIS HORAS, con el reloj a las 23
     // dar 1) y luego SÓLO la del 11 (debe dar 0). Con la cota desplazada seis horas, el primero
     // daría 0 y el segundo podría dar 1 — y una sola cifra agregada no distinguiría los dos
     // fallos.
-    const fks = await fksDeOrden(prisma);
-    expect(fks).not.toBeNull();
-
     const r = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      const fks = await sembrarFks(tx);
       const zona = await crearZona(tx);
-      const soloManana = await crearUsuario(tx, fks!.tiendaId, "solo mañana");
-      const soloHoy = await crearUsuario(tx, fks!.tiendaId, "solo hoy");
+      const soloManana = await crearUsuario(tx, fks.tiendaId, "solo mañana");
+      const soloHoy = await crearUsuario(tx, fks.tiendaId, "solo hoy");
       const porRecoger = await estatusIdDe(tx, "mensajero_recogiendo_en_bodega");
       const base = {
-        tiendaId: fks!.tiendaId,
+        tiendaId: fks.tiendaId,
         zonaId: zona,
-        provinciaId: fks!.provinciaId,
-        cantonId: fks!.cantonId,
+        provinciaId: fks.provinciaId,
+        cantonId: fks.cantonId,
         estatusId: porRecoger,
       };
 
@@ -345,19 +348,17 @@ describeSiHayBase("413/R3 — LA TRAMPA DE LAS SEIS HORAS, con el reloj a las 23
     // día anunciado dejan de ser «posteriores». Nadie ejecuta nada, nadie escribe nada: la cifra
     // viva cae a 0 y el aviso desaparece del panel y del distintivo. ES LO QUE PERMITE QUE EL
     // TÍTULO DIGA «MAÑANA» SIN MENTIR NUNCA.
-    const fks = await fksDeOrden(prisma);
-    expect(fks).not.toBeNull();
-
     const r = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      const fks = await sembrarFks(tx);
       const zona = await crearZona(tx);
-      const mensajero = await crearUsuario(tx, fks!.tiendaId, "mensajero medianoche");
+      const mensajero = await crearUsuario(tx, fks.tiendaId, "mensajero medianoche");
       const porRecoger = await estatusIdDe(tx, "mensajero_recogiendo_en_bodega");
       await sembrarOrden(tx, {
-        tiendaId: fks!.tiendaId,
+        tiendaId: fks.tiendaId,
         zonaId: zona,
-        provinciaId: fks!.provinciaId,
-        cantonId: fks!.cantonId,
+        provinciaId: fks.provinciaId,
+        cantonId: fks.cantonId,
         estatusId: porRecoger,
         mensajeroId: mensajero,
         fechaReparto: "2026-09-12",
@@ -390,20 +391,18 @@ describeSiHayBase("413/R4 — lo que NO se cuenta", () => {
   });
 
   it("⭑ R4: las órdenes de OTRO mensajero no entran en el conteo de éste", async () => {
-    const fks = await fksDeOrden(prisma);
-    expect(fks).not.toBeNull();
-
     const r = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      const fks = await sembrarFks(tx);
       const zona = await crearZona(tx);
-      const a = await crearUsuario(tx, fks!.tiendaId, "mensajero A");
-      const b = await crearUsuario(tx, fks!.tiendaId, "mensajero B");
+      const a = await crearUsuario(tx, fks.tiendaId, "mensajero A");
+      const b = await crearUsuario(tx, fks.tiendaId, "mensajero B");
       const porRecoger = await estatusIdDe(tx, "mensajero_recogiendo_en_bodega");
       const base = {
-        tiendaId: fks!.tiendaId,
+        tiendaId: fks.tiendaId,
         zonaId: zona,
-        provinciaId: fks!.provinciaId,
-        cantonId: fks!.cantonId,
+        provinciaId: fks.provinciaId,
+        cantonId: fks.cantonId,
         estatusId: porRecoger,
         fechaReparto: "2026-09-12",
       };
@@ -427,18 +426,16 @@ describeSiHayBase("413/R4 — lo que NO se cuenta", () => {
     // `recolectando` sigue fuera, como lo dejó el corte limpio de la 167/R34; `entregada` es el
     // otro extremo: ya salió del universo. Ninguna de las dos puede sumar al aviso, o éste diría
     // un número que la pantalla no enseña.
-    const fks = await fksDeOrden(prisma);
-    expect(fks).not.toBeNull();
-
     const r = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      const fks = await sembrarFks(tx);
       const zona = await crearZona(tx);
-      const mensajero = await crearUsuario(tx, fks!.tiendaId, "mensajero estados");
+      const mensajero = await crearUsuario(tx, fks.tiendaId, "mensajero estados");
       const base = {
-        tiendaId: fks!.tiendaId,
+        tiendaId: fks.tiendaId,
         zonaId: zona,
-        provinciaId: fks!.provinciaId,
-        cantonId: fks!.cantonId,
+        provinciaId: fks.provinciaId,
+        cantonId: fks.cantonId,
         mensajeroId: mensajero,
         fechaReparto: "2026-09-12",
       };
@@ -469,19 +466,17 @@ describeSiHayBase("413/R4 — lo que NO se cuenta", () => {
   it("⭑ R4: una orden SIN día de reparto (anterior a la 246) no entra", async () => {
     // `fecha_reparto = NULL` significa «no tiene día», no «es de mañana». En SQL, `NULL > x` es
     // NULL —o sea, no pasa el filtro—, y eso es lo correcto; se comprueba en vez de suponerse.
-    const fks = await fksDeOrden(prisma);
-    expect(fks).not.toBeNull();
-
     const r = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      const fks = await sembrarFks(tx);
       const zona = await crearZona(tx);
-      const mensajero = await crearUsuario(tx, fks!.tiendaId, "mensajero sin dia");
+      const mensajero = await crearUsuario(tx, fks.tiendaId, "mensajero sin dia");
       const porRecoger = await estatusIdDe(tx, "mensajero_recogiendo_en_bodega");
       const base = {
-        tiendaId: fks!.tiendaId,
+        tiendaId: fks.tiendaId,
         zonaId: zona,
-        provinciaId: fks!.provinciaId,
-        cantonId: fks!.cantonId,
+        provinciaId: fks.provinciaId,
+        cantonId: fks.cantonId,
         estatusId: porRecoger,
         mensajeroId: mensajero,
       };
@@ -516,12 +511,10 @@ describeSiHayBase("413 — ANTI-VACUIDAD: este archivo no puede pasar «por vac�
     // fijo —o si el `where` no filtrara por mensajero—, este caso se pondría rojo y delataría que
     // los de arriba no estaban midiendo lo que dicen medir. Es la lección «test de integración
     // verde sin datos»: un `if (!datos) return;` reporta `passed` sin comprobar nada.
-    const fks = await fksDeOrden(prisma);
-    expect(fks).not.toBeNull();
-
     const vacio = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
-      const mensajero = await crearUsuario(tx, fks!.tiendaId, "mensajero sin nada");
+      const fks = await sembrarFks(tx);
+      const mensajero = await crearUsuario(tx, fks.tiendaId, "mensajero sin nada");
       const repo = new RepartoMananaRepository(tx as unknown as PrismaClient);
       return {
         conteo: await repo.contarReservadasParaOtroDia(mensajero, startOfDayCR(RELOJ_TARDE_CR)),
@@ -539,18 +532,16 @@ describeSiHayBase("413 — ANTI-VACUIDAD: este archivo no puede pasar «por vac�
   it("⭑ la siembra engancha de verdad: la columna `DATE` guarda el día pedido y no otro", async () => {
     // Si `fecha_reparto` se escribiera con un desfase de huso, todos los casos de arriba estarían
     // midiendo otra cosa. Se comprueba contra la base, con el literal escrito a mano.
-    const fks = await fksDeOrden(prisma);
-    expect(fks).not.toBeNull();
-
     const guardada = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      const fks = await sembrarFks(tx);
       const zona = await crearZona(tx);
-      const mensajero = await crearUsuario(tx, fks!.tiendaId, "mensajero fecha");
+      const mensajero = await crearUsuario(tx, fks.tiendaId, "mensajero fecha");
       const id = await sembrarOrden(tx, {
-        tiendaId: fks!.tiendaId,
+        tiendaId: fks.tiendaId,
         zonaId: zona,
-        provinciaId: fks!.provinciaId,
-        cantonId: fks!.cantonId,
+        provinciaId: fks.provinciaId,
+        cantonId: fks.cantonId,
         estatusId: await estatusIdDe(tx, "mensajero_recogiendo_en_bodega"),
         mensajeroId: mensajero,
         fechaReparto: "2026-09-12",

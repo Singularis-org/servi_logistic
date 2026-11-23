@@ -92,7 +92,7 @@ export interface MiAsignacionDTO {
    *
    * ⚠️ ES UNA DECISION YA TOMADA EN EL SERVIDOR, y ese es el requisito (R10): el UMBRAL NO CRUZA
    * AL CLIENTE. Lo calcula `MisAsignacionesService.listarMisAsignaciones` con
-   * `alcanzaElTope(intentosEntrega, reintentosConfig.MIN_INTENTOS_ENTREGA)`. La pantalla no compara
+   * `alcanzaElTope(intentosEntrega, topeDeLaEmpresa)`. La pantalla no compara
    * numeros: lee este booleano y filtra los desenlaces con `permitidoEnElTope` — el MISMO modulo
    * puro que usa la guarda del servidor, para que no puedan divergir.
    *
@@ -288,6 +288,10 @@ export interface MisAsignacionesKpis {
    * Total a cobrar ACUMULADO: COD de las ordenes `en_reparto` + `entregada`. No baja al
    * ENTREGAR (la orden sale de reparto pero sigue sumando como entregada); se descuenta
    * cuando se gestiona como reprogramada/devuelta/rechazada (no entra en ningun set).
+   *
+   * SLT-151: SI baja cuando el mensajero solicita el cierre del dia (y sigue fuera al aprobarse): lo
+   * gestionado que ya esta en un cierre `solicitado`/`aprobado` no se cuenta. Vuelve a contar si el
+   * cierre se rechaza (el rechazo no desvincula las gestiones). Ver `sumMontoCobrarGestionadas`.
    */
   totalACobrar: number;
 }

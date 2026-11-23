@@ -108,7 +108,6 @@ function fila(over: Partial<WalletMovimientoDTO>): WalletMovimientoDTO {
     origenTipo: "gasto",
     origenId: null,
     descripcion: "Sueldo de septiembre",
-    registradoPor: uuid(),
     fechaMovimiento: "2026-09-20T15:00:00.000Z",
     dueno: "propio",
     documento: null,
@@ -137,7 +136,6 @@ const DEL_CIERRE = fila({
   origenId: uuid(),
   monto: "10000.00",
   descripcion: null,
-  registradoPor: null,
   dueno: "terceros",
 });
 const APORTE = fila({
@@ -248,7 +246,7 @@ const COMPOSICION = {
     ingreso_flete_devolucion: "0.00",
     ingreso_comision_cod: "0.00",
     ingreso_ajuste: "0.00",
-    ingreso_cobro_tienda: "5000.00",
+    ingreso_cobro_tienda: "5000.00", ingreso_fulfillment: "0.00", /* SLT-94 */
   },
   totalIngresos: "5000.00",
   egresos: {
@@ -256,7 +254,7 @@ const COMPOSICION = {
     egreso_ajuste: "0.00",
     egreso_reverso_cobro_tienda: "0.00",
     egreso_reverso_flete_devolucion: "0.00",
-    egreso_pago_plataforma: "0.00", // SL-45: la exige el `Record` total
+    egreso_pago_plataforma: "0.00", egreso_reverso_fulfillment: "0.00", /* SLT-94 */ // SL-45: la exige el `Record` total
   },
   otrosEgresos: "0.00",
   hayOtrosEgresos: false,
@@ -265,7 +263,7 @@ const COMPOSICION = {
     ingreso_iva_flete: "0.00",
     ingreso_iva_flete_devolucion: "0.00",
     ingreso_iva_comision_cod: "0.00",
-    egreso_reverso_iva_flete_devolucion: "0.00",
+    egreso_reverso_iva_flete_devolucion: "0.00", ingreso_iva_fulfillment: "0.00", egreso_reverso_iva_fulfillment: "0.00", /* SLT-94 */
   },
   totalIva: "0.00",
   totalEgresos: "0.00",
@@ -590,7 +588,6 @@ describe("458-E T E.4 — el cobro por devolución a origen anulado (R61, R73)",
     origenId: GESTION_ANULADA,
     monto: "1800.00",
     descripcion: null,
-    registradoPor: null,
     documento: doc("rechazo_tienda_cobro", { anulado: true }),
   });
   /** Otro cobro, PENDIENTE: la cola lo sigue ofreciendo. El anulado (aprobado) no está en ella. */

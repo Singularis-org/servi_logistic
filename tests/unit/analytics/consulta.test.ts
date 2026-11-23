@@ -7,6 +7,7 @@ import type { ConsultaAnalitica, PreparacionAnalitica } from "@/lib/analytics/co
 import type { AnaliticaFiltroInput } from "@/lib/analytics/filters";
 import type { ActorAnalitica } from "@/lib/analytics/alcance";
 
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 // Feature 122 / T4.1-T4.5 — EL PUNTO DE ENTRADA: R15, R16, R17, R19, R20, R21, R32, R41.
 //
 // Aqui se prueba la garantia entera: que el orden no se puede invertir, que el filtro del
@@ -42,7 +43,7 @@ beforeEach(() => {
 
 describe("R15 · un unico punto de entrada con orden fijo: parsear -> rango -> alcance", () => {
   it("parsea antes de resolver el rango y el rango antes que el alcance", () => {
-    const r = prepararConsultaAnalitica({ rango: "dia" }, MAESTRO, "entregas", AHORA);
+    const r = prepararConsultaAnalitica({ rango: "dia" }, MAESTRO, "entregas", ZONA_DE_CR, AHORA);
 
     expect(r.status).toBe("ok");
     expect(parseEspia).toHaveBeenCalledTimes(1);
@@ -57,7 +58,7 @@ describe("R15 · un unico punto de entrada con orden fijo: parsear -> rango -> a
   });
 
   it("el resolutor recibe el actor, el id de metrica y el canal, nunca el filtro crudo", () => {
-    prepararConsultaAnalitica({ rango: "dia" }, MAESTRO, "entregas", AHORA);
+    prepararConsultaAnalitica({ rango: "dia" }, MAESTRO, "entregas", ZONA_DE_CR, AHORA);
     // Feature 267: el quinto parametro `canal` se REENVIA tal cual y su default es
     // `"interno"`, de modo que el canal de sesion llama exactamente como antes (267/R43).
     // Lo que este caso protege sigue siendo lo mismo: el filtro crudo NO viaja al resolutor.
@@ -65,7 +66,7 @@ describe("R15 · un unico punto de entrada con orden fijo: parsear -> rango -> a
   });
 
   it("el canal que se le pasa a prepararConsultaAnalitica llega intacto al resolutor (267/R6)", () => {
-    prepararConsultaAnalitica({ rango: "dia" }, MAESTRO, "entregas", AHORA, "api_key");
+    prepararConsultaAnalitica({ rango: "dia" }, MAESTRO, "entregas", ZONA_DE_CR, AHORA, "api_key");
     expect(alcanceEspia).toHaveBeenCalledWith(MAESTRO, "entregas", "api_key");
   });
 
@@ -77,7 +78,7 @@ describe("R15 · un unico punto de entrada con orden fijo: parsear -> rango -> a
 
 describe("R19 · filtro invalido => validation_error, y el alcance NI SE PREGUNTA", () => {
   it("una clave desconocida devuelve validation_error con fieldErrors bajo su propio nombre", () => {
-    const r = prepararConsultaAnalitica({ rango: "dia", rol: "maestro" }, TIENDA, "entregas", AHORA);
+    const r = prepararConsultaAnalitica({ rango: "dia", rol: "maestro" }, TIENDA, "entregas", ZONA_DE_CR, AHORA);
     expect(r.status).toBe("validation_error");
     if (r.status !== "validation_error") return;
     expect(Object.keys(r.fieldErrors)).toContain("rol");
@@ -89,15 +90,15 @@ describe("R19 · filtro invalido => validation_error, y el alcance NI SE PREGUNT
       { rango: "personalizado", desde: "2026-07-31" },
       TIENDA,
       "entregas",
-      AHORA,
+      ZONA_DE_CR, AHORA,
     );
     expect(r.status).toBe("validation_error");
     expect(alcanceEspia).not.toHaveBeenCalled();
   });
 
   it("una entrada invalida NO revela si la metrica existe ni que ve el rol", () => {
-    const inexistente = prepararConsultaAnalitica({ rango: "no_valido" }, TIENDA, "no_existe", AHORA);
-    const prohibida = prepararConsultaAnalitica({ rango: "no_valido" }, TIENDA, "egresos", AHORA);
+    const inexistente = prepararConsultaAnalitica({ rango: "no_valido" }, TIENDA, "no_existe", ZONA_DE_CR, AHORA);
+    const prohibida = prepararConsultaAnalitica({ rango: "no_valido" }, TIENDA, "egresos", ZONA_DE_CR, AHORA);
     expect(inexistente.status).toBe("validation_error");
     expect(prohibida.status).toBe("validation_error");
     expect(JSON.stringify(inexistente)).toBe(JSON.stringify(prohibida));
@@ -110,7 +111,7 @@ describe("R20 · el alcance interseca el filtro del cliente; el filtro no puede 
       { rango: "dia", tienda_id: ["tienda-propia", "tienda-ajena"] },
       TIENDA,
       "entregas",
-      AHORA,
+      ZONA_DE_CR, AHORA,
     );
     expect(r.status).toBe("ok");
     if (r.status !== "ok") return;
@@ -118,7 +119,7 @@ describe("R20 · el alcance interseca el filtro del cliente; el filtro no puede 
   });
 
   it("sin filtro de la dimension recortada, el recorte se ESCRIBE igualmente en el filtro", () => {
-    const r = prepararConsultaAnalitica({ rango: "dia" }, SATELITE, "entregas", AHORA);
+    const r = prepararConsultaAnalitica({ rango: "dia" }, SATELITE, "entregas", ZONA_DE_CR, AHORA);
     expect(r.status).toBe("ok");
     if (r.status !== "ok") return;
     expect(r.consulta.filtro.zona_id).toEqual(["z-propia"]);
@@ -130,7 +131,7 @@ describe("R20 · el alcance interseca el filtro del cliente; el filtro no puede 
       { rango: "dia", tienda_id: ["t1", "t2"] },
       MAESTRO,
       "entregas",
-      AHORA,
+      ZONA_DE_CR, AHORA,
     );
     expect(r.status).toBe("ok");
     if (r.status !== "ok") return;
@@ -143,7 +144,7 @@ describe("R20 · el alcance interseca el filtro del cliente; el filtro no puede 
       { rango: "dia", zona_id: ["z1", "z2"] },
       TIENDA,
       "entregas",
-      AHORA,
+      ZONA_DE_CR, AHORA,
     );
     expect(r.status).toBe("ok");
     if (r.status !== "ok") return;
@@ -158,7 +159,7 @@ describe("R21 · pedir datos ajenos es 403 explicito, no un conjunto vacio (D1)"
       { rango: "dia", tienda_id: ["tienda-ajena"] },
       TIENDA,
       "entregas",
-      AHORA,
+      ZONA_DE_CR, AHORA,
     );
     expect(r).toEqual({ status: "forbidden", motivo: "filtro_fuera_de_alcance" });
   });
@@ -168,7 +169,7 @@ describe("R21 · pedir datos ajenos es 403 explicito, no un conjunto vacio (D1)"
       { rango: "dia", zona_id: ["z-ajena"] },
       SATELITE,
       "entregas",
-      AHORA,
+      ZONA_DE_CR, AHORA,
     );
     expect(r.status).toBe("forbidden");
     expect(JSON.stringify(r)).not.toContain('"consulta"');
@@ -179,7 +180,7 @@ describe("R21 · pedir datos ajenos es 403 explicito, no un conjunto vacio (D1)"
       { rango: "dia", mensajero_id: ["m-ajeno"] },
       MENSAJERO,
       "entregas",
-      AHORA,
+      ZONA_DE_CR, AHORA,
     );
     expect(r).toEqual({ status: "forbidden", motivo: "filtro_fuera_de_alcance" });
   });
@@ -189,7 +190,7 @@ describe("R21 · pedir datos ajenos es 403 explicito, no un conjunto vacio (D1)"
       { rango: "dia", mensajero_id: ["sin_asignar"] },
       MENSAJERO,
       "entregas",
-      AHORA,
+      ZONA_DE_CR, AHORA,
     );
     expect(r).toEqual({ status: "forbidden", motivo: "filtro_fuera_de_alcance" });
   });
@@ -197,7 +198,7 @@ describe("R21 · pedir datos ajenos es 403 explicito, no un conjunto vacio (D1)"
 
 describe("R41 · el denegado es un estado propio, nunca ok con datos vacios (D7)", () => {
   it("la union de PreparacionAnalitica incluye forbidden con motivo y no un ok vacio", () => {
-    const denegado = prepararConsultaAnalitica({ rango: "dia" }, TIENDA, "egresos", AHORA);
+    const denegado = prepararConsultaAnalitica({ rango: "dia" }, TIENDA, "egresos", ZONA_DE_CR, AHORA);
     expect(denegado).toEqual({ status: "forbidden", motivo: "metrica_prohibida" });
 
     // La forma del resultado no admite `data`, `items` ni `filas`: no hay donde devolver
@@ -217,7 +218,7 @@ describe("R41 · el denegado es un estado propio, nunca ok con datos vacios (D7)
       [TIENDA, "egresos", "metrica_prohibida"],
     ];
     for (const [actor, metricaId, motivo] of casos) {
-      const r = prepararConsultaAnalitica({ rango: "dia" }, actor, metricaId, AHORA);
+      const r = prepararConsultaAnalitica({ rango: "dia" }, actor, metricaId, ZONA_DE_CR, AHORA);
       expect(r, `${String(actor?.rol)}/${metricaId}`).toEqual({ status: "forbidden", motivo });
     }
   });
@@ -226,15 +227,15 @@ describe("R41 · el denegado es un estado propio, nunca ok con datos vacios (D7)
 describe("R32 · determinismo: mismo `now`, mismo resultado", () => {
   it("dos invocaciones con el mismo now dan un resultado identico", () => {
     const entrada = { rango: "mes" as const, tienda_id: ["tienda-propia"] };
-    const a = prepararConsultaAnalitica(entrada, TIENDA, "entregas", AHORA);
-    const b = prepararConsultaAnalitica(entrada, TIENDA, "entregas", AHORA);
+    const a = prepararConsultaAnalitica(entrada, TIENDA, "entregas", ZONA_DE_CR, AHORA);
+    const b = prepararConsultaAnalitica(entrada, TIENDA, "entregas", ZONA_DE_CR, AHORA);
     expect(JSON.stringify(a)).toBe(JSON.stringify(b));
   });
 
   it("el instante se inyecta: dos `now` distintos dan rangos distintos", () => {
     const otro = new Date("2026-06-15T15:00:00.000Z");
-    const a = prepararConsultaAnalitica({ rango: "dia" }, MAESTRO, "entregas", AHORA);
-    const b = prepararConsultaAnalitica({ rango: "dia" }, MAESTRO, "entregas", otro);
+    const a = prepararConsultaAnalitica({ rango: "dia" }, MAESTRO, "entregas", ZONA_DE_CR, AHORA);
+    const b = prepararConsultaAnalitica({ rango: "dia" }, MAESTRO, "entregas", ZONA_DE_CR, otro);
     expect(a.status).toBe("ok");
     expect(b.status).toBe("ok");
     if (a.status !== "ok" || b.status !== "ok") return;
@@ -244,7 +245,7 @@ describe("R32 · determinismo: mismo `now`, mismo resultado", () => {
 
 describe("R16/R17 · el valor consultable no se puede fabricar ni sustituir (tests de tipos)", () => {
   it("un literal con los cuatro campos NO es asignable a ConsultaAnalitica", () => {
-    const r = prepararConsultaAnalitica({ rango: "dia" }, MAESTRO, "entregas", AHORA);
+    const r = prepararConsultaAnalitica({ rango: "dia" }, MAESTRO, "entregas", ZONA_DE_CR, AHORA);
     expect(r.status).toBe("ok");
     if (r.status !== "ok") return;
 
@@ -270,7 +271,7 @@ describe("R16/R17 · el valor consultable no se puede fabricar ni sustituir (tes
   });
 
   it("el unico camino legitimo produce el valor opaco con su alcance dentro", () => {
-    const r = prepararConsultaAnalitica({ rango: "dia" }, TIENDA, "entregas", AHORA);
+    const r = prepararConsultaAnalitica({ rango: "dia" }, TIENDA, "entregas", ZONA_DE_CR, AHORA);
     expect(r.status).toBe("ok");
     if (r.status !== "ok") return;
     const consulta: ConsultaAnalitica = r.consulta;
@@ -294,7 +295,7 @@ describe("267/R35 · el canal por API key consulta siempre con politica seudonim
   const INTEGRADOR: ActorAnalitica = { usuarioId: "u-integrador", rol: "apiKey" };
 
   it("una consulta preparada para un actor apiKey lleva politicaIdentidad seudonima", () => {
-    const r = prepararConsultaAnalitica({ rango: "dia" }, INTEGRADOR, "entregas", AHORA, "api_key");
+    const r = prepararConsultaAnalitica({ rango: "dia" }, INTEGRADOR, "entregas", ZONA_DE_CR, AHORA, "api_key");
 
     expect(r.status).toBe("ok");
     if (r.status !== "ok") return;
@@ -304,7 +305,7 @@ describe("267/R35 · el canal por API key consulta siempre con politica seudonim
   });
 
   it("el mismo actor por el canal interno ni siquiera produce consulta (267/R6)", () => {
-    const r = prepararConsultaAnalitica({ rango: "dia" }, INTEGRADOR, "entregas", AHORA);
+    const r = prepararConsultaAnalitica({ rango: "dia" }, INTEGRADOR, "entregas", ZONA_DE_CR, AHORA);
     expect(r.status).toBe("forbidden");
   });
 });
@@ -317,7 +318,7 @@ describe("267/R38 · el fallback de politica de identidad es seudonima, no real"
     alcanceEspia.mockReturnValueOnce({ estado: "ok", alcance: { tipo: "global" } });
     const basura: ActorAnalitica = { usuarioId: "u-x", rol: "rol-que-nadie-mapeo" };
 
-    const r = prepararConsultaAnalitica({ rango: "dia" }, basura, "entregas", AHORA);
+    const r = prepararConsultaAnalitica({ rango: "dia" }, basura, "entregas", ZONA_DE_CR, AHORA);
 
     expect(r.status).toBe("ok");
     if (r.status !== "ok") return;
@@ -328,7 +329,7 @@ describe("267/R38 · el fallback de politica de identidad es seudonima, no real"
   it("sin actor, tampoco: la ausencia de actor es el caso menos clasificable de todos", () => {
     alcanceEspia.mockReturnValueOnce({ estado: "ok", alcance: { tipo: "global" } });
 
-    const r = prepararConsultaAnalitica({ rango: "dia" }, null, "entregas", AHORA);
+    const r = prepararConsultaAnalitica({ rango: "dia" }, null, "entregas", ZONA_DE_CR, AHORA);
 
     expect(r.status).toBe("ok");
     if (r.status !== "ok") return;
@@ -345,7 +346,7 @@ describe("267/R38 · el fallback de politica de identidad es seudonima, no real"
     ];
 
     for (const [actor, esperada] of casos) {
-      const r = prepararConsultaAnalitica({ rango: "dia" }, actor, "entregas", AHORA);
+      const r = prepararConsultaAnalitica({ rango: "dia" }, actor, "entregas", ZONA_DE_CR, AHORA);
       expect(r.status).toBe("ok");
       if (r.status !== "ok") continue;
       expect(r.consulta.politicaIdentidad).toBe(esperada);
@@ -365,7 +366,7 @@ describe("el tope de ventana es del canal interno, no del canal por API key", ()
   const INTEGRADOR: ActorAnalitica = { usuarioId: "u-integrador", rol: "apiKey" };
 
   it("canal interno (el default): una ventana de mas de 366 dias es validation_error", () => {
-    const r = prepararConsultaAnalitica(LARGO, MAESTRO, "entregas", AHORA);
+    const r = prepararConsultaAnalitica(LARGO, MAESTRO, "entregas", ZONA_DE_CR, AHORA);
 
     expect(r.status).toBe("validation_error");
     if (r.status !== "validation_error") return;
@@ -373,7 +374,7 @@ describe("el tope de ventana es del canal interno, no del canal por API key", ()
   });
 
   it("canal api_key: la MISMA ventana se acepta", () => {
-    const r = prepararConsultaAnalitica(LARGO, INTEGRADOR, "entregas", AHORA, "api_key");
+    const r = prepararConsultaAnalitica(LARGO, INTEGRADOR, "entregas", ZONA_DE_CR, AHORA, "api_key");
 
     expect(r.status).toBe("ok");
     if (r.status !== "ok") return;
@@ -386,7 +387,7 @@ describe("el tope de ventana es del canal interno, no del canal por API key", ()
       { rango: "personalizado", desde: "2026-08-10", hasta: "2024-01-01" },
       INTEGRADOR,
       "entregas",
-      AHORA,
+      ZONA_DE_CR, AHORA,
       "api_key",
     );
 

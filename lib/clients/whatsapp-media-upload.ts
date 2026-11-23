@@ -13,7 +13,7 @@
 // 1. `fetch` INYECTABLE (`fetchImpl`): los tests ejercitan 2xx, rechazo, forma inesperada y
 //    fallo de red SIN tocar la red y SIN credencial real.
 // 2. TIMEOUT via `AbortSignal.timeout`, aqui con `TIMEOUT_SUBIDA_MS` (mas generoso que el del
-//    envio: sube un binario de hasta 25 MB por el enlace de subida de una red movil).
+//    envio: sube un binario, hasta `LIMITE_ADJUNTO_BYTES`, en vez de un JSON).
 // 3. El token va SOLO en `Authorization: Bearer`. Consecuencia OBLIGATORIA: jamas aparece en
 //    una URL, en un log ni en un mensaje de error (R28). Este cliente ademas NO loguea nada:
 //    ni el nombre del archivo, ni su MIME, ni un byte del contenido.

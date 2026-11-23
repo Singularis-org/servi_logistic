@@ -1,16 +1,16 @@
 import {
-  fechaCalendarioCR,
-  inicioDelDiaCREnUtc,
-  inicioDelDiaSiguienteCREnUtc,
-  ultimosNDiasCalendarioCR,
-} from "@/lib/utils/fecha-cr";
+  esFechaCalendarioValida,
+  fechaCalendario,
+  sumarDiasCalendario,
+  ultimosNDias,
+} from "@/lib/utils/calendario-zona";
 
 // Feature 125 (design §3, T1.1) — PLANIFICADOR PURO del rango del backfill.
 //
-// Es el hermano de `rollup-dia.ts`: aritmetica de dia calendario de Costa Rica y nada mas.
-// Sin Prisma, sin variables de entorno, sin `console`, sin `new Date()` propio (el reloj se
-// INYECTA, igual que en la 124) y sin una sola hora de desplazamiento escrita a mano: todo
-// sale de `@/lib/utils/fecha-cr`.
+// Es el hermano de `rollup-dia.ts`: aritmetica de dia calendario de la zona de la empresa
+// (SLT-42; antes, Costa Rica fija) y nada mas. Sin Prisma, sin variables de entorno, sin
+// `console`, sin `new Date()` propio (el reloj se INYECTA, igual que en la 124) y sin una sola
+// hora de desplazamiento escrita a mano: todo sale de `@/lib/utils/calendario-zona`.
 //
 // Este modulo NO agrega nada. La agregacion es de la feature 124
 // (`AnaliticaRollupService.agregarFecha`), que esta entregada; aqui solo se decide QUE fechas
@@ -39,7 +39,7 @@ const FECHA_CALENDARIO = /^\d{4}-\d{2}-\d{2}$/;
 export interface PlanBackfill {
   readonly desde: string;
   readonly hasta: string;
-  /** Fechas CR del rango, ascendentes, inclusivas en ambos extremos y sin repetidos. */
+  /** Fechas calendario del rango, ascendentes, inclusivas en ambos extremos y sin repetidos. */
   readonly fechas: readonly string[];
   /** Subconjunto de `fechas` anterior al horizonte del historial (R20). */
   readonly noComparables: readonly string[];
@@ -54,6 +54,8 @@ export interface RangoPedido {
   readonly hasta: string;
   /** Reloj INYECTADO: sin default, para que ningun test crea que controla lo que no controla. */
   readonly ahora: Date;
+  /** Zona IANA del pais de la empresa: de ella salen «hoy» y «ayer» (SLT-42). */
+  readonly zona: string;
 }
 
 /** `true` si la fecha es anterior al horizonte del historial (R20). Comparacion lexicografica: `YYYY-MM-DD` lo permite. */
@@ -63,19 +65,15 @@ export function esNoComparable(fecha: string): boolean {
 
 /**
  * Fecha calendario valida DE VERDAD: la forma no basta, porque `2026-02-30` y `2026-13-01`
- * la cumplen. Se comprueba que el instante exista y que el viaje de ida y vuelta por
- * `fecha-cr` devuelva la misma cadena.
+ * la cumplen. El ROUND-TRIP de `esFechaCalendarioValida` exige que el dia exista.
  */
 function esFechaCalendario(fecha: string): boolean {
-  if (!FECHA_CALENDARIO.test(fecha)) return false;
-  const inicio = inicioDelDiaCREnUtc(fecha);
-  if (Number.isNaN(inicio.getTime())) return false;
-  return fechaCalendarioCR(inicio) === fecha;
+  return FECHA_CALENDARIO.test(fecha) && esFechaCalendarioValida(fecha);
 }
 
-/** Fecha CR siguiente a `fecha`, apoyandose solo en `fecha-cr` (R8: nada de sumar 24 h aqui). */
+/** Fecha calendario siguiente a `fecha` (R8: nada de sumar 24 h aqui; se suma un dia de calendario). */
 function fechaSiguiente(fecha: string): string {
-  return fechaCalendarioCR(inicioDelDiaSiguienteCREnUtc(fecha));
+  return sumarDiasCalendario(fecha, 1);
 }
 
 /**
@@ -84,14 +82,14 @@ function fechaSiguiente(fecha: string): string {
  *
  * 1. alguna fecha no es una fecha calendario `YYYY-MM-DD` valida;
  * 2. `desde > hasta`;
- * 3. el rango incluye el dia CR en curso (D3: el ultimo recomputable es AYER CR, porque el
+ * 3. el rango incluye el dia en curso de la zona (D3: el ultimo recomputable es AYER, porque el
  *    dia de hoy es del job de la 124 y no hay lock compartido con el);
  * 4. el rango incluye una fecha futura (caso particular del anterior, con su propio mensaje).
  *
  * El rechazo NOMBRA la fecha ofensora: un «rango invalido» a secas obliga al operador a
  * adivinar cual de las dos puntas esta mal.
  */
-export function planificarBackfill({ desde, hasta, ahora }: RangoPedido): ResultadoPlan {
+export function planificarBackfill({ desde, hasta, ahora, zona }: RangoPedido): ResultadoPlan {
   if (!esFechaCalendario(desde)) {
     return { ok: false, motivo: `--desde invalido: se espera YYYY-MM-DD y llego "${desde}"` };
   }
@@ -102,18 +100,18 @@ export function planificarBackfill({ desde, hasta, ahora }: RangoPedido): Result
     return { ok: false, motivo: `rango invertido: --desde ${desde} es posterior a --hasta ${hasta}` };
   }
 
-  const hoy = fechaCalendarioCR(ahora);
-  // `ultimosNDiasCalendarioCR(2, ahora).desde` es AYER CR: dos dias calendario contando hoy.
-  const ayer = ultimosNDiasCalendarioCR(2, ahora).desde;
+  const hoy = fechaCalendario(ahora, zona);
+  // `ultimosNDias(2, ahora, zona).desde` es AYER: dos dias calendario contando hoy.
+  const ayer = ultimosNDias(2, ahora, zona).desde;
   if (hasta >= hoy) {
     // La ofensora es la PRIMERA fecha del rango que ya no es recomputable.
     const ofensora = desde >= hoy ? desde : hoy;
-    const que = ofensora > hoy ? "es futura" : "es el dia CR en curso";
+    const que = ofensora > hoy ? "es futura" : "es el dia en curso";
     return {
       ok: false,
       motivo:
         `el rango incluye ${ofensora}, que ${que}: el backfill solo recomputa dias CERRADOS ` +
-        `(el ultimo admitido es ayer CR, ${ayer}). El dia en curso lo agrega el ` +
+        `(el ultimo admitido es ayer, ${ayer}). El dia en curso lo agrega el ` +
         `job diario de la 124; recomputarlo desde aqui seria pisarse con el.`,
     };
   }

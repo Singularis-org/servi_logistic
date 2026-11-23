@@ -18,6 +18,7 @@
 //   422 VALIDATION_ERROR — `{cargaId}` no es un uuid (decision (c): el identificador publicado
 //                          de la carga es `Carga.id`, un uuid)
 // La key NUNCA se loguea ni entra al cuerpo (R5).
+import { construirReglasPaisEmpresa } from "@/lib/services/ReglasPaisEmpresaService";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import {
@@ -62,11 +63,13 @@ function buildPdfService(): IApiPdfEtiquetaService {
   const repo = new OrdenRepository(prisma);
   const signedUrls = new SupabaseSignedUrlProvider(undefined, bucket);
   const lotePdf = new EtiquetasLotePdfService(
-    new EtiquetaGuiaService(repo),
+    new EtiquetaGuiaService(repo, construirReglasPaisEmpresa(prisma)),
     new SupabaseFileStorage(undefined, bucket),
     signedUrls,
     ttl,
     etiquetasConfig.MAX_ETIQUETAS_POR_PDF,
+    undefined, // el `build` de produccion, el de por defecto
+    construirReglasPaisEmpresa(prisma), // SL-21 R14/R21: la moneda del pais de la empresa
   );
   return new ApiPdfEtiquetaService(repo, lotePdf, signedUrls, ttl);
 }

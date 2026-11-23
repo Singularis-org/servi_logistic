@@ -7,6 +7,7 @@ import type {
 } from "@/lib/interfaces/repositories/IAprobacionPostulacionRepository";
 import type { ISignedUrlProvider } from "@/lib/interfaces/external/ISignedUrlProvider";
 import { aprobacionPostulacionesConfig } from "@/lib/config/aprobacion-postulaciones";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // Feature 22 — unit del service con fakes de repo y signed-url-provider.
 // Cubre R2, R3, R5, R6-R19.
@@ -40,6 +41,8 @@ function buildRepo(overrides: Partial<IAprobacionPostulacionRepository> = {}): I
   return {
     listPendientes: vi.fn().mockResolvedValue({ items: [buildRow()], total: 1 }),
     findMensajeroById: vi.fn().mockResolvedValue({ id: "usr-1", estado: "pendiente" }),
+    // SLT-42: una postulación pendiente con datos válidos de Costa Rica (R10, R11, R14).
+    personaPendiente: vi.fn().mockResolvedValue({ telefono: "88887777", cedula: "112223333", tipoIdentificacionId: "tipo-cr-cedula", createdAt: new Date("2026-12-01T00:00:00.000Z") }),
     actualizarEstadoSiPendiente: vi.fn().mockResolvedValue(1),
     ...overrides,
   };
@@ -70,7 +73,7 @@ describe("AprobacionPostulacionService", () => {
     for (const rol of ROLES_OK) {
       it(`${rol} puede listar/aprobar/rechazar`, async () => {
         const repo = buildRepo();
-        const svc = new AprobacionPostulacionService(repo, buildSignedUrls());
+        const svc = new AprobacionPostulacionService(repo, buildSignedUrls(), undefined, reglasPaisFijas());
         expect((await svc.listarPendientes({ page: 1, pageSize: 20 }, actor(rol))).status).toBe("ok");
         expect((await svc.aprobar("usr-1", actor(rol))).status).toBe("ok");
         expect((await svc.rechazar("usr-1", actor(rol))).status).toBe("ok");
@@ -83,7 +86,7 @@ describe("AprobacionPostulacionService", () => {
       it(`${rol} recibe forbidden en las 3 operaciones`, async () => {
         const repo = buildRepo();
         const signed = buildSignedUrls();
-        const svc = new AprobacionPostulacionService(repo, signed);
+        const svc = new AprobacionPostulacionService(repo, signed, undefined, reglasPaisFijas());
 
         expect((await svc.listarPendientes({ page: 1, pageSize: 20 }, actor(rol))).status).toBe("forbidden");
         expect((await svc.aprobar("usr-1", actor(rol))).status).toBe("forbidden");
@@ -103,7 +106,7 @@ describe("AprobacionPostulacionService", () => {
     const repo = buildRepo({
       listPendientes: vi.fn().mockResolvedValue({ items: [buildRow({ usuarioId: "usr-9" })], total: 1 }),
     });
-    const svc = new AprobacionPostulacionService(repo, buildSignedUrls());
+    const svc = new AprobacionPostulacionService(repo, buildSignedUrls(), undefined, reglasPaisFijas());
     const r = await svc.listarPendientes({ page: 1, pageSize: 20 }, actor("admin"));
     expect(r.status).toBe("ok");
     if (r.status === "ok") expect(r.items[0]?.usuarioId).toBe("usr-9");
@@ -111,7 +114,7 @@ describe("AprobacionPostulacionService", () => {
 
   it("R7: el DTO incluye identidad y contacto completos", async () => {
     const repo = buildRepo();
-    const svc = new AprobacionPostulacionService(repo, buildSignedUrls());
+    const svc = new AprobacionPostulacionService(repo, buildSignedUrls(), undefined, reglasPaisFijas());
     const r = await svc.listarPendientes({ page: 1, pageSize: 20 }, actor("maestro"));
     expect(r.status).toBe("ok");
     if (r.status === "ok") {
@@ -131,7 +134,7 @@ describe("AprobacionPostulacionService", () => {
 
   it("R8: cada item trae 5 documentos con URL firmada", async () => {
     const repo = buildRepo();
-    const svc = new AprobacionPostulacionService(repo, buildSignedUrls());
+    const svc = new AprobacionPostulacionService(repo, buildSignedUrls(), undefined, reglasPaisFijas());
     const r = await svc.listarPendientes({ page: 1, pageSize: 20 }, actor("admin"));
     expect(r.status).toBe("ok");
     if (r.status === "ok") {
@@ -144,7 +147,7 @@ describe("AprobacionPostulacionService", () => {
   it("R9: firma con SIGNED_URL_TTL_SECONDS y lo expone en el DTO", async () => {
     const repo = buildRepo();
     const signed = buildSignedUrls();
-    const svc = new AprobacionPostulacionService(repo, signed);
+    const svc = new AprobacionPostulacionService(repo, signed, undefined, reglasPaisFijas());
     const r = await svc.listarPendientes({ page: 1, pageSize: 20 }, actor("admin"));
     expect(signed.createSignedUrls).toHaveBeenCalledWith(expect.any(Array), TTL);
     if (r.status === "ok") expect(r.items[0]!.documentos[0]!.expiresInSeconds).toBe(TTL);
@@ -154,7 +157,7 @@ describe("AprobacionPostulacionService", () => {
     const repo = buildRepo({
       listPendientes: vi.fn().mockResolvedValue({ items: [], total: 42 }),
     });
-    const svc = new AprobacionPostulacionService(repo, buildSignedUrls());
+    const svc = new AprobacionPostulacionService(repo, buildSignedUrls(), undefined, reglasPaisFijas());
     const r = await svc.listarPendientes({ page: 3, pageSize: 20 }, actor("admin"));
     expect(repo.listPendientes).toHaveBeenCalledWith({ skip: 40, take: 20 });
     if (r.status === "ok") {
@@ -168,7 +171,7 @@ describe("AprobacionPostulacionService", () => {
     const repo = buildRepo({
       listPendientes: vi.fn().mockResolvedValue({ items: [], total: 0 }),
     });
-    const svc = new AprobacionPostulacionService(repo, buildSignedUrls());
+    const svc = new AprobacionPostulacionService(repo, buildSignedUrls(), undefined, reglasPaisFijas());
     const r = await svc.listarPendientes({ page: 1, pageSize: 20 }, actor("admin"));
     expect(r).toEqual({ status: "ok", items: [], page: 1, pageSize: 20, total: 0 });
   });
@@ -176,7 +179,7 @@ describe("AprobacionPostulacionService", () => {
   // ---- Aprobar (R12-R15) ----
   it("R12/R15: aprobar pendiente cambia estado a activo via update condicional", async () => {
     const repo = buildRepo();
-    const svc = new AprobacionPostulacionService(repo, buildSignedUrls());
+    const svc = new AprobacionPostulacionService(repo, buildSignedUrls(), undefined, reglasPaisFijas());
     const r = await svc.aprobar("usr-1", actor("maestro"));
     expect(r).toEqual({ status: "ok", usuarioId: "usr-1", estado: "activo" });
     expect(repo.actualizarEstadoSiPendiente).toHaveBeenCalledWith("usr-1", "activo", expect.any(String));
@@ -189,7 +192,7 @@ describe("AprobacionPostulacionService", () => {
       actualizarEstadoSiPendiente: vi.fn().mockResolvedValue(0),
       findMensajeroById: vi.fn().mockResolvedValue(null),
     });
-    const svc = new AprobacionPostulacionService(repo, buildSignedUrls());
+    const svc = new AprobacionPostulacionService(repo, buildSignedUrls(), undefined, reglasPaisFijas());
     const r = await svc.aprobar("usr-x", actor("admin"));
     expect(r.status).toBe("not_found");
   });
@@ -199,7 +202,7 @@ describe("AprobacionPostulacionService", () => {
       actualizarEstadoSiPendiente: vi.fn().mockResolvedValue(0),
       findMensajeroById: vi.fn().mockResolvedValue({ id: "usr-1", estado: "activo" }),
     });
-    const svc = new AprobacionPostulacionService(repo, buildSignedUrls());
+    const svc = new AprobacionPostulacionService(repo, buildSignedUrls(), undefined, reglasPaisFijas());
     const r = await svc.aprobar("usr-1", actor("admin"));
     expect(r.status).toBe("conflict");
   });
@@ -207,7 +210,7 @@ describe("AprobacionPostulacionService", () => {
   // ---- Rechazar (R16-R19) ----
   it("R16/R19: rechazar pendiente cambia estado a inactivo (no borra)", async () => {
     const repo = buildRepo();
-    const svc = new AprobacionPostulacionService(repo, buildSignedUrls());
+    const svc = new AprobacionPostulacionService(repo, buildSignedUrls(), undefined, reglasPaisFijas());
     const r = await svc.rechazar("usr-1", actor("maestro"));
     expect(r).toEqual({ status: "ok", usuarioId: "usr-1", estado: "inactivo" });
     expect(repo.actualizarEstadoSiPendiente).toHaveBeenCalledWith("usr-1", "inactivo", expect.any(String));
@@ -220,7 +223,7 @@ describe("AprobacionPostulacionService", () => {
       actualizarEstadoSiPendiente: vi.fn().mockResolvedValue(0),
       findMensajeroById: vi.fn().mockResolvedValue(null),
     });
-    const svc = new AprobacionPostulacionService(repo, buildSignedUrls());
+    const svc = new AprobacionPostulacionService(repo, buildSignedUrls(), undefined, reglasPaisFijas());
     expect((await svc.rechazar("usr-x", actor("admin"))).status).toBe("not_found");
   });
 
@@ -229,7 +232,7 @@ describe("AprobacionPostulacionService", () => {
       actualizarEstadoSiPendiente: vi.fn().mockResolvedValue(0),
       findMensajeroById: vi.fn().mockResolvedValue({ id: "usr-1", estado: "inactivo" }),
     });
-    const svc = new AprobacionPostulacionService(repo, buildSignedUrls());
+    const svc = new AprobacionPostulacionService(repo, buildSignedUrls(), undefined, reglasPaisFijas());
     expect((await svc.rechazar("usr-1", actor("admin"))).status).toBe("conflict");
   });
 
@@ -239,7 +242,7 @@ describe("AprobacionPostulacionService", () => {
       actualizarEstadoSiPendiente: vi.fn().mockResolvedValue(0),
       findMensajeroById: vi.fn().mockResolvedValue({ id: "usr-1", estado: "activo" }),
     });
-    const svc = new AprobacionPostulacionService(repo, buildSignedUrls());
+    const svc = new AprobacionPostulacionService(repo, buildSignedUrls(), undefined, reglasPaisFijas());
     expect((await svc.aprobar("usr-1", actor("admin"))).status).toBe("conflict");
   });
 });

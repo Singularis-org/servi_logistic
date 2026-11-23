@@ -39,7 +39,6 @@ const EGRESO_INDEMNIZACION: WalletMovimientoDTO = {
   origenTipo: "cierre_dia",
   origenId: "cierre-1",
   descripcion: null,
-  registradoPor: "maestro-1",
   fechaMovimiento: "2026-07-30T10:00:00.000Z",
   dueno: "propio", // feature 231 (R31)
   documento: null, // ficha 459 (design §7.3): fila sin documento
@@ -53,7 +52,6 @@ const EGRESO_GASTO: WalletMovimientoDTO = {
   origenTipo: "gasto",
   origenId: null,
   descripcion: "Suministros",
-  registradoPor: "maestro-1",
   fechaMovimiento: "2026-07-30T10:00:00.000Z",
   dueno: "propio", // feature 231 (R31)
   documento: null, // ficha 459 (design §7.3): fila sin documento

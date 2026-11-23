@@ -3,10 +3,11 @@
 import { EstadoCuenta } from "@/components/shared/estado-cuenta/EstadoCuenta";
 import type { RotulosEstadoCuenta } from "@/components/shared/estado-cuenta/estado-cuenta-lineas";
 import { AMBITO_DESCARGA_ESTADO_CUENTA_SATELITE } from "@/components/shared/estado-cuenta/estado-cuenta-descarga-columnas";
+import { PESTANA_CONCILIACION } from "@/components/private/cierres/detalle/detalle-cierre-labels";
 import type { EstadoCuentaDTO } from "@/lib/types/estado-cuenta";
 
-import { ConciliacionSatelite } from "./ConciliacionSatelite";
-import { ESTADO_CUENTA_BODEGA_PAGINA } from "./satelites-labels";
+import { ConciliacionSatelite, useTotalSinConciliar } from "./ConciliacionSatelite";
+import { ESTADO_CUENTA_BODEGA_PAGINA, PESTANAS_ESTADO_CUENTA_BODEGA } from "./satelites-labels";
 
 // FICHA 458-D (T D.4, design §3.2/§5; R17–R24, R31) — el estado de cuenta de UNA bodega satélite: el
 // extracto «Declarado / Recibido» con lo que tiene por entregar tras cada movimiento (el corrido lo
@@ -14,6 +15,9 @@ import { ESTADO_CUENTA_BODEGA_PAGINA } from "./satelites-labels";
 // consolidar tienen su propia fila) y, debajo, la CONCILIACIÓN de hoy (R31): marcar y desmarcar lo recibido con su
 // mismo efecto y sus mismos textos. Tras marcar o desmarcar se relee el estado de cuenta de ESTA bodega
 // (R30) y el listado de bodegas. La bodega no tiene filas de libro: no hay «Ver» ni «Anular…».
+//
+// SLT-114 «Estado de cuenta de la satélite: conciliación en pestaña» (R230-R233): bajo las tarjetas, dos
+// pestañas, «Conciliación» (abre seleccionada, con cuántas quedan sin conciliar) y «Movimientos» (el libro).
 
 /**
  * El nombre de cada fila de la bodega, por su chip (que el servidor decide: «declarado» / «recibido» /
@@ -39,6 +43,24 @@ export interface EstadoCuentaSateliteProps {
   puedeConciliar: boolean;
 }
 
+/** R233 — «Conciliación» y, si quedan, «<n> sin conciliar» con el `total` del servidor. */
+function RotuloConciliacion({ zonaId }: Readonly<{ zonaId: string }>) {
+  const total = useTotalSinConciliar(zonaId);
+  return (
+    <>
+      {PESTANA_CONCILIACION}
+      {total !== null && total > 0 ? (
+        <>
+          {" "}
+          <span className="rounded-full bg-warning/15 px-2 py-0.5 text-xs font-medium text-warning-strong">
+            {PESTANAS_ESTADO_CUENTA_BODEGA.sinConciliar(total)}
+          </span>
+        </>
+      ) : null}
+    </>
+  );
+}
+
 export function EstadoCuentaSatelite({ inicial, puedeConciliar }: Readonly<EstadoCuentaSateliteProps>) {
   return (
     <EstadoCuenta
@@ -47,14 +69,19 @@ export function EstadoCuentaSatelite({ inicial, puedeConciliar }: Readonly<Estad
       // FICHA 464 (R1/R2/R7) — solo el selector de columnas: el libro de la bodega son consolidaciones,
       // sin lectura por orden.
       descargaDeLaSuperficie={{ ambitoColumnas: AMBITO_DESCARGA_ESTADO_CUENTA_SATELITE }}
-      pie={(vigente, refrescar) => (
-        <ConciliacionSatelite
-          bodega={{ zonaId: vigente.cuenta.id, zonaNombre: vigente.cuenta.nombre }}
-          pendiente={vigente.saldoActual}
-          puedeConciliar={puedeConciliar}
-          onCambio={refrescar}
-        />
-      )}
+      pestanaPrevia={{
+        rotulo: <RotuloConciliacion zonaId={inicial.cuenta.id} />,
+        rotuloLibro: PESTANAS_ESTADO_CUENTA_BODEGA.movimientos,
+        ariaLabel: PESTANAS_ESTADO_CUENTA_BODEGA.nombre(inicial.cuenta.nombre),
+        contenido: (vigente, refrescar) => (
+          <ConciliacionSatelite
+            bodega={{ zonaId: vigente.cuenta.id, zonaNombre: vigente.cuenta.nombre }}
+            pendiente={vigente.saldoActual}
+            puedeConciliar={puedeConciliar}
+            onCambio={refrescar}
+          />
+        ),
+      }}
     />
   );
 }

@@ -63,6 +63,8 @@ esta bien hecha, no solo si "funciona".
   - **RLS** con el rol `servi_app` (NOLOGIN, NOBYPASSRLS; migración `20261022130000_organizacion_y_rol_app`):
     la política compara con `current_setting('app.organizacion_id')`, fijado por transacción. Cubre el
     SQL a mano. Los catálogos, la geografía y `vehiculos` son de solo lectura para la empresa.
+    `organizacion` también, con una excepción: `servi_app` puede actualizar, solo en su propia fila,
+    `tope_intentos_entrega` y `updated_at` (SLT-77, `GRANT` por columna). Sus demás columnas siguen en `42501`.
   - **Triggers de misma empresa** (migración `20261022130300_misma_empresa_en_fk`): una fila de negocio
     no puede apuntar a otra empresa (SQLSTATE `SL017`, traducido a `EmpresaCruzada`) ni cambiar de
     empresa. Una FK nueva entre tablas de negocio necesita su trigger: se genera con
@@ -153,6 +155,20 @@ esta bien hecha, no solo si "funciona".
     con `comoPlataforma`. La UI pinta los nombres de nivel del país de la empresa con
     `useEtiquetasGeograficas`; ningún texto de nivel va escrito a mano
     (`etiquetas-geograficas-sin-literal.guardia`).
+  - **Teléfono, documento y hora (SLT-42):** `pais` guarda `prefijo_telefonico`,
+    `telefono_digitos_nacionales` y `zona_horaria` (IANA), y `tipo_identificacion` es un catálogo por
+    país (`pais_id`, `clave`, `caracteres`, `largo_min`/`largo_max`, `activo`). Los servicios leen esos
+    datos del país de la empresa del contexto por el puerto `IReglasPaisEmpresa` (`deLaEmpresa`,
+    `zonaHoraria`, `tipoDocumento`). Lo recibe opcional por constructor y el composition root le pasa
+    `construirReglasPaisEmpresa(prisma)`. Un país sin zona falla con `PaisSinZonaHoraria` en la
+    operación que la necesita, y uno sin prefijo o dígitos falla con `PaisIncompleto`. Todo cálculo de
+    días del servidor pasa por `lib/utils/calendario-zona.ts` con la zona como parámetro; los
+    repositorios reciben los límites o la zona ya resueltos. Los que agrupan por día en SQL
+    (`ConteoCargadasPorDia`, `CohorteCarga`, `FinanzasDiario`) usan `AT TIME ZONE` con la zona como
+    parámetro (`$n`), nunca escrita ni interpolada (decisión del humano del 2026-11-06). Los jobs diarios agendan una corrida por
+    zona (`lib/services/jobs/serie-diaria-por-zona.ts`). `pais-sin-literales.guardia` impide escribir en
+    el servidor la zona de CR, un desfase fijo o el `506`, y exige el real en cada composition root. Los
+    envoltorios `*-cr.ts` quedan solo para la UI, en su lista de excepciones (SLT-81; SINPE, SL-22).
   - **Geografía jerárquica (SLT-43, fase *expand*).** Dos tablas de plataforma nuevas conviven con
     las viejas: `tipo_nivel_geografico` (un tipo `nivel_1..3` por país, copiado de `pais.nivel_N_*`) y
     `nodo_geografico` (árbol solo con `padre_id` y `profundidad`, con los mismos ids que la provincia,
@@ -193,6 +209,27 @@ esta bien hecha, no solo si "funciona".
       `--empresa`). Sale con 0 si todo coincide, 1 si algo difiere y 2 si una empresa falló al leer.
       Lo corre una persona sobre una copia de producción con SLT-43 aplicada, antes del merge, y pega
       la salida en el PR; ningún agente.
+  - **Moneda e impuesto (SL-21):** `pais` guarda la moneda (`moneda_codigo` ISO 4217,
+    `moneda_simbolo`, `moneda_separador_miles`, `moneda_separador_decimal`, `moneda_decimales` de 0
+    a 2) y `impuesto_nombre`. Todas son NULL-ables, con `CHECK` (la moneda va entera o no va), y la
+    migración `20261124120000_sl21_pais_moneda_impuesto` carga CR con CRC, «₡», «.», «,», 2 e «IVA».
+    El país no guarda tasa: sigue en cada tarifa.
+    - **Lectura:** por el mismo puerto, `IReglasPaisEmpresa.moneda()` (un `FormatoMoneda`) y
+      `nombreImpuesto()`. Fallan con `PaisSinMoneda` y `PaisSinImpuesto`, y el alta de empresa rechaza
+      un país sin ellas.
+    - **Formato:** todo importe se pinta con `formatearMontoEn(moneda, valor)` (`lib/config/moneda.ts`).
+      Un `number` entra por `toFixed(ESCALA)` y el cuadre a los decimales de la moneda se hace sobre la
+      cadena. Los formateadores de antes (`money`, `formatMonto`, `formatMontoString`, `montoExacto`…)
+      son envoltorios con `MONEDA_PLATAFORMA`, la moneda de las variables `MONEDA_*`.
+    - **Quién la lee:** lo que arma el servidor la pide al puerto solo si pinta un importe: las
+      plantillas de WhatsApp, el informe de tránsito y el PDF de etiquetas por API
+      (`EtiquetasLotePdfService`). `buildEtiquetasLotePdf` lleva `moneda = MONEDA_PLATAFORMA` por
+      defecto para el generador del navegador. Las facturas y los textos de planes usan
+      `MONEDA_DE_LOS_PLANES`, que es la de la plataforma hasta SLT-237.
+    - **Guardia:** `pais-sin-literales.guardia` prohíbe en el servidor «₡», `CRC`, la palabra `IVA` y
+      los imports de los formateadores con la moneda de la plataforma implícita. Las pantallas, la
+      vista previa y la página pública quedan en su lista de excepciones (SLT-235); la moneda de los
+      planes, en SLT-237; la OpenAPI, como `permanente`.
 - **Catálogo de vehículos (SL-42, 2026-11-04).** `vehiculos` es uno solo para todas las empresas, que
   solo lo leen: el `maestro` en el formulario de usuarios y la postulación pública, y solo los activos
   para una elección nueva (`WHERE_VEHICULO_ELEGIBLE`, `lib/repositories/_shared/vehiculo-activo.ts`).
@@ -238,11 +275,13 @@ esta bien hecha, no solo si "funciona".
     `plan_tope_api_key_alta` y `plan_tope_api_key_cambio` (en `api_key`). Al pasar el tope lanzan
     SQLSTATE `SL024` con el JSON del tope en `MESSAGE`, no en `DETAIL`. `traducirErrorDeTope`
     (`lib/planes/tope-error.ts`) lo traduce a `TopeDelPlanAlcanzado`, con `details.codigo = "tope_plan"`.
-    Las funciones son `SECURITY DEFINER` con `EXECUTE` revocado a `PUBLIC`. La única que `servi_app`
-    llama es `plan_cupo_ordenes`, y solo con su propia empresa (la lee `CupoPlanRepository`).
-  - **Ciclo en UTC (decisión 2026-10-28):** `plan_inicio_ciclo(ancla, ahora)` recibe siempre
-    `now() AT TIME ZONE 'UTC'`, nunca `now()::timestamp`. Las columnas son `TIMESTAMP` sin zona y
-    Prisma escribe en UTC, así que la hora local de la sesión correría el ciclo. Su gemela en TS es
+    Las funciones son `SECURITY DEFINER` con `EXECUTE` revocado a `PUBLIC`. SLT-86 retiró el tope de
+    órdenes (`20261106120000_plan_periodo_facturacion`): ya no existen `plan_tope_ordenes`,
+    `plan_cupo_ordenes` ni `CupoPlanRepository`.
+  - **Ciclo en UTC (decisión 2026-10-28):** `plan_inicio_ciclo_de(entrada, tipo, ahora)` (SLT-86:
+    período de calendario, con tramo desde la entrada) recibe siempre `now() AT TIME ZONE 'UTC'`, nunca
+    `now()::timestamp`. Las columnas son `TIMESTAMP` sin zona y Prisma escribe en UTC, así que la hora
+    local de la sesión correría el ciclo. Su gemela en TS es `periodoEnCurso(entrada, tipo, ahora)` de
     `lib/planes/ciclo.ts`.
   - **Cerrojos** (design §4.4 y §5): un alta toma `organizacion` y `plan` en `FOR SHARE` y después el
     consultivo `(24, hashtext(empresa))`. Asignar toma `organizacion` en `FOR UPDATE` y el plan en
@@ -263,19 +302,250 @@ esta bien hecha, no solo si "funciona".
     Los cuatro jobs están en `lib/planes/jobs-cambio-plan.ts` y son de núcleo (`MODULO_POR_JOB`).
   - **Pantallas de planes (SLT-58, 2026-10-29).** La empresa lee su plan y su consumo con
     `plan_de_la_empresa(organizacion_id)` (migración `20261029120000_plan_de_la_empresa`), que la
-    llama `MiPlanRepository`. Es la segunda y última función que `servi_app` puede llamar; la otra
-    es `plan_cupo_ordenes`. Es `STABLE` y `SECURITY DEFINER`, con `search_path` fijo y `EXECUTE`
+    llama `MiPlanRepository`. Desde SLT-86 es la única función de planes que `servi_app` puede llamar.
+    Es `STABLE` y `SECURITY DEFINER`, con `search_path` fijo y `EXECUTE`
     revocado a `PUBLIC`. Con otra empresa que la del contexto lanza `42501`, y sin plan devuelve
-    `NULL`. Cuenta el uso con las mismas `plan_uso_*` y `plan_inicio_ciclo_en_curso` que los triggers. Del
+    `NULL`. Cuenta el uso con las mismas `plan_uso_*` que los triggers, y el período con `plan_inicio_ciclo_de`
+    (`plan_inicio_ciclo_en_curso` quedó sin uso). Del
     cambio programado devuelve solo la fecha y la versión: nunca los avisos ni el actor.
-    - **Inicio del ciclo elegido:** en la primera asignación el superadmin elige el inicio del ciclo de órdenes (hoy ±1 mes, `rangoDelInicioDelCiclo`); si es futura, el tramo hasta el ancla es un ciclo corto que empieza en `organizacion.plan_ciclo_corto_desde_at`, y si la empresa ya pasa topes se asigna igual y se avisa (`avisos`). La única definición del ciclo en curso es `plan_inicio_ciclo_en_curso` (migración `20261029150000_plan_ciclo_inicio_elegido`), que llaman los triggers, `plan_cupo_ordenes` y `plan_de_la_empresa`; su gemela TS es `inicioDelCicloEnCurso` (`lib/planes/ciclo.ts`), probada con la misma tabla de casos (`tests/integration/db/_fixtures/ciclo-corto.ts`).
-    - **Rutas:** `/mi-plan` para el `maestro` y el `admin` de una empresa. Para el superadmin,
+    - **Período de facturación (SLT-86):** la empresa entra a su plan y su tipo de cobro (quincenal, mensual, bimestral o anual) a las 00:00 de una fecha: `organizacion.plan_ciclo_ancla_at` es esa *entrada*, nunca futura. En la primera asignación la fecha de inicio va de hoy −1 mes a hoy +1 mes (`rangoDelInicioDelCiclo`); una fecha futura, y cualquier cambio de plan o de tipo con fecha de efecto futura, queda como pendiente en `organizacion.plan_cambio_*` y lo aplica el job `plan_aplicar_cambio_empresa` (red: el barrido `plan_cambios_vencidos`). El período en curso es el de calendario de su tipo, recortado a la entrada si es posterior (tramo). Su única definición en SQL es `plan_inicio_ciclo_de` con `plan_inicio_periodo_calendario` y `plan_fin_periodo_calendario` (migración `20261106120000_plan_periodo_facturacion`), que llaman `plan_de_la_empresa` y `PlanesRepository`; sus gemelas TS están en `lib/planes/ciclo.ts` (`periodoEnCurso`, `inicioDelPeriodoCalendario`, `finDelPeriodoCalendario`), probadas con la misma tabla de casos (`tests/integration/db/_fixtures/periodo-calendario.ts`).
+    - **Rutas:** `/mi-plan` para el `maestro` de una empresa (SLT-91). Para el superadmin,
       `/plataforma/planes`, `/plataforma/planes/[planId]` y el bloque Plan de
       `/plataforma/empresas/[organizacionId]`. Las cuatro son `nucleo` en `lib/modulos/reparto.ts`,
       sin puerta de módulo.
     - **Quién escribe:** las pantallas solo llaman a las actions de SL-24 (`lib/actions/planes`).
       Las lecturas nuevas del superadmin están en `PlanesRepository`, en `comoPlataforma`, y no
       escriben. Llevan la ficha `"SL-24"` porque `FichaJira` no admite `SLT` (deuda D29).
+  - **Periodicidad de órdenes (SLT-118):** cada plan factura sus órdenes `quincenal` (cortes el 1 y
+    el 16) o `mensual` (corte el 1), en `plan.periodicidad_ordenes` (migración
+    `20261111130100_factura_plataforma`: `NOT NULL DEFAULT 'quincenal'` y un CHECK con los dos valores;
+    los planes que ya existían quedan quincenales). Se elige al crear y al editar, también en una edición
+    programada, y deja su fila en `plan_rastro` (`lib/planes/rastro.ts`). Es independiente del tipo de
+    cobro de la cuota, con una regla (R37): una empresa no queda con tipo `quincenal` en un plan de órdenes
+    `mensual`, porque la cuota del 16 no tendría factura que la emitiera. `PlanesRepository` la aplica
+    sin escribir nada: al asignar, crear un custom o cambiar el tipo (`cambiarEmpresaEnTx`, variante
+    `periodicidad_incompatible` → `validation_error` en `tipoCobro`); al editar a `mensual` un plan
+    con empresas quincenales o con un pendiente quincenal hacia él (`validation_error` en
+    `periodicidadOrdenes`); y al aplicar una edición programada que ya no la cumple (el trabajo falla).
+  - **El costo base se cobra (SLT-118):** deja de ser solo informativo. Ya no rige SLT-66 R21 ni la
+    parte de la cuota de SLT-86 R14. La cuota es el costo base de un período de cobro completo, con su
+    descuento, y la lleva la factura de la plataforma que se emite al empezar ese período (ver
+    «Facturas de la plataforma»). No hay prorrateo, salvo en la primera cuota de la primera asignación
+    de un plan (P6): esa cobra los días del tramo con `plan_costo_del_tramo`.
+  - **Fecha de efecto del superadmin (SLT-118, P7, P9, P10):** modifica SLT-86 R16–R18. Un cambio de
+    plan o de tipo de una empresa que ya tiene plan rige al inicio del próximo período del **tipo de
+    referencia**, el más largo entre el vigente y el nuevo (orden de `TIPOS_COBRO`). Si la fecha elegida
+    ya es el inicio de un período de ese tipo, se respeta. Lo calcula `efectoAlInicioDelPeriodo`, que
+    `PlanesRepository.cambiarEmpresaEnTx` llama bajo el cerrojo. Desde ahí, el pendiente, su trabajo y
+    el historial usan la fecha real. Una primera asignación (`"inicio"`) rige el día elegido (P8). El
+    tope de «hoy + 12 meses» se valida sobre la fecha elegida (P10). La respuesta de asignar, de crear un
+    custom y de cambiar el tipo trae la fecha real en `vigenteDesde`, y las confirmaciones la muestran.
+- **Traza de facturación (SLT-85, 2026-11-09).** `cobro_plataforma_traza` (negocio, RLS por empresa)
+  guarda una copia del momento por cada movimiento de `cobro_plataforma_movimiento`. Solo la escribe
+  el trigger `AFTER INSERT` `cobro_plataforma_traza_al_registrar` sobre esa tabla, en la misma
+  transacción; `servi_app` no la escribe (`REVOKE`) y nadie la cambia (`SL085`, también el dueño). Las
+  filas que rellenó la migración `20261109120000` salen con `reconstruido = true`.
+- **Facturas de la plataforma (SLT-118, 2026-11-11).** `factura_plataforma` (migración
+  `20261111130100_factura_plataforma`) es de negocio, con RLS por empresa: la empresa solo **lee** sus
+  facturas. Es un estado de cuenta interno, sin Hacienda. Cada fila es un intervalo de órdenes
+  `[desde, hasta)` en uno de tres estados: `en_curso` (una por empresa y sin fin), `por_cerrar` (fin
+  fijado) o `cerrada` (cifras guardadas y número correlativo por empresa desde 1).
+  - **Quién escribe:** solo las funciones del dueño en la base (`SECURITY DEFINER`, con `EXECUTE`
+    revocado a `PUBLIC`). `servi_app` tiene `REVOKE INSERT, UPDATE, DELETE` y solo puede llamar a
+    `factura_plataforma_en_curso`. El trigger `factura_plataforma_inmutable` (`SL118`, también para el
+    dueño) impide cambiar una factura cerrada. En una por cerrar impide mover el plan, la periodicidad o
+    las fechas, y la marca de la primera cuota solo pasa de nula a un valor. La guardia
+    `cobro-plataforma-solo-por-trigger` prohíbe escribir la tabla desde `lib/` o `app/`. La app llama a
+    dos funciones. `FacturaPlataformaRepository.cerrar` llama a `factura_plataforma_cerrar` en
+    `comoPlataforma`, con su entrada en `EXCEPCIONES_DE_PLATAFORMA`. `PlanesRepository.aplicarEnTx`
+    llama a `factura_plataforma_tomar_cambio`.
+  - **Una factura por corte:** el fin de la factura sale de la periodicidad de órdenes de **su**
+    plan (sin plan, quincenal), no del tipo de cobro. Un cambio de plan o de periodicidad no mueve el
+    fin de la factura en curso. Al llegar el fin, la factura se fija (`por_cerrar`) y se abre la
+    siguiente con el plan que la empresa tiene en ese momento (`factura_plataforma_avanzar`).
+  - **Cierre:** el trabajo recurrente `factura_plataforma_cerrar` corre cada hora a los :10, una vez
+    para todas las empresas (`lib/planes/jobs-factura-plataforma.ts`, de núcleo, sembrado por
+    `scripts/siembra-jobs-recurrentes.ts`). Cierra cada empresa en su transacción y cierra las demás
+    aunque una falle; después falla nombrando las que fallaron, para que la cola reintente. La función
+    toma la empresa en `FOR UPDATE` y cierra las facturas por cerrar cuyo fin pasó hace al menos 5
+    minutos. Guarda las cifras de las órdenes del intervalo (cargos, reversos y total, por
+    `ocurrido_at`) y es idempotente.
+  - **Cuota por adelantado:** cada factura, al emitirse en su fin, lleva la cuota del período de cobro
+    que **empieza** ahí, con el plan de la factura siguiente (columnas `cuota_*`). Si en su emisión no
+    empieza ningún período de cobro, no lleva cuota. Sin plan o sin costo base, tampoco. Cada período se
+    cobra una sola vez (`factura_plataforma_cuota`). Las gemelas en TS son `montoDelPeriodo` y
+    `costoDelTramo`.
+  - **Primera cuota:** en una primera asignación, `factura_plataforma_tomar_cambio` pone la marca
+    `primera_cuota_desde_at`. Al cerrar, se cobra aparte, en el grupo `primera_cuota_*`, con los días
+    del tramo hasta el fin de su período. Una factura puede llevar las dos cuotas. La factura sembrada
+    al desplegar no lleva marca: el período de cobro en curso cuenta como pagado.
+  - **Toma del cambio sin corte:** `factura_plataforma_tomar_cambio` corre antes del `UPDATE` de
+    `organizacion`, con la empresa ya en `FOR UPDATE`, y no fija ni abre facturas al aplicar. Hay una
+    excepción: una factura en curso sin plan con efecto a mitad de factura se fija en el efecto, en una
+    sola factura con la primera cuota. Si el efecto es su `desde` o anterior, la factura en curso pasa
+    entera al plan nuevo.
+  - **Espera del cierre:** con un cambio pendiente cuyo efecto es el fin de una factura por cerrar, o
+    anterior, el cierre se detiene ahí, sin cerrar esa factura ni las siguientes, hasta que la cola
+    aplica el cambio. No es un fallo.
+  - **Sin devoluciones:** un cambio de plan o de tipo aplicado después de emitir una cuota no la
+    devuelve ni baja la deuda. Las facturas cerradas no cambian.
+  - **Deuda:** cargos − reversos + (`cuota` + `primera_cuota` de las facturas **cerradas**) − pagos
+    **confirmados** (SLT-60). `CobroPlataformaMovimientoRepository.sumasPorTipo` suma las cuotas como
+    el tipo `cuota` y `derivarDeudaPlataforma` las suma como un cargo. Los confirmados los suma
+    `PagoPlataformaRepository.sumaPagosConfirmados` (Σ `pago_plataforma_aplicacion.monto`, con la
+    empresa escrita en el `where`). `EmpresasPlataformaRepository` hace lo mismo por empresa en el
+    listado del superadmin: «Pagado» es la suma de los confirmados, y el contador «N pagos por
+    confirmar» sale de `pago_plataforma_por_confirmar`. Un pago por confirmar sale de la caja al
+    registrarlo, pero **no** baja la deuda. El cierre no escribe en `cobro_plataforma_movimiento`,
+    `cobro_plataforma_traza` ni `wallet_movimiento`.
+  - **Pagos a la plataforma: registro y confirmación (SLT-60, migración
+    `20261116120000_pago_plataforma_confirmacion`).** El pago lo registra la empresa en la wallet
+    (`egreso_pago_plataforma`, SL-45) y nace **por confirmar**. Lo confirma el superadmin desde el
+    detalle de la empresa y lo reparte entre las facturas cerradas con saldo; la deuda baja entonces.
+    - **El saldo de una factura:** `factura_plataforma_saldos(org)` es su única definición: total de la
+      cerrada − Σ aplicado, **con signo**. Una cerrada de total negativo (solo reversos) da saldo
+      negativo, cuenta como saldo a favor y nunca recibe aplicaciones.
+    - **Lo disponible para registrar:** Σ saldo de las cerradas − Σ pagos por confirmar
+      (`pago_plataforma_disponible_de`). Un pago está por confirmar si es un `egreso_pago_plataforma`
+      sin contra-asiento y sin confirmación (`pago_plataforma_por_confirmar`, la única definición).
+      Solo se paga lo facturado en facturas cerradas: sin cerradas con saldo, o con lo disponible en 0
+      o menos, no entra ningún pago. El tope lo aplican dos capas con el mismo número. En la base, el
+      trigger `wallet_movimiento_tope_pago_plataforma` (23514, también para el dueño). En la app,
+      `TopePagoPlataformaService`, con un solo repositorio, vía
+      `PagoPlataformaRepository.disponibleParaRegistrar`. Esa lectura llama a
+      `pago_plataforma_disponible(org)`, la envoltura con `GRANT` a `servi_app`, que da `42501` con otra
+      empresa o sin empresa. Las dos capas toman el candado `pg_advisory_xact_lock(hashtext(
+      'pago_plataforma:' || org))`.
+    - **La confirmación:** `pago_plataforma_confirmar(org, pago, aplicaciones, por, ahora)`, función del
+      dueño (`SECURITY DEFINER`, `EXECUTE` revocado a `PUBLIC`), bajo el **mismo** candado. Valida
+      todo: el pago vigente de la empresa, cada factura cerrada de la empresa con saldo, montos
+      positivos, sin facturas repetidas, ninguno por encima del saldo, y la suma igual al monto del
+      pago. Un rechazo sale con `SQLSTATE SL060` y un JSON `{codigo, factura_id?}` que traduce
+      `lib/db/errores-pago-plataforma.ts`. Confirmar otra vez responde `ya_confirmado` sin escribir. No
+      toca `factura_plataforma` ni el libro. La app llega por `PagoPlataformaConfirmacionRepository`
+      (en `comoPlataforma`, con su entrada en `EXCEPCIONES_DE_PLATAFORMA`) y
+      `PagoPlataformaConfirmacionService`, que exige superadmin antes de leer nada
+      (`lib/actions/pagos-plataforma.ts`).
+    - **Las dos tablas:** `pago_plataforma_confirmacion` (una por pago, único por empresa y pago; quién
+      y cuándo confirmó) y `pago_plataforma_aplicacion` (una fila por factura del reparto, `monto > 0`).
+      Las dos son de negocio, con RLS por empresa: la empresa solo **lee** lo suyo. `servi_app` tiene
+      `REVOKE INSERT, UPDATE, DELETE`, y solo las escribe `pago_plataforma_confirmar`. Son inmutables:
+      el trigger `pago_plataforma_inmutable` rechaza con `SL060` todo `UPDATE`, también al dueño.
+      `confirmado_por` es FK a `usuario` (el superadmin, sin empresa) con su trigger de misma empresa.
+    - **El bloqueo de la anulación:** la empresa anula un pago solo mientras está por confirmar. Anular
+      uno por confirmar le devuelve el monto a la caja y a lo disponible, y la deuda no cambia. El
+      trigger `pago_plataforma_no_anular_confirmado` (bajo el mismo candado) rechaza con `SL060`
+      `pago_confirmado` el contra-asiento de un pago confirmado, por cualquier camino y con cualquier
+      rol. `EgresoCajaAnulacionService` lo traduce a `forbidden`. Anular y confirmar a la vez el mismo
+      pago no ganan los dos.
+  - **Pago por fuera y anulación por la plataforma (SLT-143, migración
+    `20261121130000_pago_plataforma_por_fuera`).** El superadmin, desde el detalle de la empresa, registra
+    un pago hecho por fuera y anula un pago confirmado. Las dos son funciones del dueño (`SECURITY
+    DEFINER`, `EXECUTE` revocado a `PUBLIC`) bajo el candado `pago_plataforma:` de la empresa, y la app
+    llega a ellas por `PagoPlataformaConfirmacionRepository` en `comoPlataforma` y
+    `PagoPlataformaConfirmacionService`, que exige superadmin (`lib/actions/pagos-plataforma.ts`).
+    - **Pago por fuera:** `pago_plataforma_registrar_por_fuera` escribe en una transacción el
+      `egreso_pago_plataforma` de la wallet (la caja baja igual que con un pago de la empresa, aunque la
+      caja no alcance), el comprobante si viene y la confirmación con su reparto
+      (`_pago_plataforma_aplicar`, las mismas validaciones que confirmar). Nace confirmado: no cuenta como
+      por confirmar y la deuda baja al registrarlo. La misma clave de idempotencia responde
+      `ya_registrado` sin escribir. El monto se acota a 9 999 999 999,99 (`montoPagoPorFueraSchema`, el
+      tope de `wallet_movimiento.monto`).
+    - **La columna `por_fuera`:** `pago_plataforma_confirmacion.por_fuera` (`false` por defecto; la
+      migración no toca filas). Es `true` solo en los pagos por fuera y de ahí sale la marca «Registrado
+      por la plataforma» del libro de la caja (`LibroCajaAutoriaRepository`), sin el nombre ni el id del
+      superadmin. Un pago de la empresa confirmado después no la lleva.
+    - **La anulación:** `pago_plataforma_anular_confirmado(org, pago, motivo, por, ahora)` responde `ok` o
+      `ya_anulado`; si no, `SL060` con `pago_no_encontrado`, `pago_no_confirmado` (uno por confirmar no se
+      anula aquí) o `motivo_vacio`. Escribe, en este orden, la fila de `pago_plataforma_anulacion`, la
+      constancia con el motivo en `ajuste_caja_anulacion` y el contra-asiento `ingreso_ajuste` con origen
+      `gasto`, como la anulación de un egreso (SL-45): el monto vuelve a la caja. Sin historial. No toca
+      `factura_plataforma` ni `pago_plataforma_aplicacion`: `factura_plataforma_saldos`, la suma de
+      confirmados y el «Pagado» de Empresas descartan las aplicaciones de una confirmación anulada, y la
+      deuda sube en el monto. Un pago anulado no se confirma (`pago_no_encontrado`) ni vuelve a por
+      confirmar. El libro marca el contra-asiento y la línea de anulación con «Anulado por la plataforma».
+    - **La tabla `pago_plataforma_anulacion`:** una por confirmación (único por empresa y confirmación;
+      quién y cuándo). De negocio, con RLS por empresa: la empresa solo **lee** lo suyo; `servi_app` tiene
+      `REVOKE INSERT, UPDATE, DELETE`. Inmutable (`pago_plataforma_anulacion_inmutable`, también el dueño),
+      con triggers de misma empresa en `anulado_por` y `confirmacion_id`. En Prisma, la confirmación la
+      lee como lista: `anulaciones`.
+    - **La excepción del trigger:** `pago_plataforma_no_anular_confirmado` sigue rechazando el
+      contra-asiento de un pago confirmado, salvo si su confirmación ya tiene fila en
+      `pago_plataforma_anulacion`. Como `servi_app` no puede escribir esa tabla, la empresa sigue sin
+      poder anular un confirmado (`forbidden`), tampoco uno por fuera, y el dueño tampoco sin la anulación.
+  - **Lectura:** la empresa lee sus facturas con `FacturaPlataformaRepository.deLaEmpresa`. Es una
+    sola sentencia que trae las cerradas y `factura_plataforma_en_curso` (`42501` con otra empresa o
+    sin empresa). Las no cerradas traen el total de órdenes hasta ahora y las cuotas previstas. El
+    superadmin lee las de una empresa con `deEmpresaParaPlataforma(organizacionId)`, la misma sentencia
+    con `conEmpresa`, sin `comoPlataforma`.
+  - **Pantallas (SLT-119, 2026-11-12).** Las facturas van **por empresa, no por plan**: el plan es
+    una columna de cada factura. Se pintan en la sección «Facturas de la empresa» de «Mi plan» (solo el
+    maestro) y en la pestaña «Facturación» del detalle de empresa del superadmin (la pestaña
+    «Empresa» sigue siendo la de por defecto). Componentes en `components/shared/facturas/`; servicio
+    `FacturaPlataformaService` (la autorización vive ahí) y actions en `lib/actions/facturas-plataforma.ts`.
+    Una cerrada muestra su número «N.º N»; una no cerrada, «En curso». El detalle se abre en un panel
+    lateral, se carga al abrirlo y al paginar, y sus líneas salen de `cobro_plataforma_traza` por
+    `cobrado_at` en `[desde, hasta)`, 100 por página (`detalleDeLaEmpresa` / `detalleParaPlataforma`),
+    sin copiarlas. Las pantallas no escriben (SLT-119 R16 sigue en pie).
+  - **Descarga (SLT-136, 2026-11-17; SLT-199, 2026-11-18).** Una factura **cerrada** se descarga en dos
+    PDF, la factura y su anexo de movimientos (`factura-<n>-<empresa>.pdf` y `…-anexo.pdf`; sin Excel),
+    desde las dos pantallas, solo por el maestro (`descargarFacturaMiPlanAction`) y el superadmin
+    (`descargarFacturaEmpresaAction`, con la empresa ligada en la página). El servidor solo devuelve los
+    datos (`datosDescargaDeLaEmpresa` / `datosDescargaParaPlataforma`: cabecera y todos los movimientos,
+    sin paginar); los archivos se arman en el navegador (`lib/facturas-plataforma/{resumen,pdf,anexo}.ts`,
+    `components/shared/facturas/DescargarFactura.tsx`). Si el resumen no cuadra con la base, no sale
+    archivo. Una no cerrada no tiene botones.
+    - **Estilo común:** los dos PDF se dibujan con `lib/facturas-plataforma/pdf-comun.ts` (banda, barra,
+      tarjetas, tabla partida en páginas con su cabecera, pie y «Página x de y»).
+    - **Letra:** Helvetica de jsPDF; un texto con un carácter que Helvetica no tiene (p. ej. `₡`) se
+      escribe entero con la fuente embebida de respaldo (Liberation Sans, `lib/pdf/etiquetas-fuente.ts`).
+    - **Importes de documento:** `importeDocumento` y `cantidadVisible` (`resumen.ts`) dan el formato de
+      los PDF («₡473 000,00», «2 365»), sobre el texto de la base y sin redondear. Es distinto del de
+      pantalla (`formatMontoString`, `lib/config/moneda.ts`) y no se usa fuera de los documentos.
+    - **Logo PROVISIONAL:** `public/brand/logo-singularis.png` (`MARCA_FACTURA` en `lib/config/marca.ts`)
+      es un marcador; el humano lo reemplaza por el real con el mismo nombre.
+  - **Aviso al cerrar (SLT-136).** `FacturaPlataformaRepository.cerrar` cierra y, en la **misma**
+    transacción (outbox), encola un trabajo `factura_plataforma_aviso` por factura cerrada
+    (`lib/repositories/_shared/encolar-en-empresas.ts`, dedupe `factura_plataforma_aviso:<facturaId>`).
+    El manejador (`lib/planes/jobs-factura-aviso.ts`, de núcleo, no recurrente) emite la campanita
+    `factura_plataforma_emitida` (sin montos), el push y el correo (`plantillaFacturaEmitida`, con
+    montos), solo a los maestros de la empresa; también avisa una factura de total 0.
+    - **Enmienda de SLT-118 R25:** el manejador del cierre sigue sin enviar nada; los avisos salen por la
+      cola.
+    - **Enmienda de la guardia de SLT-91 R10:** `mi-plan-solo-maestro` admite nombrar `/mi-plan` en
+      `lib/notificaciones/catalogo-avisos.ts` (atajo «Ver factura») y en
+      `lib/services/email/plantillas/factura-emitida.ts`.
+- **Reportes de problemas (SLT-87, 2026-11-09).** `bug_report` (migración `20261110120000`) es de
+  plataforma (`MODELOS_DE_PLATAFORMA`): RLS sin políticas y `REVOKE ALL … FROM servi_app`, así que la
+  empresa no la lee ni la escribe, ni lo suyo ni lo de su gente (`42501`). La escribe solo
+  `lib/repositories/BugReportRepository.ts`, en `comoPlataforma` y con su entrada en
+  `EXCEPCIONES_DE_PLATAFORMA`; la empresa, el usuario y el rol salen de la sesión. Su `organization_id`
+  va en inglés (decisión Q5 del 2026-11-09) y es un atributo, quién reportó: no reparte la tabla.
+  La copia por correo a `BUG_REPORT_EMAILS` es síncrona, va después del guardado y su fallo no lo
+  tumba (`lib/services/ReporteBugService.ts`).
+  - **Estado (SLT-97, migración `20261111120000`).** `bug_report.status` (`new`, `in_review`,
+    `resolved`, `dismissed`) solo avanza: el trigger `bug_report_status_solo_adelante` rechaza con
+    `SL097` cualquier paso fuera de `TRANSICIONES_REPORTE` (`lib/types/reporte-bug.ts`), también el que
+    deja el mismo estado, y también al dueño.
+  - **Historial (SLT-97).** `bug_report_status_change` es de plataforma e inmutable: el trigger
+    `bug_report_status_change_inmutable` rechaza con `SL097` todo `UPDATE` y `DELETE`, salvo la cascada
+    del borrado de su reporte. Tiene RLS sin políticas y `REVOKE ALL … FROM servi_app`. La escribe
+    `BugReportRepository.cambiarEstado` en la misma transacción que el cambio de estado.
+  - **Quién lo ve (SLT-97).** El módulo `/plataforma/reportes` (listado y detalle) es solo del
+    superadmin; a cualquier otro le responde «no encontrado». Un cambio de estado no avisa a nadie: ni
+    correo, ni cola, ni `historial_accion`.
+  - **Imágenes (SLT-98, migración `20261112120000`).** `bug_report_image` es de plataforma, con RLS
+    sin políticas y `REVOKE ALL … FROM servi_app`. Las imágenes viven en el bucket privado
+    `BUG_REPORT_BUCKET` (`bug-reports`), en `<organizacion_id>/<usuario_id>/<imagen_id>.<ext>`. Se
+    suben al pulsar «Enviar», directo desde el navegador con una URL firmada que pide el servidor, y
+    el envío las valida por tamaño y por firma de bytes. Se leen solo por enlace firmado de 24 h, en
+    el correo y en el detalle; el superadmin firma con `conEmpresa` de la empresa del reporte.
+    - **Tope diario.** Tope blando de 21 permisos de subida por usuario y día calendario en la zona
+      horaria del país de la empresa (la fecha la calcula el servidor): con el conteo por debajo
+      de 21 se concede todo lo pedido (hasta 25 en el día); desde 21, nada, y el panel envía el reporte solo con el texto, sin aviso. El conteo vive en
+      `bug_report_upload_quota`, de plataforma, con RLS sin políticas y `REVOKE ALL … FROM servi_app`,
+      y la suma condicionada es una sola sentencia (`INSERT … ON CONFLICT DO UPDATE … WHERE`), como en
+      `asistente_uso_diario`.
 
 ### Por qué
 Decisión del humano (plan-saas, 2026-10-20/21): una sola base compartida, datos separados por
@@ -285,7 +555,7 @@ Decisión del humano (plan-saas, 2026-10-20/21): una sola base compartida, datos
 
 - **Tablas.** `tarifa_valor` (un valor por concepto del catálogo fijo `lib/tarifas/catalogo.ts`,
   en modo `monto` o `porcentaje`, con su nivel: tienda+grupo, tienda+zona, tienda general, grupo,
-  zona, grupo+vehículo, zona+vehículo), `grupo_distritos` y `grupo_distritos_distrito` (un distrito
+  zona, grupo+vehículo, zona+vehículo y `mensajero`), `grupo_distritos` y `grupo_distritos_distrito` (un distrito
   en un solo grupo por zona). Lo congelado al cerrar: `cierre_detail.tarifa_modelo`,
   `cierre_detail_concepto` (cobro a la tienda por orden) y `gestion_pago_congelado` (pago por
   gestión). Las cinco llevan `organizacion_id` y RLS como el resto.
@@ -307,6 +577,21 @@ Decisión del humano (plan-saas, 2026-10-20/21): una sola base compartida, datos
   valor queda «sin tarifa» (0 en el cierre, 409 en la API); por eso el diálogo lista los faltantes y
   pide confirmarlos. Desde el siguiente cierre: los cierres ya hechos no cambian. Una empresa con
   valores al aplicar la migración queda activada, para que su cálculo no cambie.
+- **Valor propio del mensajero (SLT-55).** El nivel `mensajero` es el pago de UN mensajero por UN
+  resultado, sin zona, grupo, tienda, vehículo ni IVA. Gana sobre grupo y zona en cualquier zona donde
+  trabaje, y lo que no tenga digitado usa la precedencia de siempre. Un 0 escrito paga 0. En porcentaje,
+  la base es el flete sin IVA de la orden, tenga o no valor de pago la zona del mensajero. No cuenta
+  como cobertura: los faltantes de una zona no lo miran. Se conserva si el mensajero se da de baja, y
+  se sigue pagando en las gestiones suyas que se cierren.
+- **Tope de intentos de entrega (SLT-77).** `organizacion.tope_intentos_entrega`, de 1 a 10 con `DEFAULT 3` y
+  `CHECK`, es el único valor del tope: no hay variable de entorno ni respaldo en código. Lo cambia el `maestro`
+  en una sección de la pantalla y el `admin` lo lee; rige al guardar, para las órdenes sin terminar, con o sin
+  activación. Guardar no escribe en órdenes ni cierres y solo deja historial si el valor cambia. El único SQL de
+  lectura es `lib/repositories/_shared/tope-intentos-empresa.ts`, sin caché, y sin empresa en contexto falla con
+  `EmpresaNoResuelta`: nunca cae a un valor por defecto. Los servicios lo piden con `topeIntentos()` de
+  `IOrdenHistorialService`, una vez por ejecución; el rechazo por tope del proceso de devoluciones y de la
+  aprobación de un cierre lo relee en su transacción y gana el mayor, para errar hacia no cobrar. El número no
+  viaja al navegador del `mensajero`: solo el booleano ya decidido.
 - **Sin migración de datos.** SLT-53 se canceló: nada copia las tarifas actuales al modelo nuevo.
   Las digita la empresa en `/configuracion/tarifas`, con lo que rige hoy al lado como referencia
   («Hoy rige»), calculada con las mismas funciones que el modelo viejo y sin copiarse al campo.

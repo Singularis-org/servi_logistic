@@ -74,6 +74,7 @@ fila que se toque por otra razón se re-verifica entonces.
 | `vitest` | tests | heredada de Ordenex; checks sin re-verificar | Carlos Restrepo, 2026-10-21 | aprobada |
 | `web-push` | notificaciones push | heredada de Ordenex; checks sin re-verificar | Carlos Restrepo, 2026-10-21 | aprobada |
 | `yet-another-react-lightbox` | visor de fotos | heredada de Ordenex; checks sin re-verificar | Carlos Restrepo, 2026-10-21 | aprobada |
+| `libphonenumber-js` | validar teléfonos por país, solo servidor (`libphonenumber-js/max`; SLT-42) | no deprecada; última 1.13.15 (2026-10-08) · 39,6 M descargas/semana (2026-10-27..11-02) · MIT; verificado 2026-11-03 | Camilo, 2026-11-03 (spec SLT-42, F1.4) | aprobada |
 | `zod` | validación en el borde | heredada de Ordenex; checks sin re-verificar | Carlos Restrepo, 2026-10-21 | aprobada |
 
 ### Por qué

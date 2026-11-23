@@ -1,4 +1,4 @@
-<!-- perfil: revisado=2026-10-28 por=Camilo -->
+<!-- perfil: revisado=2026-11-08 por=Carlos Restrepo -->
 # docs/perfil-agentes.md — Reglas del proyecto para cada agente
 
 > Perfil del proyecto. Los agentes de `.claude/agents/` son genéricos (vienen de la plantilla y los
@@ -20,6 +20,21 @@
   interfaces,types,utils}/`, `components/{ui,shared,private}/`, `db/schema.prisma`,
   `db/migrations/`, `tests/{unit,integration,components,guards}/`, `e2e/`.
 - Ramas: integración `dev`, producción `prod`.
+- **E2E en local antes del PR.** Si el diff toca `db/`, una pantalla de `app/` o dinero, corre en
+  local los E2E que lo cubren antes de abrir el PR: `grep -rl` en `e2e/` por la ruta, el rótulo o la
+  tabla que cambiaste, y además el grupo `dinero` entero si toca dinero
+  (`pnpm exec playwright test --project=dinero`). Base desechable nueva, nunca la de desarrollo, y
+  `NEXT_PUBLIC_APP_URL` como en `.github/workflows/gate.yml`. El leader no abre el PR sin ese verde.
+- **Un E2E inestable se arregla, no se reintenta.** El CI corre con `failOnFlakyTests`: un test que pasa
+  al segundo intento deja el job en rojo. Se arregla la causa (esperar la condición, nunca
+  `waitForTimeout`) en una rama `chore/` el mismo día; no se quita `failOnFlakyTests`.
+
+### Por qué (E2E en local e inestables)
+2026-11-08, SLT-94 «Cobro de fulfillment por paquete y marca «se recoge en tienda»»: tres rondas de CI
+(~25 min cada una) por rojos que el local no vio. 1) El rápido se salta los `vitest related` cuando
+pasan de 150 (eran 1 766) y no había disparadores: se añadió `gate.disparadores` para esquema y
+migraciones. 2) `e2e/tarifas-maqueta.spec.ts` contaba una fila que R13 quitó: solo corre en CI.
+3) `e2e/tope-intentos-por-empresa.spec.ts` falló y pasó al reintento: `failOnFlakyTests` tumbó #97.
 
 ## spec_author
 Un `design.md` aquí trae:
@@ -60,6 +75,7 @@ Reparte por capa: `backend_dev` para `lib/`, `db/` y `app/api/`; `frontend_dev` 
   referencia a recursos de Ordenex.
 - Dependencia nueva sin fila en `docs/dependencias.md`.
 - Comentarios: explican el porqué, no el qué (`docs/conventions.md`).
+- Bloqueante: PR que toca `db/`, pantallas o dinero sin constancia de los E2E afectados corridos en local.
 
 ## extractor
 Un módulo aquí es el corte vertical de una entidad: `lib/actions/<m>*`, `lib/services/<m>*`,

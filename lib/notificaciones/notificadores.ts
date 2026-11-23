@@ -20,6 +20,9 @@
 import type { ErrorLogger } from "@/lib/errors";
 import { emitirBestEffort } from "@/lib/notificaciones/best-effort";
 import { getPrismaClient } from "@/lib/db/prisma-client";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
+import { construirReglasPaisEmpresa } from "@/lib/services/ReglasPaisEmpresaService";
+import { zonaDeLaEmpresa } from "@/lib/services/zona-de-la-empresa";
 import type { INotificacionRepository } from "@/lib/interfaces/repositories/INotificacionRepository";
 import { NotificacionRepository } from "@/lib/repositories/NotificacionRepository";
 // FICHA 410: las cuatro piezas del canal de push. Solo las usa `repoReal()`.
@@ -38,6 +41,7 @@ import {
   emitirCierreDiaVencido,
   emitirDevolucionesRepresadas,
   emitirDiaRepartoCorregido,
+  emitirFacturaEmitida,
   emitirGastoFijoCobroPendiente,
   emitirGeocodificacionCaida,
   emitirMensajeroBloqueado,
@@ -55,6 +59,7 @@ import {
   type CierreVencidoContexto,
   type DevolucionesRepresadasContexto,
   type DiaRepartoCorregidoContexto,
+  type FacturaEmitidaContexto,
   type GastoFijoCobroPendienteContexto,
   type GeocodificacionCaidaContexto,
   type MensajeroBloqueadoContexto,
@@ -215,6 +220,7 @@ function repoReal(): INotificacionRepository {
       canal: new PushSuscripcionRepository(prisma),
       cola: new JobRepository(prisma),
       hayCanal: pushConfigurado,
+      reglasPais: construirReglasPaisEmpresa(prisma), // SLT-42 (R22, R28): el dia del cupo de push.
     }),
     { envios: new WhatsappEnvioRepository(prisma), cola: new JobRepository(prisma) },
   );
@@ -417,11 +423,18 @@ export function notificarGastoFijoCobroPendienteCon(
 export function notificarWebhookSuscripcionPausadaCon(
   repo: INotificacionRepository,
   logger?: ErrorLogger,
+  /** SLT-42 (R22, R28): la zona del país de la empresa; sin ella el aviso falla (best-effort). */
+  reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">,
 ): WebhookSuscripcionPausadaNotificador {
   return async (ctx) => {
     await emitirBestEffort(
       "webhook_suscripcion_pausada",
-      () => emitirWebhookSuscripcionPausada(repo, ctx),
+      async () =>
+        emitirWebhookSuscripcionPausada(
+          repo,
+          ctx,
+          await zonaDeLaEmpresa(reglasPais, "notificarWebhookSuscripcionPausada"),
+        ),
       logger,
     );
   };
@@ -563,7 +576,12 @@ export const notificarGastoFijoCobroPendienteReal: GastoFijoCobroPendienteNotifi
 
 export const notificarWebhookSuscripcionPausadaReal: WebhookSuscripcionPausadaNotificador = async (
   ctx,
-) => notificarWebhookSuscripcionPausadaCon(repoReal())(ctx);
+) =>
+  notificarWebhookSuscripcionPausadaCon(
+    repoReal(),
+    undefined,
+    construirReglasPaisEmpresa(getPrismaClient()), // SLT-42 (R22, R28)
+  )(ctx);
 
 export const notificarGeocodificacionCaidaReal: GeocodificacionCaidaNotificador = async (ctx) =>
   notificarGeocodificacionCaidaCon(repoReal())(ctx);
@@ -663,3 +681,16 @@ export function notificarReprogramadasEsperanCierreCon(
 export const notificarReprogramadasEsperanCierreReal: ReprogramadasEsperanCierreNotificador = async (
   ctx,
 ) => notificarReprogramadasEsperanCierreCon(repoReal())(ctx);
+
+/**
+ * SLT-136 (design §7.3; R22, R23) — emite «se emitió la factura N.º n» al maestro. NO es best-effort: lo
+ * llama el job `factura_plataforma_aviso`, que debe fallar (y reintentarse) si el aviso no se creó; el
+ * reintento no lo duplica porque la entidad es la factura. Devuelve las filas creadas (0 si ya existía).
+ *
+ * Resuelve su repositorio por `repoReal()`, así que hereda el push y el puente de WhatsApp (410 §6) sin
+ * construir `new NotificacionRepository(...)` por su cuenta (guardia de 410/R51).
+ */
+export type FacturaEmitidaNotificador = (ctx: FacturaEmitidaContexto) => Promise<number>;
+
+export const emitirFacturaEmitidaReal: FacturaEmitidaNotificador = async (ctx) =>
+  emitirFacturaEmitida(repoReal(), ctx);

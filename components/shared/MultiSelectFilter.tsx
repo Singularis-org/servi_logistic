@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, ChevronDown, Minus, X } from "lucide-react";
 
+import { useAltoControlesBarra } from "@/components/shared/alto-controles-barra";
 import { InfoEstado, SELECTOR_POPUP_ESTADO_INFO } from "@/components/shared/EstadoInfo";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -77,6 +78,8 @@ export function MultiSelectFilter({
   disabled = false,
   className,
 }: MultiSelectFilterProps) {
+  // SLT-194 (R946, D1): 44 px en móvil dentro de una barra con `escaneo`; fuera, `""` (R948).
+  const altoBarra = useAltoControlesBarra();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const contenedorRef = useRef<HTMLDivElement>(null);
@@ -240,7 +243,7 @@ export function MultiSelectFilter({
           aria-haspopup="listbox"
           aria-expanded={open}
           aria-label={`${label}: ${resumen}`}
-          className="justify-between gap-2 min-w-56"
+          className={cn("justify-between gap-2 min-w-56", altoBarra)}
           onClick={() => setOpen((prev) => !prev)}
         >
           <span className="truncate">

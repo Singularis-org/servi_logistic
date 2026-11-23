@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import fs from "fs";
 import path from "path";
 import { handleLiberarReprogramadas } from "@/app/api/cron/liberar-reprogramadas/route";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 import type {
   ILiberacionReprogramadaService,
   LiberacionResult,
@@ -56,6 +57,7 @@ describe("handleLiberarReprogramadas — autorizacion (R6)", () => {
     const { service, spy } = fakeService();
     const res = await handleLiberarReprogramadas(req({ authorization: "Bearer wrong" }), {
       getSecret: () => SECRET,
+      reglasPais: reglasPaisFijas(), // SLT-42 (R24): la zona del pais de la empresa (CR)
       service,
     });
     expect(res.status).toBe(401);
@@ -76,6 +78,7 @@ describe("handleLiberarReprogramadas — autorizacion (R6)", () => {
     const { service, spy } = fakeService();
     const res = await handleLiberarReprogramadas(req({ authorization: `Bearer ${SECRET}` }), {
       getSecret: () => SECRET,
+      reglasPais: reglasPaisFijas(), // SLT-42 (R24): la zona del pais de la empresa (CR)
       service,
     });
     expect(res.status).toBe(200);
@@ -95,6 +98,7 @@ describe("handleLiberarReprogramadas — autorizacion (R6)", () => {
     const now = new Date("2026-07-15T06:30:00.000Z");
     await handleLiberarReprogramadas(req({ authorization: `Bearer ${SECRET}` }), {
       getSecret: () => SECRET,
+      reglasPais: reglasPaisFijas(), // SLT-42 (R24): la zona del pais de la empresa (CR)
       service,
       now: () => now,
     });
@@ -110,6 +114,7 @@ describe("handleLiberarReprogramadas — errores del service (R19)", () => {
     });
     const res = await handleLiberarReprogramadas(req({ authorization: `Bearer ${SECRET}` }), {
       getSecret: () => SECRET,
+      reglasPais: reglasPaisFijas(), // SLT-42 (R24): la zona del pais de la empresa (CR)
       // FICHA 315: el doble implementa el contrato entero; esta ruta solo ejerce el del reloj.
       service: {
         ejecutarLiberacion: boom,

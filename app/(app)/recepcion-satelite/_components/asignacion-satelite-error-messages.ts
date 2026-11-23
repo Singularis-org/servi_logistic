@@ -71,6 +71,13 @@ const MOTIVOS_CON_CAUSA_PROPIA: readonly { fragmento: string; mensaje: string }[
       "Alguna orden no es de tu zona, así que no puedes asignarla. Quítala de la selección.",
   },
   {
+    // SLT-77 (R42): actualizar la lista no la arregla, sigue agotada. El fragmento no coincide con el
+    // motivo de gestión del mismo tope, que dice otra cosa.
+    fragmento: "no puede volver a salir a reparto",
+    mensaje:
+      "Alguna orden de la selección ya agotó sus intentos de entrega y no puede volver a salir a reparto. Quítala de la selección.",
+  },
+  {
     fragmento: "estado_invalido",
     mensaje:
       "Alguna orden ya cambió de estado y esta acción no le aplica. Actualiza la lista y vuelve a intentarlo.",

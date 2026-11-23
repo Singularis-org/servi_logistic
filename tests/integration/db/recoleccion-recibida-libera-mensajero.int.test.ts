@@ -21,6 +21,8 @@ import {
   serializarEscriturasReales,
 } from "./_postgres-real";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 /**
  * SLT-63 — la recepcion en la bodega central de una orden RECOLECTADA en tienda la deja sin
  * asignacion, contra Postgres de verdad.
@@ -88,7 +90,7 @@ function repos(tx: Tx) {
   );
   return {
     repo,
-    ordenes: new OrdenService(repo, historial),
+    ordenes: new OrdenService(repo, historial, undefined, reglasPaisFijas()),
     recepcion: new RecepcionBodegaCentralService(repo),
     gestion: new GestionOrdenRepository(
       prisma as unknown as ConstructorParameters<typeof GestionOrdenRepository>[0],
@@ -440,7 +442,7 @@ describeSiHayBase("SLT-63 · recibir en la central una recoleccion libera la asi
       const { tablero } = repos(tx);
       return {
         e,
-        filas: await tablero.contarPorMensajero(ventanaDelDiaEnCursoCR(new Date()), {
+        filas: await tablero.contarPorMensajero(ventanaDelDiaEnCursoCR(new Date(), ZONA_CR), {
           tipo: "zona",
           zonaId: e.zona1,
         }),
@@ -473,7 +475,7 @@ describeSiHayBase("SLT-63 · recibir en la central una recoleccion libera la asi
       return {
         e,
         enRuta: await asignacionDe(tx, e.enRuta),
-        filas: await tablero.contarPorMensajero(ventanaDelDiaEnCursoCR(new Date()), {
+        filas: await tablero.contarPorMensajero(ventanaDelDiaEnCursoCR(new Date(), ZONA_CR), {
           tipo: "zona",
           zonaId: e.zona1,
         }),

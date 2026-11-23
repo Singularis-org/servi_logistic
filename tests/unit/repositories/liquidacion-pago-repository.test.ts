@@ -4,6 +4,9 @@ import { LiquidacionPagoRepository } from "@/lib/repositories/LiquidacionPagoRep
 import type { CrearLiquidacionPagoInput } from "@/lib/interfaces/repositories/ILiquidacionPagoRepository";
 import { codigoSinComentarios } from "../../fixtures/sin-comentarios";
 
+/** SLT-122: el alcance del acceso total, escrito a mano (no importado de su fuente). */
+const CENTRAL = { destinoTipo: "bodega_central", destinoZonaId: null } as const;
+
 // Feature 172 / T B.1 + T B.4 + T F.1 (mitad del repositorio) — tests unit del
 // LiquidacionPagoRepository (mockea Prisma, sin DB). Cubre R7 (las 10 columnas del documento),
 // R9 (fecha real e instante de registro conviven y difieren), R80 (las sumas excluyen los
@@ -366,113 +369,6 @@ function cierreImputableRow(overrides: Record<string, unknown> = {}) {
   };
 }
 
-describe("LiquidacionPagoRepository.listarCierresImputables (205 / R5/R6/R8)", () => {
-  it("R5/R24 — EL WHERE: filtra por mensajero Y por estado `aprobado`, los dos", async () => {
-    const prisma = buildPrisma();
-    prisma.cierreDia.findMany.mockResolvedValue([cierreImputableRow()]);
-    const repo = buildRepo(prisma);
-
-    await repo.listarCierresImputables("m1");
-
-    const arg = prisma.cierreDia.findMany.mock.calls[0][0];
-    // ESTE es el where que ningun doble de servicio ve. Sin `estado`, el reparto imputaria a
-    // cierres `solicitado`/`rechazado`/`vencido`, que no han devengado nada; sin `mensajeroId`,
-    // a los cierres de OTRA persona (R24). Igualdad exacta: ni una clave de mas.
-    expect(arg.where).toEqual({ mensajeroId: "m1", estado: "aprobado" });
-  });
-
-  it("R8 — EL ORDEN: `solicitadoAt` asc con desempate por `id` asc, y NUNCA por `resueltoAt`", async () => {
-    const prisma = buildPrisma();
-    prisma.cierreDia.findMany.mockResolvedValue([]);
-    const repo = buildRepo(prisma);
-
-    await repo.listarCierresImputables("m1");
-
-    const arg = prisma.cierreDia.findMany.mock.calls[0][0];
-    expect(arg.orderBy).toEqual([{ solicitadoAt: "asc" }, { id: "asc" }]);
-    // Q1/design §2.4: ordenar por la fecha de APROBACION haria que la prioridad de cobro la
-    // fijara la latencia administrativa. Aqui no se nombra ni para leerla.
-    expect(JSON.stringify(arg)).not.toContain("resueltoAt");
-  });
-
-  it("R53/§2.5.6 — SIN `take`: el tope acota la ESCRITURA, no la lectura", async () => {
-    // La previsualizacion necesita TODOS los imputables para decir cuantos quedan fuera de la
-    // ventana y cuanto suman (R56). Un `take` aqui haria que el aviso mintiera y que la deuda no
-    // imputable de R37 se midiera contra un conjunto recortado.
-    const prisma = buildPrisma();
-    prisma.cierreDia.findMany.mockResolvedValue([]);
-    const repo = buildRepo(prisma);
-
-    await repo.listarCierresImputables("m1");
-
-    const arg = prisma.cierreDia.findMany.mock.calls[0][0];
-    expect(arg).not.toHaveProperty("take");
-    expect(arg).not.toHaveProperty("skip");
-    expect(arg).not.toHaveProperty("cursor");
-  });
-
-  it("lee SEIS columnas del cierre y emite los montos como STRING de escala 2", async () => {
-    const prisma = buildPrisma();
-    prisma.cierreDia.findMany.mockResolvedValue([cierreImputableRow()]);
-    const repo = buildRepo(prisma);
-
-    const cierres = await repo.listarCierresImputables("m1");
-
-    expect(prisma.cierreDia.findMany.mock.calls[0][0].select).toEqual({
-      id: true,
-      mensajeroId: true,
-      estado: true,
-      totalPagoMensajero: true,
-      totalEfectivo: true,
-      solicitadoAt: true,
-    });
-    expect(cierres).toEqual([
-      {
-        id: "c1",
-        mensajeroId: "m1",
-        estado: "aprobado",
-        totalPagoMensajero: "50000.00",
-        totalEfectivo: "12345.60", // Decimal -> STRING escala 2 (money-safe)
-        solicitadoAt: "2026-07-05T10:00:00.000Z",
-      },
-    ]);
-    // El PENDIENTE no sale de aqui: se deriva en el servicio (R6). Un pendiente calculado en el
-    // repositorio seria logica de negocio en la capa equivocada.
-    expect(cierres[0]).not.toHaveProperty("pendiente");
-  });
-
-  it("R23: con `tx` la relectura ocurre EN LA TRANSACCION, no en el cliente propio", async () => {
-    const prisma = buildPrisma();
-    const tx = { cierreDia: { findMany: vi.fn().mockResolvedValue([cierreImputableRow()]) } };
-    const repo = buildRepo(prisma);
-
-    await repo.listarCierresImputables("m1", tx as never);
-
-    expect(tx.cierreDia.findMany).toHaveBeenCalledTimes(1);
-    // Leer fuera de la transaccion dejaria una ventana entre el bloqueo y la escritura.
-    expect(prisma.cierreDia.findMany).not.toHaveBeenCalled();
-  });
-
-  it("R26: listarlos no ESCRIBE nada en el cierre", async () => {
-    const prisma = buildPrisma();
-    prisma.cierreDia.findMany.mockResolvedValue([cierreImputableRow()]);
-    const repo = buildRepo(prisma);
-
-    await repo.listarCierresImputables("m1");
-
-    for (const metodo of ["update", "updateMany", "create", "delete", "upsert"] as const) {
-      expect(prisma.cierreDia[metodo], `cierreDia.${metodo}`).not.toHaveBeenCalled();
-    }
-  });
-
-  it("un mensajero sin cierres aprobados devuelve la lista vacia (no null)", async () => {
-    const prisma = buildPrisma();
-    prisma.cierreDia.findMany.mockResolvedValue([]);
-    const repo = buildRepo(prisma);
-    expect(await repo.listarCierresImputables("m1")).toEqual([]);
-  });
-});
-
 describe("LiquidacionPagoRepository.contarCierresNoAprobadosPorEstado (205 / T3.1, R36)", () => {
   /** Los grupos tal y como los devuelve un `groupBy` de Prisma: `_count._all` por grupo. */
   function grupo(estado: string, cantidad: number) {
@@ -484,7 +380,7 @@ describe("LiquidacionPagoRepository.contarCierresNoAprobadosPorEstado (205 / T3.
     prisma.cierreDia.groupBy.mockResolvedValue([]);
     const repo = buildRepo(prisma);
 
-    await repo.contarCierresNoAprobadosPorEstado("m1");
+    await repo.contarCierresNoAprobadosPorEstado("m1", CENTRAL);
 
     const arg = prisma.cierreDia.groupBy.mock.calls[0][0];
     // Igualdad EXACTA, y el `not` es lo que se mide: sin el, el conteo incluiria tambien los
@@ -492,7 +388,12 @@ describe("LiquidacionPagoRepository.contarCierresNoAprobadosPorEstado (205 / T3.
     // `not: aprobado` y no una lista de estados escrita a mano: con una lista, un estado nuevo
     // del enum se quedaria fuera del aviso en silencio y esos cierres DESAPARECERIAN, que es
     // justo lo que R36 existe para impedir. Y sin `mensajeroId`, contaria los de otra persona.
-    expect(arg.where).toEqual({ mensajeroId: "m1", estado: { not: "aprobado" } });
+    // SLT-122 (R9): y el MISMO alcance que los imputables (solo la bodega central).
+    expect(arg.where).toEqual({
+      mensajeroId: "m1",
+      estado: { not: "aprobado" },
+      destinoTipo: "bodega_central",
+    });
   });
 
   it("R36 — AGREGA EN LA BASE: es un `groupBy`, y `findMany` no se llama ni una vez", async () => {
@@ -504,7 +405,7 @@ describe("LiquidacionPagoRepository.contarCierresNoAprobadosPorEstado (205 / T3.
     prisma.cierreDia.groupBy.mockResolvedValue([grupo("rechazado", 9)]);
     const repo = buildRepo(prisma);
 
-    await repo.contarCierresNoAprobadosPorEstado("m1");
+    await repo.contarCierresNoAprobadosPorEstado("m1", CENTRAL);
 
     expect(prisma.cierreDia.groupBy).toHaveBeenCalledTimes(1);
     expect(prisma.cierreDia.findMany).not.toHaveBeenCalled();
@@ -521,7 +422,7 @@ describe("LiquidacionPagoRepository.contarCierresNoAprobadosPorEstado (205 / T3.
     prisma.cierreDia.groupBy.mockResolvedValue([]);
     const repo = buildRepo(prisma);
 
-    await repo.contarCierresNoAprobadosPorEstado("m1");
+    await repo.contarCierresNoAprobadosPorEstado("m1", CENTRAL);
 
     expect(prisma.cierreDia.groupBy.mock.calls[0][0].by).toEqual(["estado"]);
   });
@@ -534,12 +435,14 @@ describe("LiquidacionPagoRepository.contarCierresNoAprobadosPorEstado (205 / T3.
     prisma.cierreDia.groupBy.mockResolvedValue([]);
     const repo = buildRepo(prisma);
 
-    await repo.listarCierresImputables("m1");
-    await repo.contarCierresNoAprobadosPorEstado("m1");
+    // SLT-122: el complemento es el de los imputables CON alcance, que son los que usa el reparto.
+    await repo.listarCierresImputablesEnAlcance("m1", CENTRAL);
+    await repo.contarCierresNoAprobadosPorEstado("m1", CENTRAL);
 
     const imputables = prisma.cierreDia.findMany.mock.calls[0][0].where;
     const excluidos = prisma.cierreDia.groupBy.mock.calls[0][0].where;
     expect(imputables.mensajeroId).toBe(excluidos.mensajeroId);
+    expect(imputables.destinoTipo).toBe(excluidos.destinoTipo);
     expect(imputables.estado).toBe("aprobado");
     expect(excluidos.estado).toEqual({ not: "aprobado" });
   });
@@ -549,7 +452,7 @@ describe("LiquidacionPagoRepository.contarCierresNoAprobadosPorEstado (205 / T3.
     prisma.cierreDia.groupBy.mockResolvedValue([grupo("solicitado", 3)]);
     const repo = buildRepo(prisma);
 
-    await repo.contarCierresNoAprobadosPorEstado("m1");
+    await repo.contarCierresNoAprobadosPorEstado("m1", CENTRAL);
 
     const arg = prisma.cierreDia.groupBy.mock.calls[0][0];
     // Un conteo no es un monto: ni `_sum`, ni `_avg`, ni una columna de dinero por ningun lado.
@@ -564,7 +467,7 @@ describe("LiquidacionPagoRepository.contarCierresNoAprobadosPorEstado (205 / T3.
     prisma.cierreDia.groupBy.mockResolvedValue([grupo("rechazado", 9), grupo("solicitado", 3)]);
     const repo = buildRepo(prisma);
 
-    const excluidos = await repo.contarCierresNoAprobadosPorEstado("m1");
+    const excluidos = await repo.contarCierresNoAprobadosPorEstado("m1", CENTRAL);
 
     expect(excluidos).toEqual([
       { estado: "rechazado", cantidad: 9 },
@@ -587,7 +490,7 @@ describe("LiquidacionPagoRepository.contarCierresNoAprobadosPorEstado (205 / T3.
     prisma.cierreDia.groupBy.mockResolvedValue(estados.map((estado) => grupo(estado, 900)));
     const repo = buildRepo(prisma);
 
-    const excluidos = await repo.contarCierresNoAprobadosPorEstado("m1");
+    const excluidos = await repo.contarCierresNoAprobadosPorEstado("m1", CENTRAL);
 
     expect(excluidos.length).toBe(estados.length);
     expect(excluidos.length).toBeLessThan(Object.values(CierreEstado).length);
@@ -601,7 +504,7 @@ describe("LiquidacionPagoRepository.contarCierresNoAprobadosPorEstado (205 / T3.
     prisma.cierreDia.groupBy.mockResolvedValue([]);
     const repo = buildRepo(prisma);
 
-    await repo.contarCierresNoAprobadosPorEstado("m1");
+    await repo.contarCierresNoAprobadosPorEstado("m1", CENTRAL);
 
     expect(prisma.cierreDia.groupBy.mock.calls[0][0].orderBy).toEqual({ estado: "asc" });
   });
@@ -611,7 +514,7 @@ describe("LiquidacionPagoRepository.contarCierresNoAprobadosPorEstado (205 / T3.
     prisma.cierreDia.groupBy.mockResolvedValue([]);
     const repo = buildRepo(prisma);
 
-    await repo.contarCierresNoAprobadosPorEstado("m1");
+    await repo.contarCierresNoAprobadosPorEstado("m1", CENTRAL);
 
     for (const metodo of ["update", "updateMany", "create", "delete", "upsert"] as const) {
       expect(prisma.cierreDia[metodo], `cierreDia.${metodo}`).not.toHaveBeenCalled();
@@ -1047,7 +950,7 @@ describe("LiquidacionPagoRepository.anular (R73/R75)", () => {
 // ── T B.5: la lectura del cierre contra el que se paga (R20/R21/R22/R42) ──
 
 describe("LiquidacionPagoRepository.obtenerCierreParaPago (R20/R22/R42)", () => {
-  it("lee SOLO las cinco columnas que el pago necesita y devuelve los montos como STRING", async () => {
+  it("lee SOLO las seis columnas que el pago necesita (SLT-123: + la marca) y devuelve los montos como STRING", async () => {
     const prisma = buildPrisma();
     prisma.cierreDia.findUnique.mockResolvedValue(cierreRow());
     const repo = buildRepo(prisma);
@@ -1063,6 +966,7 @@ describe("LiquidacionPagoRepository.obtenerCierreParaPago (R20/R22/R42)", () => 
         estado: true,
         totalPagoMensajero: true,
         totalEfectivo: true,
+        pagoIndependienteEfectivo: true, // SLT-123 (R316, R321): la regla de lo pendiente
       },
     });
     expect(cierre).toEqual({
@@ -1116,5 +1020,165 @@ describe("LiquidacionPagoRepository.obtenerCierreParaPago (R20/R22/R42)", () => 
     const cierre = await repo.obtenerCierreParaPago("c1");
     expect(cierre?.estado).toBe("rechazado");
     expect(prisma.cierreDia.findUnique.mock.calls[0][0].where).toEqual({ id: "c1" });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// SLT-122 «Pago al mensajero: solo la bodega duena del cierre» — R6/R9: el alcance va en el WHERE.
+// Los literales de abajo SON el contrato (no se importan de `alcanceWhere`): un WHERE sin
+// `destinoTipo` deja pasar un cierre de satelite. Que la base lo respete lo mide la integracion
+// `tests/integration/db/pago-mensajero-bodega-duena.test.ts`, con la mutacion registrada.
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+
+describe("SLT-122 — LiquidacionPagoRepository.obtenerCierreParaPagoEnAlcance (R6)", () => {
+  it("R6: el WHERE es `{ id, destinoTipo }` con el alcance central, en la `tx`, con el mismo select", async () => {
+    const prisma = buildPrisma();
+    const tx = { cierreDia: { findUnique: vi.fn().mockResolvedValue(cierreRow()) } };
+    const repo = buildRepo(prisma);
+
+    const cierre = await repo.obtenerCierreParaPagoEnAlcance("c1", CENTRAL, tx as never);
+
+    expect(tx.cierreDia.findUnique).toHaveBeenCalledTimes(1);
+    expect(tx.cierreDia.findUnique.mock.calls[0][0]).toEqual({
+      where: { id: "c1", destinoTipo: "bodega_central" },
+      select: {
+        id: true,
+        mensajeroId: true,
+        estado: true,
+        totalPagoMensajero: true,
+        totalEfectivo: true,
+        pagoIndependienteEfectivo: true, // SLT-123 (R316, R321): la regla de lo pendiente
+      },
+    });
+    expect(prisma.cierreDia.findUnique).not.toHaveBeenCalled();
+    expect(cierre).toEqual({
+      id: "c1",
+      mensajeroId: "m1",
+      estado: "aprobado",
+      totalPagoMensajero: "50000.00",
+      totalEfectivo: "12345.60",
+    });
+  });
+
+  it("R6: con un alcance acotado por zona, la zona tambien va al WHERE", async () => {
+    const prisma = buildPrisma();
+    const tx = { cierreDia: { findUnique: vi.fn().mockResolvedValue(null) } };
+    const repo = buildRepo(prisma);
+
+    const cierre = await repo.obtenerCierreParaPagoEnAlcance(
+      "c1",
+      { destinoTipo: "bodega_satelite", destinoZonaId: "z-sat" },
+      tx as never,
+    );
+
+    expect(cierre).toBeNull();
+    expect(tx.cierreDia.findUnique.mock.calls[0][0].where).toEqual({
+      id: "c1",
+      destinoTipo: "bodega_satelite",
+      destinoZonaId: "z-sat",
+    });
+  });
+
+  it("R1: fuera del alcance la base no devuelve fila y el repositorio responde null", async () => {
+    const prisma = buildPrisma();
+    const tx = { cierreDia: { findUnique: vi.fn().mockResolvedValue(null) } };
+    const repo = buildRepo(prisma);
+
+    expect(await repo.obtenerCierreParaPagoEnAlcance("c-sat", CENTRAL, tx as never)).toBeNull();
+  });
+});
+
+describe("SLT-122 — LiquidacionPagoRepository.listarCierresImputablesEnAlcance (R9)", () => {
+  it("R9: el WHERE es mensajero + aprobado + destinoTipo central, con el mismo orden y sin `take`", async () => {
+    const prisma = buildPrisma();
+    prisma.cierreDia.findMany.mockResolvedValue([cierreImputableRow()]);
+    const repo = buildRepo(prisma);
+
+    const filas = await repo.listarCierresImputablesEnAlcance("m1", CENTRAL);
+
+    const arg = prisma.cierreDia.findMany.mock.calls[0][0];
+    expect(arg.where).toEqual({ mensajeroId: "m1", estado: "aprobado", destinoTipo: "bodega_central" });
+    expect(arg.orderBy).toEqual([{ solicitadoAt: "asc" }, { id: "asc" }]);
+    expect(arg).not.toHaveProperty("take");
+    expect(filas).toHaveLength(1);
+  });
+
+  it("R9: con `tx` lee en la transaccion (la relectura bajo bloqueo), no en el cliente propio", async () => {
+    const prisma = buildPrisma();
+    const tx = { cierreDia: { findMany: vi.fn().mockResolvedValue([]) } };
+    const repo = buildRepo(prisma);
+
+    await repo.listarCierresImputablesEnAlcance("m1", CENTRAL, tx as never);
+
+    expect(tx.cierreDia.findMany).toHaveBeenCalledTimes(1);
+    expect(prisma.cierreDia.findMany).not.toHaveBeenCalled();
+  });
+
+  // SLT-147 (D63, R411) — lo que antes solo se probaba sobre la lectura SIN alcance, que se borro.
+  // El WHERE, el orden, el `take` y el `tx` ya estan arriba; aqui el resto del contrato.
+  it("R411: no nombra `resueltoAt` ni pagina (`take`, `skip`, `cursor`)", async () => {
+    // La previsualizacion necesita TODOS los imputables (R56, design §2.5.6), y ordenar por la
+    // fecha de APROBACION haria que la prioridad de cobro la fijara la latencia administrativa.
+    const prisma = buildPrisma();
+    prisma.cierreDia.findMany.mockResolvedValue([]);
+    const repo = buildRepo(prisma);
+
+    await repo.listarCierresImputablesEnAlcance("m1", CENTRAL);
+
+    const arg = prisma.cierreDia.findMany.mock.calls[0][0];
+    expect(JSON.stringify(arg)).not.toContain("resueltoAt");
+    expect(arg).not.toHaveProperty("take");
+    expect(arg).not.toHaveProperty("skip");
+    expect(arg).not.toHaveProperty("cursor");
+  });
+
+  it("R411: lee SIETE columnas y emite los montos como STRING de escala 2", async () => {
+    const prisma = buildPrisma();
+    prisma.cierreDia.findMany.mockResolvedValue([cierreImputableRow({ pagoIndependienteEfectivo: true })]);
+    const repo = buildRepo(prisma);
+
+    const cierres = await repo.listarCierresImputablesEnAlcance("m1", CENTRAL);
+
+    expect(prisma.cierreDia.findMany.mock.calls[0][0].select).toEqual({
+      id: true,
+      mensajeroId: true,
+      estado: true,
+      totalPagoMensajero: true,
+      totalEfectivo: true,
+      pagoIndependienteEfectivo: true,
+      solicitadoAt: true,
+    });
+    expect(cierres).toEqual([
+      {
+        id: "c1",
+        mensajeroId: "m1",
+        estado: "aprobado",
+        totalPagoMensajero: "50000.00",
+        totalEfectivo: "12345.60", // Decimal de escala 1 -> STRING escala 2
+        pagoIndependienteEfectivo: true,
+        solicitadoAt: "2026-07-05T10:00:00.000Z",
+      },
+    ]);
+    // El PENDIENTE se deriva en el servicio (R6), no aqui.
+    expect(cierres[0]).not.toHaveProperty("pendiente");
+  });
+
+  it("R411: listarlos no ESCRIBE nada en el cierre", async () => {
+    const prisma = buildPrisma();
+    prisma.cierreDia.findMany.mockResolvedValue([cierreImputableRow()]);
+    const repo = buildRepo(prisma);
+
+    await repo.listarCierresImputablesEnAlcance("m1", CENTRAL);
+
+    for (const metodo of ["update", "updateMany", "create", "delete", "upsert"] as const) {
+      expect(prisma.cierreDia[metodo], `cierreDia.${metodo}`).not.toHaveBeenCalled();
+    }
+  });
+
+  it("R411: un mensajero sin cierres aprobados en el alcance devuelve la lista vacia (no null)", async () => {
+    const prisma = buildPrisma();
+    prisma.cierreDia.findMany.mockResolvedValue([]);
+    const repo = buildRepo(prisma);
+    expect(await repo.listarCierresImputablesEnAlcance("m1", CENTRAL)).toEqual([]);
   });
 });

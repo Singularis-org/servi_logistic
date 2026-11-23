@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 
 import { HAY_BASE_DE_DATOS } from "./_postgres-real";
+import { asentarCierreDia } from "@/lib/repositories/_shared/asientos-cierre-dia";
 import { conEscenario, prepararMundo, type Mundo } from "./454/_escenario";
 import { gestionDe } from "./_correccion-477";
 
@@ -47,6 +48,14 @@ describeSiHayBase("477/T4.6 — aprobar un cierre rechazado y corregido (Postgre
       const gRep = await e.gestionarOk(corr.ordenId, "reprogramado");
       const resolicitud = await e.s.cierreDia.solicitarCierre(e.actorMensajero);
       const aprobacion = await e.aprobar(x);
+      // SLT-195 (R1190; SLT-73 R1): `x` es un cierre de SATELITE (lo aprueba el adminSatelite) y
+      // aprobarlo no escribe dinero. Se cuenta justo despues de aprobar, y luego se asienta con el
+      // MISMO escritor que usa la conciliacion (SLT-73 R10), como en `454/caracterizacion/dinero-aprobacion`.
+      const dineroAlAprobar =
+        (await e.tx.walletMovimiento.count({ where: { origenId: x } })) +
+        (await e.tx.walletTiendaMovimiento.count({ where: { origenId: x } })) +
+        (await e.tx.pagoMensajeroMovimiento.count({ where: { origenId: x } }));
+      await asentarCierreDia(e.tx, x);
 
       // Las categorias son enums DISTINTOS por libro: se lee todo lo del cierre y se filtra aqui.
       const movimientos = async (categorias: string[]) => {
@@ -66,6 +75,7 @@ describeSiHayBase("477/T4.6 — aprobar un cierre rechazado y corregido (Postgre
         des: des.status,
         resolicitud,
         aprobacion: aprobacion.status,
+        dineroAlAprobar,
         intentosPrevios,
         intentos: await e.s.historialService.contarIntentos(corr.ordenId),
         estadoCorr: await e.estadoDe(corr.ordenId),
@@ -86,8 +96,10 @@ describeSiHayBase("477/T4.6 — aprobar un cierre rechazado y corregido (Postgre
     expect(r.resolicitud).toEqual({ status: "ok", via: "resolicitado" });
     expect(r.aprobacion).toBe("ok");
     expect(r.intentosPrevios).toBe(1);
+    // SLT-195 R1190: aprobar el cierre de satelite no escribe en caja, tienda ni libro del mensajero.
+    expect(r.dineroAlAprobar, "SLT-195 R1190: dinero escrito al aprobar una satelite").toBe(0);
 
-    // R23: dinero SOLO de la otra entrega (4.000 y su pago); de la anulada, nada.
+    // R23 / SLT-195 R1192 (tras asentar): dinero SOLO de la otra entrega (4.000 y su pago); de la anulada, nada.
     expect(r.cod).toEqual(["cod_recaudado|4000.00", "ingreso_cod_recaudado|4000.00"]);
     expect(r.pagoMensajero).toEqual(["egreso_pago_mensajero|1500.00", "pago_devengado|1500.00"]);
     // R23: estados por las vigentes.

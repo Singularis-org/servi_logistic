@@ -7,6 +7,17 @@ import type { IWalletMensajeroService } from "@/lib/interfaces/services/IWalletM
 import type { PagoMensajeroMovimientoDTO } from "@/lib/types/wallet-mensajero";
 import { ORIGENES_FALSOS, conOrigenFalso } from "@/tests/fixtures/origenes-falsos";
 
+// SLT-42 (T5.4): la zona del pais de la empresa, sin sesion ni base: la de CR, como antes. El borde
+// (`zonaDelBorde`) y los composition roots leen `construirReglasPaisEmpresa`; la zona en si la mide
+// `tests/unit/services/hora-por-pais-wallet.test.ts`.
+vi.mock("@/lib/services/ReglasPaisEmpresaService", async (importOriginal) => {
+  const { reglasPaisFijas } = await import("@/tests/fabricas/reglas-pais");
+  return {
+    ...(await importOriginal<typeof import("@/lib/services/ReglasPaisEmpresaService")>()),
+    construirReglasPaisEmpresa: () => reglasPaisFijas(),
+  };
+});
+
 // Feature 170 / T C.2 (R14/R16/R18 + refuerzo R9/R17/R27) — borde del ledger del pago por
 // mensajero que pide el acceso total (el desglose de UN mensajero).
 //

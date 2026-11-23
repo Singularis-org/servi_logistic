@@ -36,6 +36,12 @@ import {
   filaDescargaOrden,
 } from "./ordenes-descarga-columnas";
 import { serializarFiltro, type OrdenesFilterUI } from "./serializar-filtro";
+import {
+  contarFueraDeVista,
+  filasSeleccionadas,
+  refrescarSeleccion,
+  textoContadorSeleccion,
+} from "./seleccion-acumulada";
 import { OrdenesCargaMasivaButton } from "./OrdenesCargaMasivaButton";
 import { HistorialOrdenSheet } from "./HistorialOrdenSheet";
 import { EtiquetaOrdenAccion } from "./EtiquetaOrdenAccion";
@@ -267,7 +273,7 @@ export function OrdenesModule({
   filtros?: ReactNode;
   /**
    * Señal de "la selección ya se consumió": cada vez que este número cambia, se
-   * desmarcan TODAS las filas. Quien ejecuta las acciones por lote vive arriba (es
+   * desmarcan TODAS las filas, visibles o no (SLT-222 R1508/R1511). Quien ejecuta las acciones por lote vive arriba (es
    * quien sabe cuándo una terminó bien), pero la selección vive aquí; en vez de
    * exponer un handle imperativo, la superficie incrementa un contador y este módulo
    * la limpia. Tras una acción por lote las filas marcadas ya cambiaron de estado:
@@ -292,8 +298,13 @@ export function OrdenesModule({
    *
    * Es un `Map id -> fila` y no un `Set` de ids porque las acciones reciben las FILAS
    * (`acciones(seleccionadas)`), y las de páginas que ya no están montadas no se pueden
-   * recuperar de `items`. Se guarda la fila tal como estaba al marcarla; la selección se
-   * limpia al cambiar de filtro y con "Limpiar".
+   * recuperar de `items`.
+   *
+   * SLT-222 (R1500-R1503): la selección sobrevive también a la BÚSQUEDA (escrita o
+   * escaneada), a los filtros, a las vistas y al orden: la persona busca una orden, la
+   * marca, busca la siguiente… y aplica UNA acción a todas. Solo se vacía con «Limpiar» y
+   * con `resetSeleccion` (acción por lote con éxito, interruptor «Eliminadas»). La fila
+   * guardada se refresca cada vez que el servidor la devuelve (R1509, más abajo).
    */
   const [seleccion, setSeleccion] = useState<ReadonlyMap<string, OrdenListItemDTO>>(
     new Map(),
@@ -354,14 +365,14 @@ export function OrdenesModule({
   );
 
   // Al cambiar CUALQUIER filtro, la página actual puede no existir en el nuevo
-  // resultado (p. ej. estabas en la 4 y ahora hay 1). Se vuelve a la 1 y se limpia la
-  // selección (las filas marcadas ya no están a la vista). Patrón "ajustar estado
-  // durante el render": evita el parpadeo de un fetch a la página vieja en un efecto.
+  // resultado (p. ej. estabas en la 4 y ahora hay 1). Se vuelve a la 1. La selección NO
+  // se toca (SLT-222 R1501/R1502; antes se vaciaba: R60 de la 144, R38 de la 169).
+  // Patrón "ajustar estado durante el render": evita el parpadeo de un fetch a la página
+  // vieja en un efecto.
   const [filterKeyPrevio, setFilterKeyPrevio] = useState(filterKey);
   if (filterKey !== filterKeyPrevio) {
     setFilterKeyPrevio(filterKey);
     setPage(1);
-    setSeleccion(new Map());
   }
 
   /**
@@ -374,11 +385,9 @@ export function OrdenesModule({
    * dado la vuelta —ni el principio ni el final—, que es todavía peor que un resultado vacío,
    * porque parece un listado legítimo.
    *
-   * La SELECCIÓN, en cambio, NO se limpia, y la diferencia con el reset por filtro es
-   * deliberada: allí las filas marcadas dejan de pertenecer al conjunto (por eso el motivo
-   * escrito es «ya no están a la vista»); aquí el conjunto es el MISMO y sólo se reparte
-   * distinto entre páginas. La selección es acumulada entre páginas por diseño, así que
-   * vaciarla al reordenar tiraría un trabajo que sigue siendo válido.
+   * La SELECCIÓN, en cambio, NO se limpia: es acumulada entre páginas y búsquedas por
+   * diseño (SLT-222 R1503), así que vaciarla al reordenar tiraría un trabajo que sigue
+   * siendo válido.
    */
   const [claveOrdenPrevia, setClaveOrdenPrevia] = useState(claveOrden);
   if (claveOrden !== claveOrdenPrevia) {
@@ -400,6 +409,17 @@ export function OrdenesModule({
   // `useMemo` que dependen de ella (columnas, motivos de bloqueo), que se recalculaban
   // siempre. Con memo propio, `items` sólo cambia cuando cambia la respuesta.
   const items = useMemo<OrdenListItemDTO[]>(() => data?.items ?? [], [data]);
+
+  // SLT-222 R1509: cuando el servidor devuelve una orden marcada, su fila guardada se
+  // sustituye por la recibida. Así, cuando deje de verse (otra búsqueda), las acciones y su
+  // «(N)» se deciden con su último estado conocido y no con el del momento de marcarla.
+  // Mismo patrón de "ajustar estado durante el render": sin efecto que encadene renders.
+  const [itemsPrevios, setItemsPrevios] = useState(items);
+  if (items !== itemsPrevios) {
+    setItemsPrevios(items);
+    const refrescada = refrescarSeleccion(seleccion, items);
+    if (refrescada !== seleccion) setSeleccion(refrescada);
+  }
 
   // ¿Se monta la columna de checkbox? Con un predicado, lo deciden las filas de la
   // página. NO se usa `bloqueoSeleccion` para esto: una página en la que todas las
@@ -430,15 +450,12 @@ export function OrdenesModule({
                 <SelectAllCheckbox
                   selectableIds={filas.map((row) => row.id)}
                   selectedIds={seleccionIds}
-                  // Asimétrico A PROPÓSITO (pedido humano): marcar "todas" solo puede
-                  // añadir las filas de ESTA página (de las otras no se tienen los
-                  // datos), pero DESMARCAR limpia la selección ENTERA — incluidas las
-                  // marcadas en otras páginas. Si no, quedaban marcas invisibles
-                  // contando en la barra de acciones y no había forma de quitarlas
-                  // salvo volver página por página.
-                  onToggleAll={(checked) =>
-                    checked ? toggleTodos(filas, true) : setSeleccion(new Map())
-                  }
+                  // SLT-222 D6 (R1512/R1513): marcar añade las filas de ESTA página y
+                  // desmarcar quita solo ESAS; lo marcado en otras páginas o búsquedas se
+                  // queda. Sustituye la asimetría anterior (desmarcar vaciaba todo), que
+                  // con la selección entre búsquedas tiraría lo marcado fuera de la vista.
+                  // Vaciar todo es «Limpiar», en la barra, que dice cuántas no se ven.
+                  onToggleAll={(checked) => toggleTodos(filas, checked)}
                   ariaLabel="Seleccionar todas las órdenes"
                 />
               );
@@ -522,13 +539,10 @@ export function OrdenesModule({
    * actual se toman de `items` —así reflejan el dato recién refrescado por SWR— y a ellas
    * se suman las que se marcaron en otras páginas, tal como estaban al marcarlas.
    */
-  const seleccionadas = useMemo<OrdenListItemDTO[]>(() => {
-    const enPagina = new Set(items.map((item) => item.id));
-    return [
-      ...items.filter((item) => seleccion.has(item.id)),
-      ...[...seleccion.values()].filter((row) => !enPagina.has(row.id)),
-    ];
-  }, [items, seleccion]);
+  const seleccionadas = useMemo<OrdenListItemDTO[]>(
+    () => filasSeleccionadas(seleccion, items),
+    [items, seleccion],
+  );
 
   /**
    * Motivos por los que NINGUNA fila de la página se puede marcar. El tooltip del
@@ -548,8 +562,14 @@ export function OrdenesModule({
   // decide qué aplica a ESTAS filas (estados mezclados); con un array, es fijo.
   const accionesActivas =
     typeof acciones === "function" ? acciones(seleccionadas) : (acciones ?? []);
-  const hayAcciones =
-    haySeleccion && accionesActivas.length > 0 && seleccionadas.length > 0;
+  // SLT-222 R1506: la barra depende de que la PANTALLA admita selección y de que haya algo
+  // marcado, no de la página visible: una búsqueda sin resultados (o sin filas
+  // seleccionables) no puede esconder lo marcado antes ni su «Limpiar».
+  const mostrarBarra = selectable !== false && seleccionadas.length > 0;
+  const textoContador = textoContadorSeleccion(
+    seleccionadas.length,
+    contarFueraDeVista(seleccion, items),
+  );
 
   /**
    * FICHA 356 — POR QUÉ LAS PRIORITARIAS SIGUEN ARRIBA AUNQUE PIDAS «MÁS ANTIGUAS».
@@ -672,11 +692,11 @@ export function OrdenesModule({
       ) : null}
 
       {/* Barra de acciones por lote ("tool"): aparece SOLO con filas marcadas. */}
-      {hayAcciones ? (
+      {mostrarBarra ? (
         <div className="sticky top-2 z-10 flex flex-wrap items-center gap-3 rounded-lg border border-border bg-card p-2.5 shadow-sm">
-          <span className="text-sm font-medium">
-            {seleccionadas.length} seleccionada
-            {seleccionadas.length === 1 ? "" : "s"}
+          {/* SLT-222 D8: «N seleccionadas · M fuera de esta búsqueda». */}
+          <span className="text-sm font-medium" aria-live="polite">
+            {textoContador}
           </span>
           <div className="flex flex-wrap items-center gap-2">
             {accionesActivas.map((accion) => (

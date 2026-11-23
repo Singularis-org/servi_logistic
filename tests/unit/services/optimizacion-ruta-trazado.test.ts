@@ -5,6 +5,7 @@ import type { IRoutesClient } from "@/lib/interfaces/external/IRoutesClient";
 import type { ParadaRutaRow } from "@/lib/interfaces/repositories/IOrdenRepository";
 import { decodificarPolilinea } from "@/lib/geo/polilinea";
 
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 // Feature 92 (seguimiento) — cableado del TRAZADO (Google Routes) dentro del service.
 //
 // LA REGLA QUE ESTOS TESTS PROTEGEN: el trazado es ACCESORIO. La optimizacion ya esta
@@ -68,7 +69,7 @@ function montar(routes: IRoutesClient | null, secuencia = ["o-2", "o-1"]) {
     CONFIG,
     () => T0,
     undefined,
-    routes,
+    routes, reglasPaisFijas(),
   );
   return { service, reemplazarSecuencia, guardarTrazado };
 }

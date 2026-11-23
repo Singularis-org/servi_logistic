@@ -8,7 +8,9 @@ import {
   crearPrismaDeTest,
   enTransaccionRevertida,
   serializarEscriturasReales,
+  type FksDeOrden,
 } from "../db/_postgres-real";
+import { crearFksDeOrden } from "../db/_fixtures/orden-minima";
 import { prepararConsultaProductos } from "@/lib/analytics/productos-consulta";
 import type { ConsultaProductos } from "@/lib/analytics/productos-consulta";
 import { DineroProductosRepository } from "@/lib/repositories/DineroProductosRepository";
@@ -16,6 +18,7 @@ import type { FilaDineroCruda } from "@/lib/interfaces/repositories/IDineroProdu
 import { fundirDinero, claveDeGrupoProducto } from "@/lib/services/ConteoProductosService";
 import { DetalleDineroProductoService } from "@/lib/services/DetalleDineroProductoService";
 
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 // FICHA 347 / B3.3 — EL RECORTE Y EL CUADRE DONDE VIVEN: CONTRA POSTGRES.
 // Cubre R7, R18, R19, R20, R21, R23, R26, R28, R38, R39, R40, R43, R74, y ⟨Q3⟩.
 //
@@ -136,6 +139,9 @@ interface CifrasSql {
 describeSiHayBase("347 / B3.3 — DineroProductosRepository contra Postgres real", () => {
   let prisma: PrismaClient;
   let m: Medicion;
+  // SLT-184 (R1122): las FK de las ordenes (zona, estatus, geografia) sembradas en la tx de
+  // `medir`. Antes `crearOrden` tomaba «la primera zona» de la base: vacia no habia ninguna.
+  let fksSembradas: FksDeOrden | null = null;
 
   beforeAll(async () => {
     prisma = crearPrismaDeTest();
@@ -149,7 +155,7 @@ describeSiHayBase("347 / B3.3 — DineroProductosRepository contra Postgres real
   function consultaDe(rol: string, usuarioId: string, raw: object = {}): ConsultaProductos {
     // La consulta se PREPARA de verdad —no se forja— para que el alcance que viaja al `WHERE`
     // sea el que el resolutor concede y no uno escrito a mano por el test.
-    const preparada = prepararConsultaProductos(raw, { usuarioId, rol } as never, AHORA);
+    const preparada = prepararConsultaProductos(raw, { usuarioId, rol } as never, ZONA_DE_CR, AHORA);
     if (preparada.status !== "ok") {
       throw new Error(`la consulta de prueba salio ${preparada.status}`);
     }
@@ -161,6 +167,12 @@ describeSiHayBase("347 / B3.3 — DineroProductosRepository contra Postgres real
     // otros que corren en paralelo. Sin serializar, los locks de FK se toman en distinto orden
     // y Postgres mata a uno con `40P01`.
     await serializarEscriturasReales(tx);
+    fksSembradas = await crearFksDeOrden(tx);
+    // SLT-184 (R1124): control positivo de la zona sembrada.
+    expect(
+      await tx.zona.count({ where: { id: fksSembradas.zonaId } }),
+      "SLT-184: la zona sembrada no esta en la base",
+    ).toBe(1);
 
     const tiendaA = await crearUsuario(tx, "Tienda A del test 347");
     const tiendaB = await crearUsuario(tx, "Tienda B del test 347");
@@ -726,10 +738,17 @@ describeSiHayBase("347 / B3.3 — DineroProductosRepository contra Postgres real
   it("(449-h) ⚠ el fulfillment NO entra en la tarifa congelada de ninguna fila", () => {
     // `tarifaDe` reconstruye las ENTRADAS DE LA FORMULA, y meterlo ahi lo pondria al alcance de
     // `derivarIngresoOrden`. Se comprueba sobre las filas REALES, no sobre un fixture.
+    // SLT-186: desde SLT-52 `congelada.tarifa` es el sobre `{ modelo, tarifa | valores }`
+    // (`TarifaCongelada`, lib/utils/cierre-detalle.ts). Mirar las claves del SOBRE dejaba este caso
+    // verde sin mirar nada; se miran las de la `TarifaVigente` de dentro. Este archivo siembra solo
+    // tarifas del modelo VIEJO (en el nuevo el fulfillment ES un concepto, por diseño de SLT-52).
     const conTarifa = m.global.filter((f) => f.congelada?.tarifa != null);
     expect(conTarifa.length, "ninguna fila trajo tarifa congelada").toBeGreaterThan(0);
     for (const f of conTarifa) {
-      const claves = Object.keys(f.congelada!.tarifa as object);
+      const sobre = f.congelada!.tarifa as { modelo: string; tarifa?: object };
+      expect(sobre.modelo, f.guia).toBe("viejo");
+      const claves = Object.keys(sobre.tarifa as object);
+      expect(claves, f.guia).toContain("valorFlete"); // control: son las claves de la formula
       expect(claves.filter((k) => /fulfillment/i.test(k)), f.guia).toEqual([]);
     }
     // ANTI-VACIO: alguna de esas filas SI trae la bodega, en su campo propio.
@@ -741,10 +760,25 @@ describeSiHayBase("347 / B3.3 — DineroProductosRepository contra Postgres real
       if (f.montoRecibido !== null) expect(f.montoRecibido).toMatch(/^-?\d+\.\d{2}$/);
       // FICHA 449 — la bodega cruza la frontera con la MISMA regla: STRING escala 2 o `null`.
       if (f.fulfillment !== null) expect(f.fulfillment).toMatch(/^-?\d+\.\d{2}$/);
-      const tarifa = f.congelada?.tarifa;
-      if (tarifa) {
-        for (const [k, v] of Object.entries(tarifa)) {
-          if (v !== null) expect(v as string, k).toMatch(/^-?\d+\.\d{2}$/);
+      // SLT-186: desde SLT-52 la tarifa congelada es el sobre `{ modelo, tarifa | valores }`
+      // (`TarifaCongelada`): los importes viven DENTRO, no en el sobre (`modelo` es un discriminante).
+      const sobre = f.congelada?.tarifa as
+        | { modelo: "viejo"; tarifa: Record<string, string | null> }
+        | { modelo: "nuevo"; valores: Record<string, { valor: string; ivaPct: string }> }
+        | null
+        | undefined;
+      if (sobre) {
+        if (sobre.modelo === "viejo") {
+          const importes = Object.entries(sobre.tarifa);
+          expect(importes.length, f.guia).toBeGreaterThan(0);
+          for (const [k, v] of importes) {
+            if (v !== null) expect(v, k).toMatch(/^-?\d+\.\d{2}$/);
+          }
+        } else {
+          for (const [k, v] of Object.entries(sobre.valores)) {
+            expect(v.valor, k).toMatch(/^-?\d+\.\d{2}$/);
+            expect(v.ivaPct, k).toMatch(/^-?\d+\.\d{2}$/);
+          }
         }
       }
     }
@@ -785,7 +819,8 @@ describeSiHayBase("347 / B3.3 — DineroProductosRepository contra Postgres real
   }
 
   async function crearCierre(tx: Tx, mensajeroId: string, estado: string): Promise<string> {
-    const zona = await tx.zona.findFirst({ select: { id: true } });
+    // SLT-184 (R1122): el destino es la zona SEMBRADA en `medir`, no «la primera» de la base.
+    const zona = fksSembradas === null ? null : { id: fksSembradas.zonaId };
     if (!zona) throw new Error("sin `zona` sembrada no se puede crear el cierre del test");
     const { id } = await tx.cierreDia.create({
       data: {
@@ -800,26 +835,19 @@ describeSiHayBase("347 / B3.3 — DineroProductosRepository contra Postgres real
   }
 
   async function crearOrden(tx: Tx, tiendaId: string, producto: string): Promise<string> {
-    const canton = await tx.canton.findFirst({ select: { id: true, provinciaId: true } });
-    const zona = await tx.zona.findFirst({ select: { id: true } });
-    const estatus = await tx.orderStatus.findFirst({ select: { id: true } });
-    if (!canton || !zona || !estatus) {
-      throw new Error(
-        "La base de pruebas no tiene catalogos de geografia/estatus sembrados: corre " +
-          "`pnpm db:seed`. Este test NO se salta en ese caso a proposito.",
-      );
-    }
+    const fks = fksSembradas;
+    if (fks === null) throw new Error("SLT-184: falta sembrar las FK de orden (`crearFksDeOrden`) en `medir`");
     const sufijo = randomUUID().slice(0, 12);
     const { id } = await tx.orden.create({
       data: {
         numRemision: `t347-${sufijo}`,
-        estatusId: estatus.id,
+        estatusId: fks.estatusId,
         destinatario: "Destinatario de prueba",
         telefonoDest: "00000000",
         tiendaId,
-        zonaId: zona.id,
-        provinciaId: canton.provinciaId,
-        cantonId: canton.id,
+        zonaId: fks.zonaId,
+        provinciaId: fks.provinciaId,
+        cantonId: fks.cantonId,
         producto,
       },
       select: { id: true },

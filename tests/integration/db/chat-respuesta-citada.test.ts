@@ -18,6 +18,7 @@ import {
   type FksDeOrden,
   type TxDeTest,
 } from "./_postgres-real";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // SLT-40 (T5; R5, R7, R9, R12, R13) — el entrante que cita un saliente con «Responder», contra
 // Postgres real y con DOS empresas.
@@ -199,6 +200,7 @@ describeSiHayBase("SLT-40 — entrante que cita un saliente (Postgres real, dos 
     await comoApp(s.tx, s.A.organizacionId);
     const cliente = s.tx as unknown as PrismaClient;
     const service = new ChatWhatsappService({
+      reglasPais: reglasPaisFijas(),
       conversacionRepo: new ChatConversacionRepository(cliente),
       mensajeRepo: new ChatMensajeRepository(cliente),
     });

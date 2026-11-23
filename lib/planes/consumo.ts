@@ -1,6 +1,6 @@
 import { ROL_LABELS } from "@/lib/auth/rol-label";
 import { nombreDelModulo, ORDEN_MODULOS } from "@/lib/modulos/catalogo";
-import { inicioDelSiguienteCiclo } from "@/lib/planes/ciclo";
+import { finDelPeriodoCalendario } from "@/lib/planes/ciclo";
 import { cobroDelPlan } from "@/lib/planes/cobro";
 import { costeoDelCiclo } from "@/lib/planes/costeo";
 import { lineasDeCambioDelPlan, SIN_LIMITE, textoDelPrecio, type CambioDelPlanParaCorreo } from "@/lib/planes/mensajes";
@@ -11,11 +11,21 @@ import type {
   CostoVigente,
   EstadoFila,
   FilaConsumo,
+  PendienteDeEmpresa,
   PlanConConsumo,
   ReinicioDelCiclo,
   UsoDelPlan,
 } from "@/lib/types/consumo-plan";
-import { ROLES_CON_TOPE, type PlanDTO, type TipoCobro, type TopesPlan, type VersionPlan } from "@/lib/types/planes";
+import {
+  ROLES_CON_TOPE,
+  type NoAplicadaVista,
+  type PendienteDelDetalle,
+  type PlanDTO,
+  type PrecioPlan,
+  type TipoCobro,
+  type TopesPlan,
+  type VersionPlan,
+} from "@/lib/types/planes";
 import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
 
 // SLT-58 (design §6.1) — el consumo del plan tal como se pinta, sin React ni base: lo comparten «Mi
@@ -52,10 +62,12 @@ function fila(clave: FilaConsumo["clave"], etiqueta: string, usados: number, max
   return { clave, etiqueta, usados, maximo, estado: estadoDeLaFila(usados, maximo), texto };
 }
 
-/** R2, R3: órdenes, un rol por cada uno de `ROLES_CON_TOPE` (en ese orden) y API keys. */
+/**
+ * R2, R3: un rol por cada uno de `ROLES_CON_TOPE` (en ese orden) y API keys. SLT-86 (R8): sin fila de
+ * órdenes, que ya no tienen tope; su conteo va aparte (`ordenesDelPeriodo`).
+ */
 export function filasDeConsumo(topes: TopesPlan, uso: UsoDelPlan): FilaConsumo[] {
   return [
-    fila("ordenes", "órdenes del ciclo", uso.ordenes, topes.ordenesPorCiclo),
     ...ROLES_CON_TOPE.map((rol) => fila(rol, ROL_LABELS[rol], uso.porRol[rol], topes.porRol[rol] ?? null)),
     fila("api_keys", "API keys", uso.apiKeys, topes.apiKeys),
   ];
@@ -70,19 +82,25 @@ export interface CambioDelPlanLeido {
 /** Lo que hace falta para pintar un plan con su consumo (R1–R7, R19). */
 export interface PlanConUsoLeido {
   vigente: VersionPlan;
-  /** El ancla del ciclo de órdenes. */
-  ancla: Date;
   /**
-   * SLT-58 (§11.3, R34): el inicio del ciclo corto (`plan_ciclo_corto_desde_at`), `null` fuera de él.
-   * Opcional: el reinicio ya sale bien del ancla sola (`inicioDelSiguienteCiclo`), así que el armado de
-   * la pantalla no lo usa; lo llevan las lecturas para no perder el dato.
+   * SLT-86 (R5): la entrada de la empresa (`organizacion.plan_ciclo_ancla_at`), siempre las 00:00 de un
+   * día y nunca futura. Recorta el primer período de calendario a un tramo.
    */
-  cortoDesde?: Date | null;
+  entrada: Date;
+  /**
+   * SLT-86 (R15): el precio vigente al EMPEZAR el período en curso (`precio_del_periodo` de
+   * `plan_de_la_empresa`, la fila del historial de precio). Puede no ser `vigente.precio`: una edición
+   * de precio rige desde el primer período que empiece en su fecha o después.
+   */
+  precioDelPeriodo: PrecioPlan;
+  /** SLT-86 (R26, R27): el cambio pendiente de la empresa, sin el actor (R32). */
+  pendiente: PendienteDeEmpresa | null;
+  /** SLT-86 (R7): `ordenes` son las vivas desde el inicio del período en curso. */
   uso: UsoDelPlan;
   cambio: CambioDelPlanLeido | null;
   /** SLT-66 (R18, §3.2): el de `cobro_plataforma_tarifa_de`, el mismo que usará el próximo cargo. SLT-83: fijo o porcentual. */
   costoVigente: CostoVigente;
-  /** SLT-83 (R24): el de `plan_cobro_del_ciclo` con el inicio del ciclo en curso. */
+  /** SLT-83 (R24): el de `plan_cobro_del_ciclo`; SLT-86 (R28): con el inicio del período en curso. */
   cobroCiclo: CobroDelCiclo;
   /** Ajuste planes-custom (D6): `organizacion.plan_tipo_cobro`. */
   tipoCobro: TipoCobro;
@@ -99,7 +117,11 @@ function comoPlanDTO(version: VersionPlan): PlanDTO {
 /** R7, R16, R19: la fecha (hora de la plataforma) y las mismas líneas de «qué cambia» que el correo de SL-24. */
 export function cambioPendienteDelPlan(vigente: VersionPlan, cambio: CambioDelPlanLeido): CambioPendienteVista {
   const antes = comoPlanDTO(vigente);
-  const diferencias = diferenciasDelPlan(antes, { ...antes, ...cambio.version });
+  // SLT-215 (R20): `plan_de_la_empresa` («Mi plan») no trae los niveles (son de SLT-216). Sin ellos en la vigente no
+  // se comparan: si no, cada versión con niveles saldría como «Sin niveles → …» aunque no los cambie.
+  const despues: PlanDTO = { ...antes, ...cambio.version };
+  if (vigente.niveles === undefined) delete despues.niveles;
+  const diferencias = diferenciasDelPlan(antes, despues);
   return {
     vigenteDesde: fechaCalendarioCR(cambio.vigenteDesde),
     // Mismo molde que el job del correo: `diferenciasDelPlan` deja `{ antes, despues }` como `unknown`.
@@ -107,33 +129,60 @@ export function cambioPendienteDelPlan(vigente: VersionPlan, cambio: CambioDelPl
   };
 }
 
+/**
+ * SLT-128 (design §7; R11): el cambio programado del detalle del plan, con lo mismo que `cambioPendienteDelPlan`
+ * y el conteo de recepciones que pinta «N de M empresas ya lo recibieron».
+ */
+export function pendienteDelDetalle(
+  vigente: VersionPlan,
+  cambio: CambioDelPlanLeido & { recibidas: number; total: number },
+): PendienteDelDetalle {
+  return { ...cambioPendienteDelPlan(vigente, cambio), recibidas: cambio.recibidas, total: cambio.total };
+}
+
+/**
+ * SLT-128 (design §14.3; R28): las empresas que no recibieron el cambio, como las pinta el detalle del plan
+ * (`lineaNoAplicada`), con la fecha en ISO.
+ */
+export function noAplicadasDelDetalle(
+  leidas: readonly { empresaId: string; empresa: string; motivo: NoAplicadaVista["motivo"]; desde: Date }[],
+): NoAplicadaVista[] {
+  return leidas.map((n) => ({ empresaId: n.empresaId, empresa: n.empresa, motivo: n.motivo, desde: n.desde.toISOString() }));
+}
+
 /** R1–R7, R19: el plan como se pinta, el mismo en «Mi plan» y en el detalle de empresa del superadmin. */
 export function planConConsumo(leido: PlanConUsoLeido, ahora: Date): PlanConConsumo {
   const { vigente } = leido;
+  // D7–D9, SLT-86 (R12, R15, R27): el período en curso con el precio de cuando empezó.
+  const cobro = cobroDelPlan(leido.precioDelPeriodo, leido.tipoCobro, leido.entrada, ahora, leido.pendiente);
   return {
     nombre: vigente.nombre,
+    // SLT-99 (R8): la entrada ya leída para el tramo, en la fecha de la plataforma.
+    activoDesde: fechaCalendarioCR(leido.entrada),
     precioTexto: textoDelPrecio(vigente.precio),
     modulos: ORDEN_MODULOS.filter((m) => vigente.modulos.includes(m)).map((clave) => ({
       clave,
       nombre: nombreDelModulo(clave),
     })),
+    beneficios: vigente.beneficios ?? [],
     filas: filasDeConsumo(vigente.topes, leido.uso),
-    reinicio: reinicioDelCiclo(leido.ancla, ahora),
+    ordenesDelPeriodo: leido.uso.ordenes,
+    reinicio: reinicioDelCiclo(leido.tipoCobro, ahora),
     cambioPendiente: leido.cambio === null ? null : cambioPendienteDelPlan(vigente, leido.cambio),
-    // SLT-66 (R18, R19): las órdenes del total son las mismas que cuenta la fila del tope.
-    costeo: costeoDelCiclo(vigente, leido.costoVigente, leido.uso.ordenes, leido.cobroCiclo),
-    // D7–D9: con el precio vigente; el siguiente cobro cuenta desde el ancla del ciclo.
-    cobro: cobroDelPlan(vigente.precio, leido.tipoCobro, leido.ancla, ahora),
+    // SLT-66 (R18, R19), SLT-86 (R7, R28): la base es el costo del período en curso o de su tramo, y
+    // las órdenes del total son las mismas que se muestran como órdenes del período.
+    costeo: costeoDelCiclo(vigente, cobro.costo, leido.costoVigente, leido.uso.ordenes, leido.cobroCiclo),
+    cobro,
   };
 }
 
 /**
- * R5: días hasta el inicio del ciclo siguiente, redondeando la fracción hacia arriba y nunca menos de
- * 1 (en la frontera exacta ya empezó un ciclo nuevo y faltan los días de ese). El ciclo se cuenta en
- * UTC como en la base; solo la fecha visible pasa a la hora de la plataforma.
+ * R5 de SLT-58, SLT-86 (R27): días hasta el inicio del siguiente período de calendario, redondeando la
+ * fracción hacia arriba y nunca menos de 1 (en la frontera exacta ya empezó un período nuevo y faltan
+ * los días de ese). El fin no depende de la entrada: el tramo solo recorta el inicio.
  */
-export function reinicioDelCiclo(ancla: Date, ahora: Date): ReinicioDelCiclo {
-  const siguiente = inicioDelSiguienteCiclo(ancla, ahora);
+export function reinicioDelCiclo(tipo: TipoCobro, ahora: Date): ReinicioDelCiclo {
+  const siguiente = finDelPeriodoCalendario(tipo, ahora);
   const dias = Math.max(1, Math.ceil((siguiente.getTime() - ahora.getTime()) / UN_DIA_MS));
   return { dias, fecha: fechaCalendarioCR(siguiente) };
 }

@@ -9,9 +9,10 @@ import {
   HAY_BASE_DE_DATOS,
   crearPrismaDeTest,
   enTransaccionRevertida,
-  fksDeOrden,
   serializarEscriturasReales,
 } from "./_postgres-real";
+import { crearFksDeOrden, crearUsuarioDePrueba } from "./_fixtures/orden-minima";
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 
 /**
  * FEATURE 271 (T5.4, R36/R12) — **APROBAR EL MAS VIEJO DEVUELVE AL MENSAJERO A LIBRE**, MEDIDO
@@ -112,43 +113,9 @@ function soloLectura(cliente: object): PrismaClient {
 
 describeSiHayBase("271/T5.4 · R36 — aprobar el mas viejo devuelve al mensajero a LIBRE", () => {
   let prisma: PrismaClient;
-  let fks: NonNullable<Awaited<ReturnType<typeof fksDeOrden>>>;
-  let mensajeroId: string;
-  let adminId: string;
 
   beforeAll(async () => {
     prisma = crearPrismaDeTest();
-    const encontradas = await fksDeOrden(prisma);
-    if (encontradas === null) {
-      throw new Error(
-        "hay DATABASE_URL pero la tabla `orden` esta vacia: sin FKs no se puede sembrar. " +
-          "Corre `pnpm run db:seed` antes de esta suite.",
-      );
-    }
-    fks = encontradas;
-    const usuarios = await prisma.usuario.findMany({ select: { id: true }, take: 10 });
-    if (usuarios.length < 2) throw new Error("hacen falta al menos DOS usuarios en la base.");
-    // El mensajero del caso tiene que partir de CERO cierres abiertos: si arrastrara uno de la
-    // base compartida, N valdria 3 y el caso medido no seria el 4 de la tabla de verdad. Se busca
-    // uno limpio y, si no lo hay, se falla RUIDOSAMENTE (nunca un `return` silencioso).
-    const abiertos = await prisma.cierreDia.groupBy({
-      by: ["mensajeroId"],
-      where: {
-        mensajeroId: { in: usuarios.map((u) => u.id) },
-        estado: { in: ["solicitado", "vencido", "rechazado"] },
-      },
-      _count: { _all: true },
-    });
-    const sucios = new Set(abiertos.map((a) => a.mensajeroId));
-    const limpio = usuarios.find((u) => !sucios.has(u.id));
-    if (limpio === undefined) {
-      throw new Error(
-        "todos los usuarios de la base arrastran cierres abiertos: este caso necesita uno con " +
-          "N=0 para sembrar exactamente el caso 4 (N=2, V=0).",
-      );
-    }
-    mensajeroId = limpio.id;
-    adminId = (usuarios.find((u) => u.id !== mensajeroId) as { id: string }).id;
   });
 
   afterAll(async () => {
@@ -158,6 +125,18 @@ describeSiHayBase("271/T5.4 · R36 — aprobar el mas viejo devuelve al mensajer
   it("R36/R12: con N=2 esta BLOQUEADO; aprobado el mas viejo, la consulta siguiente lo da LIBRE", async () => {
     const medido = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+
+      // SLT-178: tienda, zona, mensajero y admin se crean AQUI, dentro de la tx que se revierte. El
+      // mensajero es nuevo, asi que parte de CERO cierres abiertos: el caso medido es el 4 (N=2, V=0)
+      // sin depender de lo que arrastre la base.
+      const fks = await crearFksDeOrden(tx);
+      const mensajeroId = (await crearUsuarioDePrueba(tx, "mensajero")).id;
+      const adminId = (await crearUsuarioDePrueba(tx, "maestro")).id;
+      expect(
+        await tx.usuario.count({ where: { id: { in: [fks.tiendaId, mensajeroId, adminId] } } }),
+        "usuarios sembrados (tienda, mensajero, admin)",
+      ).toBe(3);
+      expect(await tx.zona.count({ where: { id: fks.zonaId } }), "zona sembrada").toBe(1);
 
       const sembrarCierre = async (solicitadoAt: Date) =>
         tx.cierreDia.create({
@@ -181,7 +160,7 @@ describeSiHayBase("271/T5.4 · R36 — aprobar el mas viejo devuelve al mensajer
         mensajeroId,
       );
       const antesBloqueados = await repoLectura.findMensajerosBloqueadosPorCierres([mensajeroId]);
-      const antesDetalle = await repoLectura.findBloqueoDetalle(mensajeroId);
+      const antesDetalle = await repoLectura.findBloqueoDetalle(mensajeroId, ZONA_CR);
 
       // LA APROBACION, por el camino REAL. `resolverCierre` abre su propia `$transaction` y un
       // cliente transaccional no la expone: el proxy la resuelve invocando el callback con LA
@@ -222,7 +201,7 @@ describeSiHayBase("271/T5.4 · R36 — aprobar el mas viejo devuelve al mensajer
         await repoDespues.contarCierresAbiertosPorMensajero([mensajeroId])
       ).get(mensajeroId);
       const despuesBloqueados = await repoDespues.findMensajerosBloqueadosPorCierres([mensajeroId]);
-      const despuesDetalle = await repoDespues.findBloqueoDetalle(mensajeroId);
+      const despuesDetalle = await repoDespues.findBloqueoDetalle(mensajeroId, ZONA_CR);
 
       const estados = await tx.cierreDia.findMany({
         where: { id: { in: [viejo.id, nuevo.id] } },

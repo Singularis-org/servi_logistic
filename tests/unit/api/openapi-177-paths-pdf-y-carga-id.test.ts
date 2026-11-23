@@ -221,19 +221,20 @@ describe("177/R41 + 255/R47 + 267/R39 + 266/R28 — el OpenAPI publica los nueve
       "404": "NotFound",
       "409": "Conflict",
       "422": "ValidationError",
+      "500": "InternalError", // SLT-201: el 500 genérico, documentado
     };
     const casos: Array<{ responses: Record<string, unknown>; codigos: string[] }> = [
       {
         responses: openApiSpec.paths[PATH_DETALLE_POR_ID].get.responses,
-        codigos: ["401", "403", "404", "422"],
+        codigos: ["401", "403", "404", "422", "500"],
       },
       {
         responses: openApiSpec.paths[PATH_PDF_ORDEN].post.responses,
-        codigos: ["401", "403", "404", "409", "422"],
+        codigos: ["401", "403", "404", "409", "422", "500"],
       },
       {
         responses: openApiSpec.paths[PATH_PDF_CARGA].post.responses,
-        codigos: ["401", "403", "404", "409", "422"],
+        codigos: ["401", "403", "404", "409", "422", "500"],
       },
     ];
     for (const { responses: operacionResponses, codigos } of casos) {
@@ -460,7 +461,7 @@ describe("267/R39 — la analítica sigue publicada, en el objeto TS y en el .ya
     });
     // 401/403/422 por `$ref` a las responses que el canal ya declara: una shape de error propia
     // para este endpoint sería una segunda forma de decir «no» en el mismo contrato.
-    expect(Object.keys(operacion.get.responses)).toEqual(["200", "401", "403", "422"]);
+    expect(Object.keys(operacion.get.responses)).toEqual(["200", "401", "403", "422", "500"]); // SLT-201: + 500
     for (const [codigo, nombre] of [
       ["401", "Unauthorized"],
       ["403", "Forbidden"],

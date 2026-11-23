@@ -955,6 +955,7 @@ describe("R32/R35/R63 — el saldo de la tienda y el pendiente del mensajero no 
         efectivo: "9000.00",
         premiosVivos: "0.00", // 293/T2.3 — sin premio, la cifra de la 173 no se mueve
         pagadoVigente: "2500.00",
+        pagoIndependienteEfectivo: false, // SLT-123: regla de la 44
       }),
     ).toBe("3500.00");
     // Anular ese pago (pagadoVigente vuelve a 0) devuelve el pendiente entero.
@@ -964,6 +965,7 @@ describe("R32/R35/R63 — el saldo de la tienda y el pendiente del mensajero no 
         efectivo: "9000.00",
         premiosVivos: "0.00",
         pagadoVigente: "0.00",
+        pagoIndependienteEfectivo: false, // SLT-123: regla de la 44
       }),
     ).toBe("6000.00");
   });

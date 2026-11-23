@@ -772,7 +772,8 @@ describe("Cierres · un solo botón de descarga con nivel de detalle", () => {
     montarCierresAdmin();
     await screen.findByRole("button", { name: "Descargar Cierres pendientes de decisión" });
 
-    await user.click(await screen.findByRole("button", { name: /^Resueltos/ }));
+    // SLT-102 «Cola de cierres única: mensajeros (central y satélite)» (R99): la pestaña es un `tab` de la cola única.
+    await user.click(await screen.findByRole("tab", { name: /^Resueltos/ }));
     await screen.findByRole("button", { name: "Descargar Cierres del día resueltos" });
     expect(screen.queryByRole("button", { name: BOTON_DETALLE })).toBeNull();
 
@@ -830,12 +831,20 @@ describe("Cierres · «Fulfillment» del Detalle solo para la central (ficha 481
     // El literal, no la constante: lo que se afirma es lo que el usuario leería.
     expect(selector).not.toContain("Fulfillment");
     expect(archivo).not.toContain("Fulfillment");
-    // Y no se llevó nada más por delante: la hoja de la central, menos esa sola columna.
+    // Y no se llevó nada más por delante: la hoja de la central, menos esa columna y, desde SLT-161
+    // (R483), las cuatro del cobro a la tienda.
+    const DE_LA_EMPRESA = [
+      "Fulfillment",
+      "Flete + IVA",
+      "Comisión + IVA",
+      "Flete por devolución a origen + IVA",
+      "Total de la empresa",
+    ];
     const esperado = encabezadosDe(COLUMNAS_DESCARGA_GESTIONES_FUNDIDA).filter(
-      (encabezado) => encabezado !== "Fulfillment",
+      (encabezado) => !DE_LA_EMPRESA.includes(encabezado),
     );
     expect(archivo).toEqual(esperado);
-    expect(archivo).toHaveLength(COLUMNAS_DESCARGA_GESTIONES_FUNDIDA.length - 1);
+    expect(archivo).toHaveLength(26);
   });
 
   it("la central sigue viendo «Fulfillment», en su sitio de siempre", async () => {

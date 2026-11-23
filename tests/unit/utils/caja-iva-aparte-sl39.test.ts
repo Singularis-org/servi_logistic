@@ -45,6 +45,9 @@ const LAS_CUATRO_DE_IVA = [
   "ingreso_iva_flete_devolucion",
   "ingreso_iva_comision_cod",
   "egreso_reverso_iva_flete_devolucion",
+  // SLT-94: el IVA del fulfillment por paquete y su devolucion.
+  "ingreso_iva_fulfillment",
+  "egreso_reverso_iva_fulfillment",
 ];
 
 const suma = (...xs: string[]) =>
@@ -99,7 +102,7 @@ describe("SL-39 — el ejemplo de design §1", () => {
     expect(c.totalEgresos).toBe(r.egresosPropios);
     // La columna de ingresos son las cinco de la ganancia, y ninguna de IVA.
     expect(Object.keys(c.ingresos).sort()).toEqual([...WALLET_INGRESO_GANANCIA_SEED].sort());
-    expect(Object.keys(c.ingresos)).toHaveLength(5);
+    expect(Object.keys(c.ingresos)).toHaveLength(6); // SLT-94: + ingreso_fulfillment
     expect(c.ingresos.ingreso_flete).toBe("2500.00");
     expect(c.ingresos.ingreso_comision_cod).toBe("700.00");
     expect(c.egresos).not.toHaveProperty("egreso_reverso_iva_flete_devolucion");
@@ -109,6 +112,8 @@ describe("SL-39 — el ejemplo de design §1", () => {
       ingreso_iva_flete_devolucion: "0.00",
       ingreso_iva_comision_cod: "91.00",
       egreso_reverso_iva_flete_devolucion: "0.00",
+      ingreso_iva_fulfillment: "0.00", // SLT-94
+      egreso_reverso_iva_fulfillment: "0.00", // SLT-94
     });
     expect(c.totalIva).toBe("416.00");
   });

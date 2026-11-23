@@ -31,9 +31,11 @@ import {
   listarTiposIdentificacion,
 } from "@/lib/actions/usuarios";
 import { listarZonas } from "@/lib/actions/zonas";
+import { opcionesZonaUsuario } from "@/lib/types/zona";
 import { listarVehiculos } from "@/lib/actions/vehiculos";
 import type { UsuarioPublico } from "@/lib/interfaces/repositories/IUserRepository";
 import type { CambioUsuarioEvaluable } from "@/lib/interfaces/services/IUsuarioService";
+import { CambioCorreoUsuario } from "./CambioCorreoUsuario";
 
 /**
  * Rol que este formulario NUNCA asigna: `apiKey` identifica la cuenta de máquina de una
@@ -107,7 +109,8 @@ interface FormState {
   cedula: string;
   rolId: string;
   password: string;
-  fulfillment: boolean;
+  // SLT-94 (R9): marca «se recoge en tienda». Solo aplica a `adminTienda`.
+  seRecogeEnTienda: boolean;
   // Feature 24/R27: zona del usuario. "" = sin zona (permitido para
   // mensajero/adminSatelite; el maestro puede asignarla luego).
   zonaId: string;
@@ -125,7 +128,8 @@ function initialState(usuario?: UsuarioPublico | null): FormState {
     cedula: usuario?.cedula ?? "",
     rolId: usuario?.rolId ?? "",
     password: "",
-    fulfillment: usuario?.fulfillment ?? false,
+    // SLT-94 (R3): sin marca guardada, «sí» (mismo default que el service).
+    seRecogeEnTienda: usuario?.seRecogeEnTienda ?? true,
     zonaId: usuario?.zonaId ?? "",
     vehiculoId: usuario?.vehiculoId ?? "",
   };
@@ -137,7 +141,8 @@ function initialState(usuario?: UsuarioPublico | null): FormState {
  * `listarTiposIdentificacion`, R29). En creación ofrece
  * el toggle de modo de contraseña escribir/generar (R36): en modo generar oculta
  * el input; tras crear con éxito muestra la `generatedPassword` UNA vez con botón
- * copiar y aviso (R33). En edición deshabilita email y cédula (R16). Valida en
+ * copiar y aviso (R33). En edición deshabilita el email (R16); la cédula sí se
+ * corrige (SLT-221 R1606). Valida en
  * cliente reusando los schemas de `lib/types/usuario` (no duplica reglas).
  */
 export const UsuarioForm = forwardRef<UsuarioFormHandle, UsuarioFormProps>(
@@ -198,9 +203,16 @@ export const UsuarioForm = forwardRef<UsuarioFormHandle, UsuarioFormProps>(
 
     // `value` = id de la zona (lo que espera el backend en `zonaId`);
     // `label` = nombre legible de la zona.
+    // SLT-225 (R1756): una zona desactivada no se ofrece, salvo la que este usuario ya tiene; sin
+    // ella el select la perderia y el guardado le cambiaria la zona sin que nadie lo pida.
+    const zonaActualId = usuario?.zonaId ?? null;
     const zonaOptions: SelectOption[] = useMemo(
-      () => (zonas ?? []).map((z) => ({ value: z.id, label: z.nombre })),
-      [zonas],
+      () =>
+        opcionesZonaUsuario(zonas ?? [], zonaActualId).map((z) => ({
+          value: z.id,
+          label: z.nombre,
+        })),
+      [zonas, zonaActualId],
     );
 
     // Feature 21: catalogo de vehiculos para el select (solo aplica a `mensajero`).
@@ -232,7 +244,7 @@ export const UsuarioForm = forwardRef<UsuarioFormHandle, UsuarioFormProps>(
 
     const isEditar = mode === "editar";
 
-    // El switch de fulfillment aplica solo al rol `adminTienda` (R5/R6, decisión P3).
+    // SLT-94 (R9): el switch «Se recoge en tienda» aplica solo al rol `adminTienda`.
     // `roles` mapea cada `RolItem` como `{ id, value }`; `form.rolId` guarda el UUID.
     const esAdminTienda =
       (roles ?? []).find((r) => r.id === form.rolId)?.value === "adminTienda";
@@ -299,9 +311,13 @@ export const UsuarioForm = forwardRef<UsuarioFormHandle, UsuarioFormProps>(
           telefono: form.telefono,
           rolId: form.rolId,
           tipoIdentificacionId: form.tipoIdentificacionId,
-          // Solo se envía cuando el rol es `adminTienda` (R6/R12); el backend
-          // fuerza `false` para otros roles (R4a).
-          ...(esAdminTienda ? { fulfillment: form.fulfillment } : {}),
+          // SLT-221 (R1601/R1606): el documento se corrige aquí y el service lo normaliza. Solo
+          // viaja si cambió: uno guardado sin tocar no se valida, así una cédula previa a SLT-42 o
+          // una `APIKEY-<slug>` de más de 30 no bloquea editar otro campo (SLT-42 R9).
+          ...(form.cedula !== usuario?.cedula ? { cedula: form.cedula } : {}),
+          // SLT-94 (R4/R9): solo se envía cuando el rol es `adminTienda`; el backend
+          // fuerza «sí» para otros roles.
+          ...(esAdminTienda ? { seRecogeEnTienda: form.seRecogeEnTienda } : {}),
           // Feature 24/R27: zona solo para mensajero/adminSatelite. "" -> null
           // libera la zona; no enviarla la deja intacta. Se omite para el resto
           // de roles (el service la fuerza a null igualmente).
@@ -324,8 +340,8 @@ export const UsuarioForm = forwardRef<UsuarioFormHandle, UsuarioFormProps>(
         tipoIdentificacionId: form.tipoIdentificacionId,
         cedula: form.cedula,
         rolId: form.rolId,
-        // Solo se envía para rol `adminTienda` (R6); si no, se omite (R6).
-        ...(esAdminTienda ? { fulfillment: form.fulfillment } : {}),
+        // SLT-94 (R4/R9): solo se envía para rol `adminTienda`; si no, se omite.
+        ...(esAdminTienda ? { seRecogeEnTienda: form.seRecogeEnTienda } : {}),
         // Feature 24/R27: zona solo para mensajero/adminSatelite. "" -> null
         // (permitido; el maestro puede asignarla luego). Se omite para el resto.
         ...(esRolConZona ? { zonaId: form.zonaId || null } : {}),
@@ -477,6 +493,12 @@ export const UsuarioForm = forwardRef<UsuarioFormHandle, UsuarioFormProps>(
           />
         </FormField>
 
+        {/* SLT-221 (design §7): el correo se cambia con confirmación desde el correo nuevo, no
+            editando el campo. Una cuenta de API key no tiene persona que confirme (R1613). */}
+        {isEditar && usuario && rolValue !== undefined && !esRolApiKey && (
+          <CambioCorreoUsuario usuarioId={usuario.id} />
+        )}
+
         <FormField id="telefono" label="Teléfono" error={errors.telefono}>
           <Input
             value={form.telefono}
@@ -511,7 +533,6 @@ export const UsuarioForm = forwardRef<UsuarioFormHandle, UsuarioFormProps>(
         >
           <Input
             value={form.cedula}
-            disabled={isEditar}
             onChange={(e) => setField("cedula", e.target.value)}
           />
         </FormField>
@@ -535,12 +556,12 @@ export const UsuarioForm = forwardRef<UsuarioFormHandle, UsuarioFormProps>(
 
         {esAdminTienda ? (
           <div className="flex items-center justify-between gap-2">
-            <Label htmlFor="fulfillment">Esta tienda tiene fulfillment</Label>
+            <Label htmlFor="seRecogeEnTienda">Se recoge en tienda</Label>
             <Switch
-              id="fulfillment"
-              aria-label="Esta tienda tiene fulfillment"
-              checked={form.fulfillment}
-              onCheckedChange={(next) => setField("fulfillment", next)}
+              id="seRecogeEnTienda"
+              aria-label="Se recoge en tienda"
+              checked={form.seRecogeEnTienda}
+              onCheckedChange={(next) => setField("seRecogeEnTienda", next)}
             />
           </div>
         ) : null}

@@ -34,6 +34,7 @@ import { compararPorId, type Cifras, type Diferencia } from "./geo-equivalencia/
 import { nombreDeError } from "./geo-equivalencia/medicion";
 import { crearClienteDeSoloLectura, leerArgumentos as leerArgumentosDeSlt44 } from "./geo-equivalencia-dinero";
 import { esBaseLocal } from "./geo-explain-consultas";
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 
 // SLT-71 (design §8; R17, R18) — `pnpm geo:equivalencia-analitica [--muestra 20] [--empresa <id>]`.
 //
@@ -451,14 +452,14 @@ const COMPARTEN: readonly Lectura<ConsultasDelFiltro>[] = [
 ];
 
 function consultaEntregas(raw: object): ConsultaConteoEntregas {
-  const p = prepararConteoEntregas(raw, ACTOR_MAESTRO);
+  const p = prepararConteoEntregas(raw, ACTOR_MAESTRO, ZONA_CR);
   // Solo el estado: el detalle de la preparacion podria repetir la entrada.
   if (p.status !== "ok") throw new Error(`geo:equivalencia-analitica: consulta no concedida (${p.status})`);
   return p.consulta;
 }
 
 function consultaProductos(raw: object): ConsultaProductos {
-  const p = prepararConsultaProductos(raw, ACTOR_MAESTRO);
+  const p = prepararConsultaProductos(raw, ACTOR_MAESTRO, ZONA_CR);
   if (p.status !== "ok") throw new Error(`geo:equivalencia-analitica: consulta de productos no concedida (${p.status})`);
   return p.consulta;
 }
@@ -555,7 +556,7 @@ async function compararTransito(
   const consulta: ConsultaTransito = {
     hito: PARAMETROS_POR_DEFECTO.hito,
     estados: estadosIncluidos(PARAMETROS_POR_DEFECTO),
-    cortes: cortesPorZona(zonas, PARAMETROS_POR_DEFECTO, new Date()),
+    cortes: cortesPorZona(zonas, PARAMETROS_POR_DEFECTO, new Date(), ZONA_CR),
   };
   const deHoy = await hoy.filasEnAlertaDeHoy(cliente, consulta);
   let nuevas: FilaTransito[];

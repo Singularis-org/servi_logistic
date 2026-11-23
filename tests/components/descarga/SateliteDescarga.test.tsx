@@ -410,6 +410,9 @@ describe("Órdenes de la bodega satélite · descarga", () => {
     expect(entrada).toEqual({
       estados: ["en_bodega_satelite"],
       canton_id: ["Pococí"],
+      // SLT-210 (R1406): el orden vigente (aquí el de entrada) viaja con el archivo.
+      sortBy: "created_at",
+      sortDir: "desc",
     });
     // Y el recorte de página NO contamina la lectura del conjunto: pedir `page`/`pageSize`
     // aquí sería descargar una página con otro nombre (y el borde lo rechazaría, R17).

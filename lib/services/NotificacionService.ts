@@ -23,6 +23,8 @@ import type {
 import { accionDeAviso, esEventoAgregado } from "@/lib/notificaciones/catalogo-avisos";
 import { presentacionDe } from "@/lib/notificaciones/presentacion-aviso";
 import { tiempoRelativo } from "@/lib/utils/tiempo-relativo";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
+import { zonaPerezosa } from "@/lib/services/zona-de-la-empresa";
 import type { IVigenciaAvisoAgregado } from "@/lib/interfaces/services/IVigenciaAvisoAgregado";
 import { defaultLogger, type ErrorLogger } from "@/lib/errors";
 
@@ -60,6 +62,8 @@ export class NotificacionService implements INotificacionService {
      */
     private readonly vigencia: IVigenciaAvisoAgregado = vigenciaNoResuelta,
     private readonly logger: ErrorLogger = defaultLogger,
+    /** SLT-42 (R22, R28): la zona del pais de la empresa, de la que sale el «ayer» de cada aviso. */
+    private readonly reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">,
   ) {}
 
   /**
@@ -101,6 +105,8 @@ export class NotificacionService implements INotificacionService {
       actor,
     );
     const ahora = this.now();
+    // SLT-42 (R22, R28): la zona se lee una vez y solo si hay alguna fila que poner en palabras.
+    const zona = zonaPerezosa(this.reglasPais, "NotificacionService.listar");
 
     const items: NotificacionDTO[] = [];
     let porHacer = 0;
@@ -130,7 +136,7 @@ export class NotificacionService implements INotificacionService {
         detalle: presentacion.cuerpo,
         // R31: el instante relativo se resuelve AQUI, con el reloj inyectable del servicio, y
         // viaja ya en palabras. La campana no lee `Date.now()` (R32).
-        cuando: tiempoRelativo(f.createdAt, ahora),
+        cuando: tiempoRelativo(f.createdAt, ahora, await zona()),
         atajo: atajoDe(f.evento, actor.rol),
       });
       if (accionable) porHacer += 1; // R8: lo VIVO y accionable, sin mirar la lectura (R9)

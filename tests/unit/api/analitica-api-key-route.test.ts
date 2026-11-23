@@ -9,6 +9,7 @@ import type { IAnaliticaOperativaService } from "@/lib/interfaces/services/IAnal
 import type { SerieOperativa } from "@/lib/types/analitica-operativa";
 import { METRICAS_API_KEY } from "@/lib/analytics/publicacion-api-key";
 import { HORIZONTE_HISTORIAL_CR } from "@/lib/analytics/backfill-rango";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // Feature 267 (T7) — EL CASCARON HTTP, probado por donde duele.
 //
@@ -80,7 +81,7 @@ function montar(auth: ApiKeyAuthResult = OK) {
   const { service, consultar } = servicioEspia();
   const deps: AnaliticaApiKeyDeps = {
     autenticar: async () => auth,
-    analitica: { service, logger, now: () => AHORA },
+    analitica: { service, logger, now: () => AHORA, reglasPais: reglasPaisFijas() },
   };
   return { deps, consultar, logError };
 }
@@ -102,7 +103,7 @@ function montarConSerie(fabricar: (consulta: ConsultaAnalitica) => SerieOperativ
   };
   const deps: AnaliticaApiKeyDeps = {
     autenticar: async () => OK,
-    analitica: { service, logger, now: () => AHORA },
+    analitica: { service, logger, now: () => AHORA, reglasPais: reglasPaisFijas() },
   };
   return { deps, consultar, logError };
 }
@@ -473,7 +474,7 @@ describe("267/R10 · datos de otra tienda", () => {
           tienda_id: ["tienda-de-otro"],
         },
       },
-      { service, logger: { logError }, now: () => AHORA },
+      { service, logger: { logError }, now: () => AHORA, reglasPais: reglasPaisFijas() },
     );
 
     expect(salida.status).toBe("forbidden");

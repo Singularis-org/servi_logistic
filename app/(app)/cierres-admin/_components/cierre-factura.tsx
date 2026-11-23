@@ -17,7 +17,10 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { KpiValorAnimado } from "@/components/shared/KpiValorAnimado";
 import { BotonesEvidencia } from "./botones-evidencia";
+import { contextoEvidencia } from "@/components/private/cierres/dialogos/dialogos-labels";
+import type { EvidenciaAbierta } from "@/components/private/cierres/dialogos/VisorEvidencia";
 import { cn } from "@/lib/utils";
+import { TEXTO_ENTERO } from "@/components/shared/texto-entero";
 import { EMPRESA } from "@/lib/config/marca";
 import type { CierreAdminResumen } from "@/lib/interfaces/services/ICierresAdminService";
 import type {
@@ -1347,8 +1350,8 @@ export interface CierreFacturaDetalleProps {
   ivaFacturado?: string;
   pagoTienda?: string;
   audiencia?: CierreFacturaAudiencia;
-  /** Abre el visor con la URL FIRMADA de la evidencia (nunca el storage_path). */
-  onVerEvidencia?: (url: string) => void;
+  /** Abre el visor con las URL FIRMADAS de la evidencia (nunca el storage_path) y su contexto. */
+  onVerEvidencia?: (evidencia: EvidenciaAbierta) => void;
   /**
    * Pedido humano (2026-08-19): abre la corrección del desglose de pago de una gestión.
    * Ausente = la hoja es de solo lectura, que es lo que sigue siendo en un cierre resuelto,
@@ -1405,13 +1408,13 @@ export interface CierreFacturaDetalleProps {
  * «corregir» y no «editar» a propósito — lo que se arregla es un dato mal registrado en la
  * calle, no una preferencia—, y nombra los MÉTODOS porque el total no se toca.
  */
-const FILA_CORREGIR_METODOS = "Corregir métodos de pago";
+export const FILA_CORREGIR_METODOS = "Corregir métodos de pago";
 
 /**
  * FICHA 398 (R16) — rótulo del acceso a la corrección del RESULTADO. Nombra el resultado y no
  * el dinero: lo que se arregla es una entrega que no ocurrió, y el dinero se va detrás.
  */
-const FILA_CORREGIR_RESULTADO = "Corregir el resultado";
+export const FILA_CORREGIR_RESULTADO = "Corregir el resultado";
 
 /**
  * Feature 263 (R7–R10, R14) — la plantilla de la rejilla de órdenes, en UN solo sitio.
@@ -1473,17 +1476,26 @@ const FILA_GUIA_CELDA = "min-w-[80px] whitespace-nowrap tabular-nums";
  * secciones y hereda su prohibición de recortarse. Las dos rejillas de esta sección —cabecera
  * de columnas y filas— la comparten, que es lo único que las mantiene alineadas entre sí.
  */
-const SIN_GESTION_GRID_COLS = "grid-cols-[auto_minmax(0,1.4fr)_minmax(0,1fr)]";
+const SIN_GESTION_GRID_COLS = "md:grid-cols-[auto_minmax(0,1.4fr)_minmax(0,1fr)]";
+
+/**
+ * SLT-156 (R529) — por debajo de 768 px la fila sin gestión es una tarjeta (la cabecera de columnas
+ * se oculta): destinatario; guía · tienda; remisión · producto con su estado de origen. Desde 768 px
+ * manda `SIN_GESTION_GRID_COLS`, las tres columnas de hoy (R524).
+ */
+const SIN_GESTION_TARJETA =
+  "max-md:grid-cols-[max-content_minmax(0,1fr)] max-md:items-start max-md:gap-x-3 max-md:gap-y-1 " +
+  "max-md:[grid-template-areas:'dest_dest'_'guia_tienda'_'remision_remision']";
 
 // --- Rótulos de la tabla compacta del detalle (texto separado, i18n-ready) ---
-const FILA_GUIA_COL = "Guía";
-const FILA_DESTINATARIO_COL = "Destinatario";
+export const FILA_GUIA_COL = "Guía";
+export const FILA_DESTINATARIO_COL = "Destinatario";
 const FILA_COBRADO_COL = "Cobrado";
 const FILA_RECIBIDO_LABEL = "Recibido";
-const FILA_TIENDA_LABEL = "Tienda";
-const FILA_MOTIVO_LABEL = "Motivo";
+export const FILA_TIENDA_LABEL = "Tienda";
+export const FILA_MOTIVO_LABEL = "Motivo";
 const FILA_NUEVA_FECHA_LABEL = "Nueva fecha";
-const FILA_VER_EVIDENCIA = "Ver evidencia";
+export const FILA_VER_EVIDENCIA = "Ver evidencia";
 const FOOTER_RECAUDADO_LABEL = "Total recaudado";
 const FOOTER_ENTREGAS_LABEL = "entregas";
 
@@ -1712,7 +1724,7 @@ function FilaGestion({
   g: CierreDetalleGestion;
   /** Vista del mensajero: las dos cifras de la fila son lo RECIBIDO y SU pago. */
   esMensajero?: boolean;
-  onVerEvidencia?: (url: string) => void;
+  onVerEvidencia?: (evidencia: EvidenciaAbierta) => void;
   /**
    * Pedido humano (2026-08-19): abre la corrección del desglose de ESTA gestión. Ausente = no
    * se ofrece, que es lo que pasa en un cierre ya resuelto, para el rol que no corrige y en la
@@ -1967,12 +1979,14 @@ function FilaGestion({
                 )}
               </>
             ) : null}
-            {/* FICHA 486 (R12-R16): un botón por foto, en el orden del servidor; con una sola,
-                el «Ver evidencia» de siempre. */}
+            {/* FICHA 486 (R12-R16), SLT-103 (R54): un solo botón con todas las fotos, en el orden
+                del servidor; con una sola, el «Ver evidencia» de siempre. */}
             {onVerEvidencia ? (
               <BotonesEvidencia
                 urls={g.evidenciaUrls}
-                onVer={onVerEvidencia}
+                onVer={(urls) =>
+                  onVerEvidencia({ urls, contexto: contextoEvidencia(g.numRemision, g.destinatario) })
+                }
                 etiqueta={FILA_VER_EVIDENCIA}
                 ariaSufijo={`de la orden ${g.numRemision} · ${g.destinatario}`}
               />
@@ -2050,7 +2064,7 @@ export interface GestionesPorResultadoProps {
    * El comprobante del cierre de mensajero lo pasa SIEMPRE, desde su `audiencia`.
    */
   verFulfillment?: boolean;
-  onVerEvidencia?: (url: string) => void;
+  onVerEvidencia?: (evidencia: EvidenciaAbierta) => void;
   /** Ausente = no se ofrece (478/R14). */
   onCorregirPagos?: (g: CierreDetalleGestion) => void;
   /** Ausente = no se ofrece (478/R14). */
@@ -2164,7 +2178,7 @@ const RECHAZOS_TITULO = "Rechazados por la tienda";
  * masculino, como el título aprobado (se habla del paquete), para que no se lea como el estado
  * retirado «Rechazada»; es el rechazo de la TIENDA (425), no un estado.
  */
-const RECHAZOS_LISTA_LABEL = "Lista de paquetes rechazados por la tienda";
+export const RECHAZOS_LISTA_LABEL = "Lista de paquetes rechazados por la tienda";
 /**
  * Los DOS CONTEOS de la forma aprobada, cada uno con lo que HACE: las gestiones del mensajero
  * «paga» —entran en su liquidación— y los rechazos de la tienda «revisar» —se separan y no se
@@ -2175,7 +2189,7 @@ const RECHAZOS_GESTIONES_LABEL = "Gestiones del mensajero";
 const RECHAZOS_GESTIONES_EFECTO = "paga";
 const RECHAZOS_RECHAZOS_EFECTO = "revisar";
 /** R16 — la línea fija aprobada (Q3). Sin siglas. */
-const RECHAZOS_NOTA = "No son gestiones del mensajero y no suman a su pago.";
+export const RECHAZOS_NOTA = "No son gestiones del mensajero y no suman a su pago.";
 /**
  * D3 — un cierre SIN gestiones del mensajero (el caso de Arnel: sólo trae rechazos) nace con los
  * seis totales en cero, y eso es CORRECTO. Sin esta línea la hoja entera se lee como un cierre
@@ -2184,7 +2198,7 @@ const RECHAZOS_NOTA = "No son gestiones del mensajero y no suman a su pago.";
  */
 const RECHAZOS_SOLO_REVISION =
   "Este cierre no trae gestiones del mensajero: es un documento de revisión, y por eso sus totales están en cero.";
-const RECHAZOS_FECHA_COL = "Fecha del rechazo";
+export const RECHAZOS_FECHA_COL = "Fecha del rechazo";
 
 /**
  * FICHA 425 (R10) — lo que tiene que hacer quien aprueba, con la concordancia resuelta. En la
@@ -2194,7 +2208,7 @@ const RECHAZOS_FECHA_COL = "Fecha del rechazo";
  * «sin escanear» no es una recomendación: estos paquetes NO están en la confirmación física, que
  * se alimenta de las gestiones del cierre y no de esta lista (`design.md §5.4`).
  */
-function separarParaDevolucion(cuantas: number): string {
+export function separarParaDevolucion(cuantas: number): string {
   return cuantas === 1
     ? "Separar 1 orden para devolución, sin escanearla."
     : `Separar ${cuantas} órdenes para devolución, sin escanearlas.`;
@@ -2209,7 +2223,7 @@ function separarParaDevolucion(cuantas: number): string {
  * `cierre.destinoTipo` sería una suposición que puede fallar justo con una orden traspasada. Por
  * eso se dicen los dos destinos, con el de la central delante, que es el de la forma aprobada.
  */
-function efectoAlAprobar(cuantas: number): string {
+export function efectoAlAprobar(cuantas: number): string {
   const central = ORDER_STATUS_LABELS.por_devolver_a_tienda;
   const satelite = ORDER_STATUS_LABELS.por_devolver_a_bodega_central;
   return cuantas === 1
@@ -2416,37 +2430,46 @@ function FilaSinGestion({ o }: Readonly<{ o: CierreOrdenSinGestion }>) {
     // `break-inside-avoid` (feature 223): mismo criterio que `FilaGestion` — la fila se repite N
     // veces y es la que decide dónde caen los cortes. Partida, deja la guía en una página y el
     // destinatario en la siguiente.
+    // SLT-156 (R529): por debajo de 768 px, la MISMA fila es una tarjeta: destinatario; guía · tienda;
+    // remisión · producto con su estado de origen. La columna de la izquierda se deshace
+    // (`max-md:contents`) para que sus dos líneas tomen su sitio en la tarjeta.
     <div
       role="listitem"
       className={cn(
-        "mb-2 grid break-inside-avoid items-center gap-2 rounded-[10px] border border-border px-2 py-2.5",
+        "mb-2 grid break-inside-avoid items-center gap-2 rounded-[10px] border border-border px-2 py-3",
         SIN_GESTION_GRID_COLS,
+        SIN_GESTION_TARJETA,
       )}
     >
       <span
-        className={cn("text-[13px] font-medium text-foreground", FILA_GUIA_CELDA)}
+        className={cn("text-[13px] font-medium text-foreground max-md:[grid-area:guia]", FILA_GUIA_CELDA)}
       >
         {/* La orden puede no tener guía todavía; ahí el «—» SÍ corresponde: el dato existe y
             está vacío. Es el caso contrario al del estado de origen (R32). */}
         {o.numGuia ?? "—"}
       </span>
-      {/* `min-w-0`: sin él el mínimo automático del flex-item es el min-content del texto y
-          `truncate` no llega a activarse nunca (lección literal de la 258). */}
-      <span className="flex min-w-0 flex-col">
-        <span className="truncate text-[13px] text-foreground">
+      {/* SLT-156 (R490, R491): sin «…»: el destinatario, la remisión y el producto envuelven en
+          varias líneas (en el móvil no hay tooltip). `min-w-0` deja que la pista los parta. */}
+      <span className="flex min-w-0 flex-col max-md:contents">
+        <span className={cn("text-[13px] text-foreground max-md:[grid-area:dest]", TEXTO_ENTERO)}>
           {o.destinatario}
         </span>
         {/* FICHA 456 (T3.4, R9/R15): el estado de origen con su botón de información (un origen
             retirado sale con su nombre histórico y sin botón). */}
-        <span className="flex min-w-0 items-center gap-1 text-[11px] text-muted-foreground">
-          <span className="truncate">
+        <span className="flex min-w-0 flex-wrap items-center gap-1 text-[11px] text-muted-foreground max-md:[grid-area:remision]">
+          <span className={TEXTO_ENTERO}>
             {o.numRemision} · {o.producto}
             {origen ? " · " : null}
           </span>
           {origen ? <EstadoConInfo codigo={origen} className="shrink-0" /> : null}
         </span>
       </span>
-      <span className="min-w-0 truncate text-[13px] text-muted-foreground">
+      <span
+        className={cn(
+          "text-[13px] text-muted-foreground max-md:[grid-area:tienda] max-md:before:mr-1 max-md:before:content-['·']",
+          TEXTO_ENTERO,
+        )}
+      >
         {o.tiendaNombre}
       </span>
     </div>
@@ -2476,7 +2499,7 @@ function FilaSinGestion({ o }: Readonly<{ o: CierreOrdenSinGestion }>) {
  * cierre. Si algún día se añadiera un tope, la regla ya está escrita: habría que decir cuántas
  * no se muestran, junto al conteo del encabezado.
  */
-function SeccionSinGestion({
+export function SeccionSinGestion({
   ordenes,
   registrado,
 }: Readonly<{ ordenes: readonly CierreOrdenSinGestion[]; registrado: boolean }>) {
@@ -2501,7 +2524,7 @@ function SeccionSinGestion({
             // salida rutinaria del reparto (mismo criterio con el que la 158 puso `incidente`
             // en `warning`). Sin lista que contar no se pinta ningún número: un «0» aquí sería
             // exactamente el «no hubo ninguna» que R28 prohíbe.
-            <span className="rounded-full bg-warning/15 px-1.5 py-0.5 text-[0.6875rem] text-warning-strong">
+            <span className="rounded-full bg-warning/15 px-2 py-1 text-[0.6875rem] text-warning-strong">
               {ordenes.length}
             </span>
           ) : null}
@@ -2517,13 +2540,13 @@ function SeccionSinGestion({
               independientes y es lo único que las mantiene alineadas. */}
           <div
             className={cn(
-              "grid gap-2 px-2 py-1 text-[11px] text-muted-foreground",
+              "grid gap-2 px-2 py-1 text-[11px] text-muted-foreground max-md:hidden",
               SIN_GESTION_GRID_COLS,
             )}
           >
             <span className={FILA_GUIA_CELDA}>{FILA_GUIA_COL}</span>
-            <span className="min-w-0 truncate">{FILA_DESTINATARIO_COL}</span>
-            <span className="min-w-0 truncate">{FILA_TIENDA_LABEL}</span>
+            <span className={TEXTO_ENTERO}>{FILA_DESTINATARIO_COL}</span>
+            <span className={TEXTO_ENTERO}>{FILA_TIENDA_LABEL}</span>
           </div>
           {/* `list`/`listitem` y no una tabla: son filas de consulta sin cabecera semántica de
               columna, y el rol de lista le da a quien usa lector de pantalla el recuento sin

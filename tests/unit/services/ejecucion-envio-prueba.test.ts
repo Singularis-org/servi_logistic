@@ -2,12 +2,15 @@ import { describe, expect, it, vi } from "vitest";
 import { EjecucionEnvioService, type MetaEnvios } from "@/lib/services/EjecucionEnvioService";
 import { textoGeocodificacionCaida } from "@/lib/notificaciones/emitir";
 import { MAESTRO, destinatario, ejecucionesRepo, envio, enviosRepo, plantilla } from "./_dobles-envios-474";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
+import { PaisIncompleto } from "@/lib/db/errores-pais";
 
 // Ficha 474 (T7.2, R39-R41/R52) — «Probar ahora».
 
 const AHORA = new Date("2026-10-05T18:00:00.000Z"); // 12:00 CR
 
-function montar(o: { envio?: ReturnType<typeof envio> | null; telefono?: string; ultima?: Date | null; plantilla?: ReturnType<typeof plantilla> } = {}) {
+function montar(o: { envio?: ReturnType<typeof envio> | null; telefono?: string; ultima?: Date | null; plantilla?: ReturnType<typeof plantilla>; reglasPais?: IReglasPaisEmpresa } = {}) {
   const resolverDestinatarios = vi.fn(async () => [destinatario({ usuarioId: "otro" })]);
   const envios = enviosRepo({
     obtener: vi.fn(async () => (o.envio === undefined ? envio({ encendido: false }) : o.envio)),
@@ -19,6 +22,7 @@ function montar(o: { envio?: ReturnType<typeof envio> | null; telefono?: string;
   const enviarPlantilla = vi.fn(async (_d: string, _n: string, _i: string, _c?: unknown[]) => ({ status: "ok" as const, mensajeId: "wamid.p" }));
   const m: MetaEnvios = { enviador: { enviarPlantilla }, subidor: { subir: vi.fn() }, idioma: "es" };
   const s = new EjecucionEnvioService({
+    reglasPais: o.reglasPais ?? reglasPaisFijas(),
     envios,
     ejecuciones: ej.repo,
     plantillas: { findEnviableDeInformeById: vi.fn(async () => o.plantilla ?? plantilla()) },
@@ -100,5 +104,29 @@ describe("474/R52 — prueba de un envio POR EVENTO", () => {
       "05/10/2026",
       "12:00",
     ]);
+  });
+});
+
+describe("SLT-42 R18/R20 — el telefono de quien pulsa se valida y normaliza con el pais de la empresa", () => {
+  const OTRO_PAIS = reglasPaisFijas({ paisId: "XA", telefono: { prefijo: "999", digitosNacionales: 7 } });
+
+  it("un local de 7 digitos del pais de la empresa sirve y sale con SU prefijo", async () => {
+    const { s, enviarPlantilla } = montar({ telefono: "777-0001", reglasPais: OTRO_PAIS });
+    const r = await s.probar("env-1", MAESTRO);
+    expect(r.status).toBe("ok");
+    expect(enviarPlantilla.mock.calls[0][0]).toBe("9997770001");
+  });
+
+  it("un local de CR (8 digitos) NO sirve en una empresa de otro pais: no se le pone 506", async () => {
+    const { s, ej, enviarPlantilla } = montar({ telefono: "8888-1111", reglasPais: OTRO_PAIS });
+    expect((await s.probar("env-1", MAESTRO)).status).toBe("telefono_invalido");
+    expect(ej.repo.insertarPrueba).not.toHaveBeenCalled();
+    expect(enviarPlantilla).not.toHaveBeenCalled();
+  });
+
+  it("un pais sin prefijo o sin digitos falla cerrado con PaisIncompleto, sin crear la prueba", async () => {
+    const { s, ej } = montar({ reglasPais: reglasPaisFijas({ paisId: "XB", telefono: null }) });
+    await expect(s.probar("env-1", MAESTRO)).rejects.toBeInstanceOf(PaisIncompleto);
+    expect(ej.repo.insertarPrueba).not.toHaveBeenCalled();
   });
 });

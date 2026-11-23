@@ -26,6 +26,7 @@ import type {
   LiquidacionTxRunner,
 } from "@/lib/interfaces/services/ILiquidacionService";
 import type { RegistrarRepartoMensajeroInput } from "@/lib/types/liquidacion-reparto";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // Feature 205 / T3.3 — `LiquidacionService.previsualizarRepartoMensajero` y
 // `registrarRepartoMensajero`. Cubre R1, R4, R5, R6, R7, R14, R15, R18, R19, R20, R23, R24, R25,
@@ -36,12 +37,14 @@ import type { RegistrarRepartoMensajeroInput } from "@/lib/types/liquidacion-rep
 // `Prisma.Decimal`.
 //
 // **Lo que este archivo NO puede probar, y por eso no lo intenta:** el `WHERE` de
-// `listarCierresImputables` / `contarCierresNoAprobadosPorEstado` — ni que el conteo de R36 lo
+// `listarCierresImputablesEnAlcance` / `contarCierresNoAprobadosPorEstado` — ni que el conteo de R36 lo
 // haga la BASE con un `groupBy` en vez del proceso (aqui son dobles y no hay SQL que mirar).
 // Eso vive en `tests/unit/repositories/liquidacion-pago-repository.test.ts`, que lo prueba donde
 // se ejecuta. Lo de aqui es el ORDEN, la ATOMICIDAD y la ARITMETICA del acto.
 
 const MENSAJERO = "m1";
+/** SLT-122: el alcance del acceso total, escrito a mano (no importado de su fuente). */
+const ALCANCE_CENTRAL = { destinoTipo: "bodega_central", destinoZonaId: null } as const;
 const ACTOR_ADMIN: Actor = { usuarioId: "u-admin", rol: RolValue.admin };
 const ACTOR_MAESTRO: Actor = { usuarioId: "u-maestro", rol: RolValue.maestro };
 
@@ -94,6 +97,7 @@ function cierre(
   over: Partial<CierreImputableDTO> = {},
 ): CierreImputableDTO {
   return {
+    pagoIndependienteEfectivo: false, // SLT-123: la marca es obligatoria en la fila del repositorio
     id,
     mensajeroId: MENSAJERO,
     estado: CierreEstado.aprobado,
@@ -127,7 +131,7 @@ function repartoDTO(over: Partial<LiquidacionRepartoDTO> = {}): LiquidacionRepar
 }
 
 interface Opciones {
-  /** Lo que devuelve `listarCierresImputables`. Una entrada por LLAMADA; la ultima se repite. */
+  /** Lo que devuelve `listarCierresImputablesEnAlcance`. Una entrada por LLAMADA; la ultima se repite. */
   cierres?: CierreImputableDTO[][];
   /** Σ de pagos vigentes por cierre. Una entrada por LLAMADA; la ultima se repite. */
   pagados?: Record<string, string>[];
@@ -146,6 +150,12 @@ interface Opciones {
   reventarEnPago?: number;
   /** Hace que la N-esima escritura choque con el `UNIQUE` de la clave del pago. R20. */
   chocarEnPago?: number;
+  /**
+   * SLT-122 (R9/R10): ids de `cierres` cuyo destino es una bodega SATELITE. El doble de
+   * `listarCierresImputablesEnAlcance` los deja fuera con el alcance central, que es lo que hace
+   * el WHERE en la base (eso lo mide `pago-mensajero-bodega-duena.test.ts`, de integracion).
+   */
+  satelite?: string[];
 }
 
 /**
@@ -227,11 +237,14 @@ function buildDobles(opciones: Opciones = {}) {
       pendientesDeCommit.push(() => confirmados.pagos.push(input));
       return { status: "creado" as const, pago };
     }),
-    listarCierresImputables: vi.fn(async (_mensajeroId, t) => {
+    listarCierresImputablesEnAlcance: vi.fn(async (_mensajeroId, alcance, t) => {
       const lista = enesima(listasDeCierres, llamadasCierres);
       llamadasCierres += 1;
       log.push(t === undefined ? "leer:imputables:fuera-de-tx" : "leer:imputables");
-      return lista;
+      const deSatelite = new Set(opciones.satelite ?? []);
+      return lista.filter((c) =>
+        alcance.destinoTipo === "bodega_satelite" ? deSatelite.has(c.id) : !deSatelite.has(c.id),
+      );
     }),
     sumarVigentesPorCierre: vi.fn(async (ids: string[]) => {
       const mapa = enesima(listasDePagados, llamadasPagados);
@@ -252,6 +265,15 @@ function buildDobles(opciones: Opciones = {}) {
       const encontrado = enesima(listasDeCierres, 0).find((c) => c.id === id);
       return encontrado ?? null;
     }),
+    // SLT-122: la guardia del pago SIMPLE contra un cierre (R51 compara con el). Mismo criterio de
+    // alcance que la lista de imputables: un id de `satelite` sale null con el alcance central.
+    obtenerCierreParaPagoEnAlcance: vi.fn(async (id: string, alcance) => {
+      log.push("leer:cierre:en-alcance");
+      const encontrado = enesima(listasDeCierres, 0).find((c) => c.id === id);
+      if (encontrado === undefined) return null;
+      const esDeSatelite = (opciones.satelite ?? []).includes(id);
+      return (alcance.destinoTipo === "bodega_satelite") === esDeSatelite ? encontrado : null;
+    }),
     anular: vi.fn(async () => {
       log.push("anular");
       return { status: "ya_anulado" as const };
@@ -262,6 +284,7 @@ function buildDobles(opciones: Opciones = {}) {
     }),
     obtenerPorId: vi.fn(async () => null),
     sumarVigentesPorTienda: vi.fn(async () => "0.00"),
+    sumarVigentesDelMensajeroEnRango: vi.fn(async () => ({ monto: "0.00", conteo: 0 })),
     listarPorCierre: vi.fn(async () => []),
     listarPorTienda: vi.fn(async () => []),
   };
@@ -367,8 +390,8 @@ function buildDobles(opciones: Opciones = {}) {
   // `lib/config/reparto-mensajero.ts` puesto a 7, este archivo seguia en verde (61/61).
   const service =
     opciones.tope === undefined
-      ? new LiquidacionService(...comunes)
-      : new LiquidacionService(...comunes, opciones.tope);
+      ? new LiquidacionService(...comunes, undefined, undefined, reglasPaisFijas())
+      : new LiquidacionService(...comunes, opciones.tope, undefined, reglasPaisFijas());
 
   return {
     service,
@@ -707,6 +730,86 @@ describe("R14/R15 — los dos rechazos, sin escribir nada", () => {
 
     expect(r).toEqual({ status: "sin_saldo" });
     expect(d.intentados.pagos).toEqual([]);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// SLT-122 «Pago al mensajero: solo la bodega duena del cierre» — R9 y R10 (reparto, PA2 = cerrar
+// aqui). El WHERE real lo mide `tests/integration/db/pago-mensajero-bodega-duena.test.ts`.
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+
+describe("SLT-122 — el reparto solo imputa a cierres de la bodega central", () => {
+  for (const actor of [ACTOR_ADMIN, ACTOR_MAESTRO]) {
+    it(`R9: ${actor.rol} — un cierre de satelite no entra en la ventana, no se bloquea y no recibe imputacion`, async () => {
+      // c-viejo (5 000) es de satelite; los otros dos (8 000 + 12 000) son de la central.
+      const d = buildDobles({ satelite: ["c-viejo"] });
+
+      const r = await d.service.registrarRepartoMensajero({ ...INPUT, monto: "20000.00" }, actor);
+
+      expect(r.status).toBe("ok");
+      if (r.status !== "ok") return;
+      expect(r.reparto.imputaciones.map((i) => i.cierreId)).toEqual(["c-medio", "c-nuevo"]);
+      expect(d.confirmados.pagos.map((p) => p.cierreId)).toEqual(["c-medio", "c-nuevo"]);
+      expect(d.log).not.toContain("bloquear:cierre:c-viejo");
+      expect(d.log).toContain("bloquear:cierre:c-medio");
+      // Las DOS lecturas (la ventana y la relectura bajo bloqueo) llevan el alcance central.
+      const llamadas = vi.mocked(d.pagoRepo.listarCierresImputablesEnAlcance).mock.calls;
+      expect(llamadas.length).toBeGreaterThanOrEqual(2);
+      for (const [mensajeroId, alcance] of llamadas) {
+        expect(mensajeroId).toBe(MENSAJERO);
+        expect(alcance).toEqual(ALCANCE_CENTRAL);
+      }
+    });
+  }
+
+  it("R9: la previsualizacion no cuenta el cierre de satelite ni en el imputable ni en las imputaciones", async () => {
+    const d = buildDobles({ satelite: ["c-viejo"] });
+
+    const r = await d.service.previsualizarRepartoMensajero(
+      { mensajeroId: MENSAJERO, monto: "25000.00" },
+      ACTOR_MAESTRO,
+    );
+
+    expect(r.status).toBe("ok");
+    if (r.status !== "ok") return;
+    expect(r.previsualizacion.imputableTotal).toBe("20000.00");
+    expect(r.previsualizacion.imputaciones.map((i) => i.cierreId)).toEqual(["c-medio", "c-nuevo"]);
+    expect(r.previsualizacion.sobrante).toBe("5000.00");
+    expect(d.pagoRepo.contarCierresNoAprobadosPorEstado).toHaveBeenCalledWith(MENSAJERO, ALCANCE_CENTRAL);
+  });
+
+  it("R10: con SOLO cierres de satelite, registrar responde `sin_saldo` y no escribe ni bloquea nada", async () => {
+    const d = buildDobles({ satelite: ["c-viejo", "c-medio", "c-nuevo"] });
+
+    const r = await repartir(d);
+
+    expect(r).toEqual({ status: "sin_saldo" });
+    expect(d.intentados.pagos).toEqual([]);
+    expect(d.intentados.movimientos).toEqual([]);
+    expect(d.confirmados.pagos).toEqual([]);
+    expect(d.pagoRepo.bloquearBeneficiario).not.toHaveBeenCalled();
+  });
+
+  it("R10: con SOLO cierres de satelite, la previsualizacion muestra imputable 0.00", async () => {
+    const d = buildDobles({ satelite: ["c-viejo", "c-medio", "c-nuevo"] });
+
+    const r = await d.service.previsualizarRepartoMensajero({ mensajeroId: MENSAJERO }, ACTOR_ADMIN);
+
+    expect(r.status).toBe("ok");
+    if (r.status !== "ok") return;
+    expect(r.previsualizacion.imputable).toBe("0.00");
+    expect(r.previsualizacion.imputableTotal).toBe("0.00");
+    expect(r.previsualizacion.imputaciones).toEqual([]);
+  });
+
+  it("R10 (contraprueba): los mismos cierres siendo de la central SI son imputables (el doble distingue)", async () => {
+    const d = buildDobles({ satelite: [] });
+
+    const r = await d.service.previsualizarRepartoMensajero({ mensajeroId: MENSAJERO }, ACTOR_ADMIN);
+
+    expect(r.status).toBe("ok");
+    if (r.status !== "ok") return;
+    expect(r.previsualizacion.imputableTotal).toBe("25000.00");
   });
 });
 
@@ -1147,7 +1250,7 @@ describe("R35/R57 — la previsualización no escribe nada y usa la MISMA ventan
     const r = await d.service.previsualizarRepartoMensajero({ mensajeroId: MENSAJERO }, ACTOR_ADMIN);
 
     expect(r).toEqual({ status: "no_encontrado" });
-    expect(d.pagoRepo.listarCierresImputables).not.toHaveBeenCalled();
+    expect(d.pagoRepo.listarCierresImputablesEnAlcance).not.toHaveBeenCalled(); // SLT-122
   });
 });
 
@@ -1204,10 +1307,11 @@ describe("R36/R37/R56 — los avisos, resueltos en el servidor y separados", () 
     await d.service.previsualizarRepartoMensajero({ mensajeroId: MENSAJERO }, ACTOR_ADMIN);
 
     expect(d.pagoRepo.contarCierresNoAprobadosPorEstado).toHaveBeenCalledTimes(1);
-    expect(d.pagoRepo.contarCierresNoAprobadosPorEstado).toHaveBeenCalledWith(MENSAJERO);
+    // SLT-122 (R9): el conteo va en el MISMO alcance que los imputables (solo la bodega central).
+    expect(d.pagoRepo.contarCierresNoAprobadosPorEstado).toHaveBeenCalledWith(MENSAJERO, ALCANCE_CENTRAL);
     // El servicio no recuenta ni suma nada: quien agrega es la base (ahí es donde el `groupBy`
     // se prueba). Aquí solo se afirma que no hay una segunda fuente para el mismo número.
-    expect(d.pagoRepo.listarCierresImputables).toHaveBeenCalledTimes(1);
+    expect(d.pagoRepo.listarCierresImputablesEnAlcance).toHaveBeenCalledTimes(1);
   });
 
   it("R36: sin cierres fuera, la lista de conteos viene VACÍA (no un `0` por estado)", async () => {

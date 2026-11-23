@@ -264,8 +264,8 @@ describe("la frontera de los cierres (donde se mueve el dinero)", () => {
     montar(<ErrorDeCierres error={errorDeServidor()} reset={vi.fn()} />);
 
     const texto = screen.getByRole("alert").textContent ?? "";
-    expect(texto).toContain("Antes de repetir una aprobación, mirá cómo quedó");
-    expect(texto).toMatch(/revisá el estado/i);
+    expect(texto).toContain("Antes de repetir una aprobación, mira cómo quedó");
+    expect(texto).toMatch(/revisa el estado/i);
   });
 
   it("NO promete que no se guardó nada: el fallo puede ocurrir DESPUÉS de guardar", () => {

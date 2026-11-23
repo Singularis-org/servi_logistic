@@ -35,8 +35,8 @@ export default function ErrorDeCierres({
       <ErrorState
         error={error}
         reset={reset}
-        titulo="Antes de repetir una aprobación, mirá cómo quedó"
-        descripcion="El fallo ocurrió al mostrar la pantalla, y eso también puede pasar justo después de guardar. Volvé a cargar los cierres y revisá el estado del que estabas resolviendo antes de aprobarlo o rechazarlo otra vez."
+        titulo="Antes de repetir una aprobación, mira cómo quedó"
+        descripcion="El fallo ocurrió al mostrar la pantalla, y eso también puede pasar justo después de guardar. Vuelve a cargar los cierres y revisa el estado del que estabas resolviendo antes de aprobarlo o rechazarlo otra vez."
         etiquetaReintentar="Volver a cargar los cierres"
       />
     </AppPage>

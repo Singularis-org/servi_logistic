@@ -19,10 +19,11 @@ import {
   crearPrismaDeTest,
   clienteConTransaccionAnidada,
   enTransaccionRevertida,
-  fksDeOrden,
   serializarEscriturasReales,
   type TxDeTest,
 } from "./_postgres-real";
+import { crearFksDeOrden, crearUsuarioDePrueba } from "./_fixtures/orden-minima";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 /**
  * ⭑ FICHA 371 — LA CORRECCION DE LA FECHA, EJECUTADA CONTRA POSTGRES.
@@ -102,16 +103,9 @@ describeSiHayBase("371 — corregir la fecha de una reprogramacion, contra Postg
 
   beforeAll(async () => {
     prisma = crearPrismaDeTest();
-    const fks = await fksDeOrden(prisma);
     // Fallo RUIDOSO, jamas un `return` silencioso: con base alcanzable y sin catalogo este archivo
     // no puede comprobar nada, y un `passed` en esas condiciones es la clase de verde que este repo
     // ya se comio una vez.
-    if (fks === null) {
-      throw new Error(
-        "hay DATABASE_URL pero la tabla `orden` esta vacia: sin FKs no se puede sembrar el " +
-          "escenario. Corre `pnpm run db:seed` (y las semillas de zonas) antes de esta suite.",
-      );
-    }
     const catalogo = await prisma.orderStatus.findMany({
       where: {
         value: { in: ["reprogramado", "en_reparto", "en_bodega_central", "en_bodega_satelite"] },
@@ -128,18 +122,23 @@ describeSiHayBase("371 — corregir la fecha de una reprogramacion, contra Postg
     }
     const estatusReprogramadaId = idPorValue.get("reprogramado") as string;
 
-    const usuarios = await prisma.usuario.findMany({ select: { id: true }, take: 1 });
-    if (usuarios.length < 1) {
-      throw new Error("hace falta al menos UN usuario en la base para sembrar las gestiones.");
-    }
-    const usuarioId = usuarios[0].id;
-
     let n = 0;
     conEscenario = (opciones, fn) =>
       enTransaccionRevertida(prisma, async (tx) => {
         // PRIMERA sentencia: serializa contra los otros archivos que escriben en `public`.
         await serializarEscriturasReales(tx);
         n += 1;
+
+        // SLT-179 — tienda, zona y mensajero nacen en ESTA transaccion: nada de leer la primera
+        // orden ni el primer usuario de la base. Control positivo: si la siembra no llega, cae.
+        const fks = await crearFksDeOrden(tx);
+        const usuarioId = (await crearUsuarioDePrueba(tx, "mensajero")).id;
+        const sembrados = await tx.usuario.count({ where: { id: { in: [fks.tiendaId, usuarioId] } } });
+        expect(sembrados, "SLT-179: la tienda y el mensajero sembrados no estan en la base").toBe(2);
+        expect(
+          await tx.zona.count({ where: { id: fks.zonaId } }),
+          "SLT-179: la zona sembrada no esta en la base",
+        ).toBe(1);
 
         const estatusOrden = opciones.estatusOrden ?? "reprogramado";
         const orden = await tx.orden.create({
@@ -255,6 +254,7 @@ describeSiHayBase("371 — corregir la fecha de una reprogramacion, contra Postg
           // EL CAMINO REAL de la liberacion, no un doble: es lo unico que demuestra que corregir a
           // hoy dispara la MISMA liberacion que el cron, con su puerta 276 puesta.
           liberarTrasCorregirFechaCon(liberacion, () => NOW, { warn: () => {} }),
+          reglasPaisFijas(),
         );
 
         return fn({
@@ -692,6 +692,7 @@ describeSiHayBase("371 — corregir la fecha de una reprogramacion, contra Postg
           () => NOW,
           { warn: (m) => avisos.push(m) },
         ),
+        reglasPaisFijas(),
       );
 
       const r = await service.corregir(

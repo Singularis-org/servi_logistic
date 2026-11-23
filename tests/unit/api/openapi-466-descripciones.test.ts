@@ -79,12 +79,13 @@ describe("466/R18 — el manual de metricas por mensajero", () => {
   });
 });
 
-describe("466/R9 — la guia de integracion (HTML) nombra el resultado por su nombre vigente", () => {
-  const GUIA = leer("docs/api/guia-integracion/guia-integracion.html");
+// SLT-80: la guía dejó de ser HTML; su única fuente es el `.md` de Ayuda (R1300). Se lee ese.
+describe("466/R9 — la guia de integracion nombra el resultado por su nombre vigente", () => {
+  const GUIA = leer("docs/ayuda/oficina/guia-integracion-api.md");
 
   it("la nota del `costoReal` dice «termina en Devolución a origen por rechazo», no «termina con rechazo»", () => {
     expect(GUIA).toContain(
-      "Si la orden termina en Devolución a origen por rechazo (<code>devolucion_a_origen_por_rechazo</code>), lo que se factura es el escenario <code>devuelto</code> de la cotización, no estos importes.",
+      "Si la orden termina en Devolución a origen por rechazo (`devolucion_a_origen_por_rechazo`), lo que se factura es el escenario `devuelto` de la cotización, no estos importes.",
     );
     expect(GUIA).not.toMatch(/termina con rechazo/i);
   });

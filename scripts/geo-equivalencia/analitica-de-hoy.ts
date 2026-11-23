@@ -22,7 +22,7 @@ import type {
   FilaDineroCruda,
   LecturaDineroProductos,
 } from "@/lib/interfaces/repositories/IDineroProductosRepository";
-import { DIA_CR } from "@/lib/repositories/ConteoCargadasPorDiaRepository";
+import { diaDeCargaEnZona } from "@/lib/repositories/ConteoCargadasPorDiaRepository";
 import { ventanaDeCarga } from "@/lib/repositories/ventana-de-carga";
 import type { CohorteDesenlace } from "@/lib/types/cohorte-carga";
 import { RESULTADOS_DE_CIERRE } from "@/lib/types/conteo-ciclo-vida";
@@ -56,7 +56,7 @@ import type { ConsultaTransito, FilaTransito } from "@/lib/whatsapp-envios/infor
 // - `comoParametros` y `enLista`, identicas byte a byte en los cuatro repositorios de origen, se
 //   copian una sola vez.
 // Los cuerpos —SQL, condiciones, orden, mapeo—, comentarios incluidos, son los de entonces. Los
-// helpers y constantes exportados de `lib/` que no leen geografia se importan (`DIA_CR`,
+// helpers y constantes exportados de `lib/` que no leen geografia se importan (`diaDeCargaEnZona`, antes `DIA_CR`,
 // `ventanaDeCarga`, `tarifaDe`, ...). Cada bloque cita el archivo y las lineas de c301fc87.
 //
 // `plegarEnDesenlaces` (`ConteoEntregasRepository`) no se copia: no lee geografia. Se re-exporta de
@@ -238,7 +238,7 @@ export async function contarPorStatusDeHoy(
 // ConteoCargadasPorDiaRepository (lib/repositories/ConteoCargadasPorDiaRepository.ts)
 // =================================================================================================
 
-// Copia de ConteoCargadasPorDiaRepository.ts:63–66 en c301fc87. `DIA_CR` se importa: es exportado y no lee geografia.
+// Copia de ConteoCargadasPorDiaRepository.ts:63–66 en c301fc87. `DIA_CR` se importa como `diaDeCargaEnZona(consulta.zona)`, su sucesor de SLT-42 (con la zona de CR es el mismo SQL): es exportado y no lee geografia.
 /** Cliente MINIMO consumido (patron `ConteoPorStatusRepository`): una sola consulta cruda.
  *  `$queryRawUnsafe` NO esta y no puede estar: el tipo del cliente es la primera barrera
  *  contra la interpolacion de strings. */
@@ -348,7 +348,7 @@ export async function contarCargadasPorDiaDeHoy(
   // consumidor lo rehaga. Como la clave es `YYYY-MM-DD`, el orden lexicografico ES el
   // cronologico.
   const filas = await cliente.$queryRaw<FilaCargadas[]>`
-    SELECT ${DIA_CR}     AS dia,
+    SELECT ${diaDeCargaEnZona(consulta.zona)} AS dia,
            COUNT(*)::int AS n
     FROM "orden" o
     WHERE ${where}
@@ -1127,7 +1127,7 @@ export async function cohorteCargaDeHoy(
     WITH cohorte AS (
       SELECT o."id"         AS orden_id,
              o."created_at" AS cargada_at,
-             ${DIA_CR}      AS dia
+             ${diaDeCargaEnZona(consulta.zona)} AS dia
       FROM "orden" o
       WHERE ${where}
     ),

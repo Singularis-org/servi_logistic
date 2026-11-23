@@ -5,6 +5,7 @@ import {
   GESTION_UBICACION_AUSENCIA,
 } from "@/lib/types/gestion-orden";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 // Feature 193 (T B.3, R6/R8-R14) — la disyuncion del borde: O coordenadas O motivo.
 //
 // El archivo se organiza en TABLA por las cinco ramas de `resultado` a proposito (R14). El
@@ -72,12 +73,12 @@ const RAMAS = [
 describe("Feature 193 — ubicacion en el borde de la gestion", () => {
   describe.each(RAMAS)("rama $nombre", ({ base }) => {
     it("R8: con ubicacion valida, pasa", () => {
-      const r = gestionarSchema.safeParse({ ...base, ubicacion: UBICACION_OK });
+      const r = gestionarSchema(ZONA_CR).safeParse({ ...base, ubicacion: UBICACION_OK });
       expect(r.success).toBe(true);
     });
 
     it("R9: sin ubicacion pero con motivo tecnico, pasa", () => {
-      const r = gestionarSchema.safeParse({
+      const r = gestionarSchema(ZONA_CR).safeParse({
         ...base,
         ubicacionAusencia: "no_disponible",
       });
@@ -85,12 +86,12 @@ describe("Feature 193 — ubicacion en el borde de la gestion", () => {
     });
 
     it("R10: sin ubicacion y sin motivo, falla", () => {
-      const r = gestionarSchema.safeParse({ ...base });
+      const r = gestionarSchema(ZONA_CR).safeParse({ ...base });
       expect(r.success).toBe(false);
     });
 
     it("R11: con ubicacion Y motivo a la vez, falla", () => {
-      const r = gestionarSchema.safeParse({
+      const r = gestionarSchema(ZONA_CR).safeParse({
         ...base,
         ubicacion: UBICACION_OK,
         ubicacionAusencia: "timeout",
@@ -99,7 +100,7 @@ describe("Feature 193 — ubicacion en el borde de la gestion", () => {
     });
 
     it("R12: el permiso denegado no es un motivo expresable, falla", () => {
-      const r = gestionarSchema.safeParse({
+      const r = gestionarSchema(ZONA_CR).safeParse({
         ...base,
         ubicacionAusencia: "denegado",
       });
@@ -107,7 +108,7 @@ describe("Feature 193 — ubicacion en el borde de la gestion", () => {
     });
 
     it("R13: coordenadas fuera de rango fallan", () => {
-      const r = gestionarSchema.safeParse({
+      const r = gestionarSchema(ZONA_CR).safeParse({
         ...base,
         ubicacion: { lat: 999, lng: -84.0907 },
       });
@@ -115,7 +116,7 @@ describe("Feature 193 — ubicacion en el borde de la gestion", () => {
     });
 
     it("R6: media coordenada no es una ubicacion", () => {
-      const r = gestionarSchema.safeParse({
+      const r = gestionarSchema(ZONA_CR).safeParse({
         ...base,
         ubicacion: { lat: 9.9281 },
       });
@@ -141,7 +142,7 @@ describe("Feature 193 — ubicacion en el borde de la gestion", () => {
 
     it("cada motivo de la lista es aceptado por el borde", () => {
       for (const motivo of GESTION_UBICACION_AUSENCIA) {
-        const r = gestionarSchema.safeParse({
+        const r = gestionarSchema(ZONA_CR).safeParse({
           ...RAMAS[1].base,
           ubicacionAusencia: motivo,
         });

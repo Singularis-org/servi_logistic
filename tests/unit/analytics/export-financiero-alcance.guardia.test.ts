@@ -31,6 +31,7 @@ import {
   idDeLaUnicaVista,
 } from "./_fake-financiera-export";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 // Feature 184 — analitica financiera: export de la serie (T6.2, BLINDADO). R10, R11 y R12.
 // GUARDIA DE ALCANCE: nada de quien descarga —ni de a quien pertenece el dinero— llega al archivo.
 //
@@ -281,7 +282,7 @@ async function textoDelArchivo(datos: ReturnType<typeof dtoTemporalConNeto>): Pr
     titulo: datos.etiqueta,
     columnas: columnasDeVistaFinanciera(vista),
     filas: filasDeVistaFinanciera(datos, vista),
-  });
+  }, ZONA_CR);
   return String(archivo.contenido);
 }
 
@@ -329,7 +330,7 @@ describe("R10/184 (c) · ninguna celda del TEXTO del archivo declara el alcance 
         { ...filas[0]!, periodo: "Alcance", grano: CUBOS_CON_FORMA_DE_UUID[0] },
         ...filas,
       ],
-    });
+    }, ZONA_CR);
     const texto = String(conFuga.contenido);
 
     expect(FORMA_UUID.test(texto)).toBe(true);
@@ -406,7 +407,7 @@ describe("R12/184 (d) · una vista no temporal no produce archivo aunque sus cub
       titulo: datos.etiqueta,
       columnas: columnasDeVistaFinanciera(vista),
       filas: filasDeVistaFinanciera(datos, vista),
-    });
+    }, ZONA_CR);
     const texto = String(archivo.contenido);
 
     expect(texto).toContain(CUBOS_CON_FORMA_DE_UUID[0]);

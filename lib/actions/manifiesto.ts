@@ -1,5 +1,6 @@
 "use server";
 
+import { construirReglasPaisEmpresa } from "@/lib/services/ReglasPaisEmpresaService";
 import { manifiestoSchema, type ManifiestoResult } from "@/lib/types/manifiesto";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { IManifiestoService } from "@/lib/interfaces/services/IManifiestoService";
@@ -29,6 +30,9 @@ function buildManifiestoService(): IManifiestoService {
       new OrdenDiaRepartoCambioRepository(prisma),
       new OrdenTraspasoRepository(prisma),
     ),
+    undefined, // el parametro opcional previo, con su valor por defecto
+    // SLT-42 (R22): la zona horaria del pais de la empresa.
+    construirReglasPaisEmpresa(prisma),
   );
 }
 

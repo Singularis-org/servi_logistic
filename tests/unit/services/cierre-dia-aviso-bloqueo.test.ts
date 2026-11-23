@@ -17,6 +17,7 @@ import type { MensajeroBloqueadoContexto } from "@/lib/notificaciones/emitir";
 import { conPagos } from "@/tests/fixtures/cierre-pagos";
 import { SIN_BLOQUEO, type BloqueoDetalle } from "@/lib/utils/bloqueo-cierre";
 import { bloqueoDe, bloqueoPorAcumular } from "@/tests/fixtures/bloqueo-cierre";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 /**
  * FEATURE 271 (T6.5, R40/R41/R47) — **EL PRODUCTOR DEL AVISO DE «QUEDASTE BLOQUEADO POR
@@ -149,6 +150,7 @@ function build(opts: {
     notificarCierre, // 6.º: el aviso de «cierre por aprobar» (146/R24)
     // ⭑ EL SEPTIMO ARGUMENTO. Es lo unico que este archivo hace y las otras diez suites no.
     notificarBloqueo,
+    reglasPaisFijas(),
   );
   return { service, crearCierre, notificarCierre, notificarBloqueo, findBloqueoDetalle };
 }

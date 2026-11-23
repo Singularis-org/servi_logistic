@@ -7,6 +7,7 @@ import type {
 } from "@/lib/interfaces/repositories/IEstadoCuentaRepository";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import { EstadoCuentaService } from "@/lib/services/EstadoCuentaService";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // SLT-68 (R16) — en el LIBRO DEL MENSAJERO la fila del incentivo es un documento propio: se ofrece
 // «Anular…» mientras esta vigente y, cuando su `reverso_incentivo` existe, dice «Anulado» con el motivo.
@@ -68,6 +69,7 @@ function montar(filas: FilaDeLibroRow[], reversos: AnulacionLeida[]) {
     { estadoPorGestion: async () => [] } as never,
     { resolver: async (_l: string, fs: unknown[]) => fs.map(() => null) } as never,
     { resolver: async () => ({ modo: "texto", termino: "" }) } as never,
+    reglasPaisFijas(),
   );
   return { svc, reversosDeIncentivo };
 }

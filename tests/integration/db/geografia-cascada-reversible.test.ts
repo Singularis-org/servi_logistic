@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import type { PrismaClient } from "@prisma/client";
 
 import { GeoRepository } from "@/lib/repositories/GeoRepository";
@@ -10,6 +10,7 @@ import {
   enTransaccionRevertida,
   serializarEscriturasReales,
 } from "./_postgres-real";
+import { idDeRol, superadminDelCaso, tomarLockDeSuperadmin } from "./_fixtures/superadmin-32";
 
 /**
  * FICHA 374 — **LA CASCADA SE EVALUA Y NO SE MATERIALIZA: POR ESO REACTIVAR ES REVERSIBLE.**
@@ -52,18 +53,35 @@ describeSiHayBase("374 — la cascada es reversible (Postgres real)", () => {
   let prisma: PrismaClient;
   let actorUsuarioId: string;
 
+  // SLT-183: el actor es el SUPERADMIN (la geografia la gestiona la plataforma, `GESTION_ROLES`),
+  // SEMBRADO en la tx revertida de cada caso. Antes se leia «el primer usuario» de la base, y la
+  // recien migrada no tiene ninguno. El lock de superadmin (SL-32) serializa a los archivos que
+  // ocupan el unico hueco; va ANTES que el de la 227 (`serializarEscriturasReales`).
+  let soltarSuperadmin: () => Promise<void> = async () => {};
+
   beforeAll(async () => {
     prisma = crearPrismaDeTest();
-    const usuario = await prisma.usuario.findFirst({ select: { id: true } });
-    if (!usuario) {
-      throw new Error(
-        "hay DATABASE_URL pero `usuario` esta vacia: sin actor no se puede ejercer el registro de " +
-          "acciones que acompaña al cambio de flag. Esta suite necesita crear su usuario en el " +
-          "test (SL-31).",
-      );
-    }
-    actorUsuarioId = usuario.id;
+    soltarSuperadmin = await tomarLockDeSuperadmin();
   });
+
+  afterAll(async () => {
+    await soltarSuperadmin();
+    await prisma?.$disconnect();
+  });
+
+  /** Toma el superadmin del caso (el de la base o uno sembrado en `tx`) y deja su id y su nombre para las aserciones. */
+  async function sembrarActor(tx: Parameters<Parameters<PrismaClient["$transaction"]>[0]>[0]): Promise<void> {
+    const rolSuperadmin = await idDeRol(tx, "superadmin");
+    // El que ya tenga la base (no se toca) o uno sembrado en esta tx: aqui solo hace falta un actor.
+    const actor = await superadminDelCaso(tx, rolSuperadmin);
+    // Control positivo (R1104): la siembra llego a la base. LANZA, no `return`.
+    const sembrado = await tx.usuario.findUnique({
+      where: { id: actor.id },
+      select: { id: true, nombre: true, primerApellido: true },
+    });
+    if (sembrado === null) throw new Error("SLT-183: el superadmin sembrado (actor) no esta en la base");
+    actorUsuarioId = sembrado.id;
+  }
 
   async function conCorpus<T>(
     fn: (ctx: {
@@ -76,6 +94,7 @@ describeSiHayBase("374 — la cascada es reversible (Postgres real)", () => {
   ): Promise<T> {
     return enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      await sembrarActor(tx);
 
       const zona = (
         await tx.zona.create({ data: { sinpeNumero: "80000000", sinpeNombre: "Titular de Prueba", nombre: `Zona ${SUFIJO}` }, select: { id: true } })

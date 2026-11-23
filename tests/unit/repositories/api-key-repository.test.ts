@@ -131,10 +131,11 @@ describe("ApiKeyRepository.createConUsuario — usuario dedicado (R7/R8/R10/R12)
     expect(args.data.passwordHash).toBe(DATA.passwordHash); // R8: solo el hash
     expect(args.data.email).toBe(DATA.email); // R10
     expect(args.data.cedula).toBe(DATA.cedula); // R10
-    // [D4]: la cuenta no tiene telefono real ni zona; nunca fulfillment.
+    // [D4]: la cuenta no tiene telefono real ni zona; SLT-94 D13: siempre «se recoge en tienda».
     expect(args.data.telefono).toBe("");
     expect(args.data.zonaId).toBeNull();
-    expect(args.data.fulfillment).toBe(false);
+    expect(args.data.seRecogeEnTienda).toBe(true);
+    expect(args.data).not.toHaveProperty("fulfillment");
   });
 });
 

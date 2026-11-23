@@ -2,6 +2,7 @@ import type { IOrdenRepository } from "@/lib/interfaces/repositories/IOrdenRepos
 import type {
   RecepcionSateliteFiltro,
   RecepcionSateliteRow,
+  ResumenRecepcion,
 } from "@/lib/interfaces/repositories/IOrdenRepository";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { IOrdenHistorialService } from "@/lib/interfaces/services/IOrdenHistorialService";
@@ -31,6 +32,8 @@ import {
   salidaAReparto,
   terminoDeBusqueda,
 } from "@/lib/utils/filtros-listado-ordenes";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
+import { zonaDeLaEmpresa } from "@/lib/services/zona-de-la-empresa";
 
 // Estado de ORIGEN de la recepcion (feature 30) y destino tras recibir (esta
 // feature). Un solo estado de destino; el nombre de zona se deriva de orden.zonaId
@@ -59,6 +62,11 @@ const ESTADO_DEVUELTA = "novedad";
 // El caso (b) (`en_ruta_bodega_satelite`) NO entra en este bucket (R36): sigue en "Por recibir".
 const ESTADO_ASIGNADA = "mensajero_recogiendo_en_bodega";
 
+/** SLT-160 (R606): un termino de solo digitos es candidato a guia exacta. */
+const SOLO_DIGITOS = /^\d+$/;
+/** SLT-160: `orden.num_guia` es `int4`; mas alla no hay guia posible (como `OrdenService`). */
+const NUM_GUIA_MAX = 2_147_483_647;
+
 // Solo el rol autorizado en el modulo (R3/R17): el adminSatelite, SIEMPRE acotado
 // a su propia zona (R4/R12).
 const ROL_AUTORIZADO = "adminSatelite";
@@ -75,9 +83,13 @@ type RecepcionSateliteRepo = Pick<
   // los identificadores marcados, los dos con el MISMO criterio que la pagina.
   | "findRecepcionSateliteCompleta"
   | "findIdsVigentesEnBodega"
+  // SLT-160 (R606): si el termino de solo digitos es la guia de una orden del listado.
+  | "existeGuiaEnBodega"
   | "findByNumGuiaForTransicion"
   | "findEstatusIdByValue"
   | "recibirEnSatelite"
+  // SLT-167 (R710, R711): destinatario y tienda en la respuesta de la recepcion por guia.
+  | "resumenRecepcion"
 >;
 
 /**
@@ -98,7 +110,23 @@ export class RecepcionSateliteService implements IRecepcionSateliteService {
      * inyectarlo es lo que permite fijar ese rango en los tests sin congelar el reloj global.
      */
     private readonly ahora: () => Date = () => new Date(),
+    /**
+     * SLT-42 (R22): la zona del pais de la empresa, con la que se leen los filtros de fecha de
+     * creacion. Solo se consulta si el listado filtra por fecha.
+     */
+    private readonly reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">,
   ) {}
+
+  /**
+   * SLT-42 (R22, R28): la zona del pais de la empresa SOLO si el filtro trae un borde de fecha de
+   * creacion; sin el, `null` y no se consulta.
+   */
+  private async zonaSiFiltraPorCreacion(
+    input: ListarOrdenesBodegaCompletoInput,
+  ): Promise<string | null> {
+    if (!input.created_preset && !input.created_desde && !input.created_hasta) return null;
+    return zonaDeLaEmpresa(this.reglasPais, "RecepcionSateliteService");
+  }
 
   /**
    * Pedido humano (2026-08-19) — la entrada publica del listado traducida al criterio del
@@ -109,11 +137,13 @@ export class RecepcionSateliteService implements IRecepcionSateliteService {
    * veces, la descarga acabaria filtrando distinto que la pantalla sin que nada lo delatara
    * (R16). La zona NO es un parametro publico: llega aparte, siempre desde el actor.
    */
-  private filtroDeRepo(
+  private async filtroDeRepo(
     input: ListarOrdenesBodegaCompletoInput,
     zonaId: string,
-  ): RecepcionSateliteFiltro {
-    const creacion = rangoCreacion(input, this.ahora());
+    zona: string | null,
+  ): Promise<RecepcionSateliteFiltro> {
+    // SLT-42 (R22): en la zona del pais de la empresa; `null` = no hay filtro de fecha.
+    const creacion = zona === null ? undefined : rangoCreacion(input, this.ahora(), zona);
     const termino = input.q ? terminoDeBusqueda(input.q) : undefined;
     // FICHA 370: el criterio de «ya salio a reparto», traducido por el MISMO util que usa
     // `/ordenes`. Aqui esta el grueso del valor — 44 de las 48 ordenes «nuevas» medidas en
@@ -123,7 +153,7 @@ export class RecepcionSateliteService implements IRecepcionSateliteService {
     // Las claves ausentes se OMITEN en vez de viajar como `undefined`: lo que el repositorio
     // recibe es exactamente lo que se filtra, y un doble de test puede afirmarlo mirando las
     // claves. `zonaId` y `estatusValues` van siempre — son el alcance, no un filtro.
-    return {
+    const filtro: RecepcionSateliteFiltro = {
       zonaId,
       // FICHA 357: la lista blanca son ahora los DIECISEIS estados alcanzables por una orden que
       // paso por una bodega satelite, no los cinco de «lo que tengo en el estante» (R44). El
@@ -139,7 +169,35 @@ export class RecepcionSateliteService implements IRecepcionSateliteService {
       ...(termino ? { busqueda: termino.busqueda } : {}),
       ...(termino?.busquedaDigitos ? { busquedaDigitos: termino.busquedaDigitos } : {}),
       ...(salida ? { salioAReparto: salida } : {}),
+      // SLT-210 (R1403): el orden viaja solo si la entrada lo trae (pagina y descarga, que lo
+      // reciben del borde con sus defaults). La vigencia no lo pide: no cambia la pertenencia.
+      ...(input.sortBy || input.sortDir
+        ? { orden: { sortBy: input.sortBy ?? "created_at", sortDir: input.sortDir ?? "desc" } }
+        : {}),
     };
+    return this.conGuiaExacta(filtro, input.q);
+  }
+
+  /**
+   * SLT-160 «Buscar escaneando en los listados» (R606-R608, D3, DC1) — el criterio de `/ordenes`
+   * (feature 169, R10) en la satelite: si el termino son solo digitos y en ESTE listado (alcance
+   * y filtros puestos) hay una orden con esa guia, el filtro lleva la guia exacta y no `busqueda`
+   * (`1024` no trae `10245`); si no la hay, se queda la contencion de siempre. Una consulta por
+   * peticion, y como vive aqui la heredan la pagina, la descarga y la vigencia (R607).
+   */
+  private async conGuiaExacta(
+    filtro: RecepcionSateliteFiltro,
+    q: string | undefined,
+  ): Promise<RecepcionSateliteFiltro> {
+    const termino = q?.trim() ?? "";
+    if (!SOLO_DIGITOS.test(termino)) return filtro;
+    const guia = Number(termino);
+    if (!Number.isSafeInteger(guia) || guia <= 0 || guia > NUM_GUIA_MAX) return filtro;
+    // La guia SUSTITUYE a la contencion: las dos formas del termino salen del filtro exacto.
+    const exacto = { ...filtro, numGuia: guia };
+    delete exacto.busqueda;
+    delete exacto.busquedaDigitos;
+    return (await this.repo.existeGuiaEnBodega(exacto)) ? exacto : filtro;
   }
 
   async listar(actor: Actor): Promise<ListarRecepcionSateliteServiceResult> {
@@ -254,7 +312,7 @@ export class RecepcionSateliteService implements IRecepcionSateliteService {
     }
 
     const { items: rows, total } = await this.repo.findRecepcionSatelitePaginada(
-      this.filtroDeRepo(input, zonaId),
+      await this.filtroDeRepo(input, zonaId, await this.zonaSiFiltraPorCreacion(input)),
       rangoDePagina(input),
     );
 
@@ -321,7 +379,7 @@ export class RecepcionSateliteService implements IRecepcionSateliteService {
     // El MISMO criterio que la pagina, del mismo traductor: el archivo no puede filtrar
     // distinto que la pantalla (R16).
     const conjunto = await this.repo.findRecepcionSateliteCompleta(
-      this.filtroDeRepo(input, zonaId),
+      await this.filtroDeRepo(input, zonaId, await this.zonaSiFiltraPorCreacion(input)),
     );
 
     const limite = descargaConfig.MAX_FILAS;
@@ -372,7 +430,7 @@ export class RecepcionSateliteService implements IRecepcionSateliteService {
     if (zonaId === null) return { status: "ok", ids: [] };
 
     const ids = await this.repo.findIdsVigentesEnBodega(
-      this.filtroDeRepo(input, zonaId),
+      await this.filtroDeRepo(input, zonaId, await this.zonaSiFiltraPorCreacion(input)),
       input.ids,
     );
     return { status: "ok", ids };
@@ -393,7 +451,9 @@ export class RecepcionSateliteService implements IRecepcionSateliteService {
     // R12: orden de otra zona -> zona_ajena, sin efectos.
     if (row.zonaId !== zonaId) return { status: "zona_ajena" };
     // R14: ya recibida (misma zona) -> idempotente, sin escribir.
-    if (row.estatusValue === ESTADO_RECIBIDA) return { status: "ya_recibida" };
+    if (row.estatusValue === ESTADO_RECIBIDA) {
+      return { status: "ya_recibida", ...(await this.conResumen(ordenId)) };
+    }
     // R13: origen distinto de en_ruta_bodega_satelite -> estado_invalido, sin efectos.
     if (row.estatusValue !== ORIGEN_RECEPCION) {
       return { status: "estado_invalido", estado: row.estatusValue };
@@ -413,15 +473,29 @@ export class RecepcionSateliteService implements IRecepcionSateliteService {
       actorUsuarioId: actor.usuarioId,
       origenTipo: "recepcion_satelite",
     });
-    if (ok) return { status: "ok", ordenId, estado: ESTADO_RECIBIDA };
+    if (ok) return { status: "ok", ordenId, estado: ESTADO_RECIBIDA, ...(await this.conResumen(ordenId)) };
 
     // R18: race — otro escaneo la movio entre la lectura y la escritura. Re-lee y
     // decide: si ahora esta recibida -> ya_recibida (idempotente); si no -> conflict.
     const actual = await this.repo.findByNumGuiaForTransicion(numGuia);
     if (actual && actual.deletedAt === null && actual.estatusValue === ESTADO_RECIBIDA) {
-      return { status: "ya_recibida" };
+      return { status: "ya_recibida", ...(await this.conResumen(ordenId)) };
     }
     return { status: "conflict" };
+  }
+
+  /**
+   * SLT-167 (R710, R711, R715): el `resumen` de la orden ya recibida, solo tras todas las guardas
+   * (`zona_ajena` incluida). Si la lectura no da datos o falla, la respuesta sale sin `resumen`: la
+   * recepcion ya se hizo y un error haria reintentar algo hecho.
+   */
+  private async conResumen(ordenId: string): Promise<{ resumen?: ResumenRecepcion }> {
+    try {
+      const resumen = await this.repo.resumenRecepcion(ordenId);
+      return resumen ? { resumen } : {};
+    } catch {
+      return {};
+    }
   }
 
 }

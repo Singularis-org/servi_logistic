@@ -88,3 +88,40 @@ describe("SL-45 — derivarDeudaPlataforma con pagos (R13, R14)", () => {
     });
   });
 });
+
+// SLT-118 (design §5; R18) — las cuotas de las facturas cerradas llegan como el tipo `cuota` (la de R8 y
+// la primera cuota, ya sumadas por el repositorio) y suben la deuda como un cargo. Solo `reverso` resta.
+const cuota = (monto: string) => ({ tipo: "cuota" as const, monto });
+
+describe("SLT-118 — derivarDeudaPlataforma con cuotas (R18)", () => {
+  it("la cuota sube la deuda: cargos − reversos + cuotas − pagos", () => {
+    expect(derivarDeudaPlataforma([cargo("2100.00"), reverso("1000.00"), cuota("499.00")], "600.00")).toEqual({
+      deuda: "999.00",
+      estado: "debe",
+      importe: "999.00",
+    });
+  });
+
+  it("sin órdenes, la deuda es la cuota", () => {
+    expect(derivarDeudaPlataforma([cuota("1250.50")], "0.00")).toEqual({ deuda: "1250.50", estado: "debe", importe: "1250.50" });
+  });
+
+  it("pagar la cuota exacta deja la empresa al día (R19)", () => {
+    expect(derivarDeudaPlataforma([cargo("100.00"), cuota("500.00")], "600.00")).toEqual({
+      deuda: "0.00",
+      estado: "al_dia",
+      importe: "0.00",
+    });
+  });
+
+  it("la cuota conserva los céntimos donde un number ya no los guarda", () => {
+    expect(derivarDeudaPlataforma([cargo("1234567890123456.00"), cuota("0.78")], "0.01").deuda).toBe("1234567890123456.77");
+  });
+
+  it("el orden de las entradas no cambia la deuda", () => {
+    const a = derivarDeudaPlataforma([cuota("300.00"), reverso("50.00"), cargo("100.00")], "0.00");
+    const b = derivarDeudaPlataforma([cargo("100.00"), reverso("50.00"), cuota("300.00")], "0.00");
+    expect(a).toEqual(b);
+    expect(a.deuda).toBe("350.00");
+  });
+});

@@ -12,6 +12,7 @@ import type {
 import type { DimensionAnalitica } from "@/lib/analytics/types";
 import { cacheFalsa, cacheQueFallaAlInvalidar } from "./_cache-falsa";
 import { consultaDe, cubo, MAESTRO } from "./_fake-operativa";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // Feature 128 / T5.2 — R10, R11 y el enganche real del job diario.
 //
@@ -85,6 +86,7 @@ describe("R10 · tras la corrida del job diario, la consulta cacheada devuelve l
       () => new Date("2026-08-02T06:30:00.000Z"),
       LOGGER_MUDO,
       cache,
+      reglasPaisFijas(), // SLT-42: la zona del pais (CR)
     );
     await handler(JOB);
 
@@ -110,6 +112,7 @@ describe("R10 · tras la corrida del job diario, la consulta cacheada devuelve l
       () => new Date("2026-08-02T06:30:00.000Z"),
       LOGGER_MUDO,
       cache,
+      reglasPaisFijas(), // SLT-42: la zona del pais (CR)
     );
 
     await expect(handler(JOB)).rejects.toThrow("el agregado exploto");
@@ -124,6 +127,7 @@ describe("R10 · tras la corrida del job diario, la consulta cacheada devuelve l
       () => new Date("2026-08-02T06:30:00.000Z"),
       LOGGER_MUDO,
       cache,
+      reglasPaisFijas(), // SLT-42: la zona del pais (CR)
     );
     await handler(JOB);
     expect(cache.invalidaciones).toHaveLength(1);
@@ -141,6 +145,7 @@ describe("R11 · un invalidador que lanza hace fallar la corrida del job", () =>
       () => new Date("2026-08-02T06:30:00.000Z"),
       LOGGER_MUDO,
       cacheQueFallaAlInvalidar("revalidateTag exploto"),
+      reglasPaisFijas(), // SLT-42: la zona del pais (CR)
     );
 
     // Si alguien envolviera la invalidacion en un `try/catch` que la ignorase, el handler

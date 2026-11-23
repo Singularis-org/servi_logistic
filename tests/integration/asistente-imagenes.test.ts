@@ -15,6 +15,7 @@ import {
 import type { IAsistenteUsoRepository } from "@/lib/interfaces/repositories/IAsistenteUsoRepository";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import { DobleProveedor } from "../unit/asistente/_doble-proveedor";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 /**
  * ⭑ FICHA 436 · D12 y Q6 — IMÁGENES SÍ, AUDIO NO; UNA POR MENSAJE, HASTA 5 MB, Y CUENTA UNA.
@@ -62,6 +63,7 @@ async function llamar(cuerpo: unknown, uso = usoQueCuenta()) {
       usoRepo: uso.repo,
       leerCatalogo: leerCatalogoAyuda,
       maxConsultasDia: 30,
+      reglasPais: reglasPaisFijas(),
     }),
   });
   // El cuerpo se consume SIEMPRE —un stream sin leer deja el generador a medias— y se devuelve,

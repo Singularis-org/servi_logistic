@@ -78,6 +78,11 @@ function pais(id: string, nombre: string, extra: Partial<PaisDTO> = {}): PaisDTO
     digitosCodigoNivel1: null,
     digitosCodigoNivel2: null,
     digitosCodigoNivel3: null,
+    prefijoTelefonico: null,
+    telefonoDigitosNacionales: null,
+    zonaHoraria: null,
+    moneda: null,
+    impuestoNombre: null,
     ...extra,
   };
 }

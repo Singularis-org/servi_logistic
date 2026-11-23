@@ -549,6 +549,10 @@ describe.skipIf(!HAY_BASE_DE_DATOS)("381/B.6 (b)(c) — el ciclo up/down, medido
       "abono_tienda_anulado", // 457: `abono-tienda-457-migration.test.ts`
       "flete_devolucion_anulado", // 458-B: `20260928120000_wallet_458_enums`
       "iva_flete_devolucion_anulado",
+      "fulfillment", // SLT-94: `20261108120000_slt94_fulfillment_enums`
+      "iva_fulfillment",
+      "fulfillment_anulado",
+      "iva_fulfillment_anulado",
     ];
     const sinElNuevo = WALLET_TIENDA_MOVIMIENTO_CATEGORIA_SEED.filter(
       (c) => c !== VALOR_NUEVO && !POSTERIORES.includes(c),

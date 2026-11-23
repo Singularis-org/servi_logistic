@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import useSWR, { useSWRConfig } from "swr";
 
 import { Badge } from "@/components/ui/badge";
@@ -16,19 +17,27 @@ import {
 import {
   listarConsolidacionesSateliteAction,
 } from "@/lib/actions/conciliacion-satelites";
-import { CascadaDinero, type LineaCascada } from "@/app/(app)/cierres-admin/_components/CascadaDinero";
-import { PAGO_MENSAJERO_LABEL, TOTAL_GENERAL_LABEL } from "@/app/(app)/cierres-admin/_components/cierre-detalle-shared";
 import {
   CASCADA_CENTRAL_TITULO,
   GANA_BODEGA_SATELITE_LABEL,
   GANA_BODEGA_SATELITE_NOTA,
   GANA_BODEGA_SATELITE_NOTA_MODELO_NUEVO,
-  PARA_LA_CENTRAL_LABEL,
   PARA_LA_CENTRAL_NOTA,
   PARA_LA_CENTRAL_NOTA_MODELO_NUEVO,
 } from "@/app/(app)/cierres-admin/_components/cierre-labels";
+import { Cuenta } from "@/components/private/cierres/detalle/Cuenta";
+import {
+  cuentaConciliacion,
+  metodosVisibles,
+  type CuentaVista,
+} from "@/components/private/cierres/detalle/detalle-cierre-vista";
+import {
+  DEBE_LLEGAR_A_LA_CENTRAL_LABEL,
+  PAGO_A_MENSAJEROS_LABEL,
+  RECAUDADO_LABEL,
+} from "@/components/private/cierres/detalle/detalle-cierre-labels";
 import { cierreBodegaConfig } from "@/lib/config/cierre-bodega";
-import { METODO_LABEL } from "@/lib/constants/metodo-pago-label";
+import { hrefDetalleCierreBodega } from "@/lib/utils/cierre-enlace";
 import type { ConsolidacionSateliteDTO } from "@/lib/types/conciliacion-satelites";
 
 import {
@@ -45,8 +54,7 @@ import {
   DESGLOSE_SATELITE_VACIO,
   ESTADO_CONCILIACION_LABEL,
   ESTADO_CONCILIACION_VARIANT,
-  FALTA_POR_RECIBIR_LABEL,
-  MONTO_RECIBIDO_LABEL,
+  PESTANAS_ESTADO_CUENTA_BODEGA,
   SIN_DATO,
   diaCR,
   estadoConciliacionDe,
@@ -147,54 +155,93 @@ function conciliadoPorTexto(c: ConsolidacionSateliteDTO): string {
 }
 
 /**
- * SLT-73 (R9) — LA CUENTA DE UNA CONSOLIDACIÓN, de lo recaudado a lo que falta.
- *
- * Mismas líneas y mismos rótulos que la cascada «Lo que va a la central» de la 393 en
- * `/cierres-admin`, más lo recaudado por método arriba y lo recibido abajo: la satélite tiene que
- * poder leer qué parte es suya (pago a mensajeros y su ganancia) y por qué debe lo que debe. Todos
- * los importes llegan derivados del servidor; aquí sólo se eligen orden, signo y rótulo.
- * Sin marca no hay línea de recibido: «nadie lo contó» no es «llegaron cero».
+ * SLT-114 (R235) — «Lo que va a la central» de UNA consolidación, con las líneas y los rótulos del
+ * detalle único (D15, D20): los métodos que no valen cero (PA3), «Recaudado» como subtotal, lo que es de
+ * la satélite restando y «Debe llegar a la central» como total. Todos los importes, STRING del servidor;
+ * aquí solo se eligen orden, signo y rótulo.
  */
-function lineasCuentaConsolidacion(c: ConsolidacionSateliteDTO): LineaCascada[] {
+function cuentaCentralConsolidacion(c: ConsolidacionSateliteDTO): CuentaVista {
   const modeloNuevo = c.incluyeModeloNuevo === true;
-  const lineas: LineaCascada[] = [
-    { label: METODO_LABEL.efectivo, monto: c.totales.efectivo, signo: "neutro" },
-    { label: METODO_LABEL.SINPE, monto: c.totales.simpe, signo: "suma" },
-    { label: METODO_LABEL.transferencia, monto: c.totales.transferencia, signo: "suma" },
-    { label: TOTAL_GENERAL_LABEL, monto: c.totales.general, signo: "neutro", destacado: true },
-    { label: PAGO_MENSAJERO_LABEL, monto: c.pagoMensajero, signo: "resta" },
-    {
-      label: GANA_BODEGA_SATELITE_LABEL,
-      monto: c.gananciaSatelite,
-      signo: "resta",
-      notas: [modeloNuevo ? GANA_BODEGA_SATELITE_NOTA_MODELO_NUEVO : GANA_BODEGA_SATELITE_NOTA],
-    },
-    {
-      label: PARA_LA_CENTRAL_LABEL,
-      monto: c.paraLaCentral,
-      signo: "neutro",
-      destacado: true,
-      notas: [modeloNuevo ? PARA_LA_CENTRAL_NOTA_MODELO_NUEVO : PARA_LA_CENTRAL_NOTA],
-    },
-  ];
-  if (c.montoRecibido !== null) {
-    lineas.push({ label: MONTO_RECIBIDO_LABEL, monto: c.montoRecibido, signo: "resta" });
-  }
-  lineas.push({
-    label: FALTA_POR_RECIBIR_LABEL,
-    monto: c.faltaPorRecibir,
-    signo: "neutro",
-    destacado: true,
-  });
-  return lineas;
+  return {
+    titulo: CASCADA_CENTRAL_TITULO,
+    lineas: [
+      ...metodosVisibles(c.totales).map((m) => ({
+        label: m.label,
+        monto: m.monto,
+        signo: "neutro" as const,
+        tipo: "partida" as const,
+      })),
+      { label: RECAUDADO_LABEL, monto: c.totales.general, signo: "neutro", tipo: "subtotal" },
+      { label: PAGO_A_MENSAJEROS_LABEL, monto: c.pagoMensajero, signo: "resta", tipo: "partida" },
+      {
+        label: GANA_BODEGA_SATELITE_LABEL,
+        monto: c.gananciaSatelite,
+        signo: "resta",
+        tipo: "partida",
+        notas: [modeloNuevo ? GANA_BODEGA_SATELITE_NOTA_MODELO_NUEVO : GANA_BODEGA_SATELITE_NOTA],
+      },
+      {
+        label: DEBE_LLEGAR_A_LA_CENTRAL_LABEL,
+        monto: c.paraLaCentral,
+        signo: "neutro",
+        tipo: "total",
+        notas: [modeloNuevo ? PARA_LA_CENTRAL_NOTA_MODELO_NUEVO : PARA_LA_CENTRAL_NOTA],
+      },
+    ],
+  };
+}
+
+/**
+ * SLT-114 (R235-R237) — la fila desplegada: las dos cuentas en cascada, una al lado de la otra, y el
+ * enlace al detalle único del cierre de bodega al pie de «Conciliación». El id solo viaja en el `href`.
+ */
+function CuentasDeLaConsolidacion({ c }: Readonly<{ c: ConsolidacionSateliteDTO }>) {
+  const fecha = diaCR(c.solicitadoAt);
+  const central = cuentaCentralConsolidacion(c);
+  const conciliacion = cuentaConciliacion(c);
+  return (
+    <div className="grid gap-4 md:grid-cols-2">
+      <Cuenta
+        titulo={central.titulo}
+        lineas={central.lineas}
+        ariaLabel={CASCADA_CONSOLIDACION_NOMBRE.region(central.titulo, fecha)}
+      />
+      <Cuenta
+        titulo={conciliacion.titulo}
+        lineas={conciliacion.lineas}
+        ariaLabel={CASCADA_CONSOLIDACION_NOMBRE.region(conciliacion.titulo, fecha)}
+        pie={
+          <Link
+            href={hrefDetalleCierreBodega(c.cierreBodegaId)}
+            className="mt-auto text-sm text-primary-strong underline-offset-4 hover:underline"
+          >
+            {PESTANAS_ESTADO_CUENTA_BODEGA.verCierreBodega}
+          </Link>
+        }
+      />
+    </div>
+  );
+}
+
+/**
+ * SLT-114 (R233) — el `total` del listado «Sin conciliar» de la bodega, para el conteo de su pestaña.
+ * Misma clave y misma lectura que la página 1 de la conciliación: SWR las comparte, no hay lectura nueva.
+ * `null` mientras no llega o si falló (la pestaña dice entonces solo su rótulo).
+ */
+export function useTotalSinConciliar(zonaId: string): number | null {
+  const { data } = useSWR(claveConciliacionSatelite(zonaId, 1, "sin_conciliar"), () =>
+    leerDesglose(zonaId, 1, "sin_conciliar"),
+  );
+  return data?.total ?? null;
 }
 
 export interface ConciliacionSateliteProps {
   /** La bodega. El nombre baja por props (lo trae el estado de cuenta); el id solo viaja. */
   bodega: { zonaId: string; zonaNombre: string };
   /**
-   * «Pendiente de llegar» de ESTA bodega: el saldo actual de su estado de cuenta, STRING del servidor
-   * (la misma resta que el listado, R22). Aquí no se suma nada.
+   * El saldo actual del estado de cuenta de ESTA bodega, STRING del servidor (la misma resta que el
+   * listado, R22): es el importe del aviso cuando hay varias incompletas. SLT-114 (PA1): ya no se pinta
+   * como tarjeta «Pendiente de llegar»; esa cifra está en «Por entregar hoy».
    */
   pendiente: string;
   /**
@@ -253,9 +300,9 @@ export function ConciliacionSatelite({
     },
     {
       id: "paraLaCentral",
-      // SLT-73 (D3/R8): lo esperado es «Para la central» —todos los métodos menos lo que es de la
-      // satélite—, ya no el efectivo. El desglose vive en la cuenta desplegable de la fila.
-      value: PARA_LA_CENTRAL_LABEL,
+      // SLT-73 (D3/R8): lo esperado es `paraLaCentral` —todos los métodos menos lo que es de la
+      // satélite—, ya no el efectivo. SLT-114 (PA2): con el título corto del canvas.
+      value: DESGLOSE_SATELITE_COLUMNAS.debeLlegar,
       render: (c) => <span className="tabular-nums">{money(c.paraLaCentral)}</span>,
     },
     {
@@ -277,7 +324,7 @@ export function ConciliacionSatelite({
     },
     {
       id: "faltaPorRecibir",
-      value: FALTA_POR_RECIBIR_LABEL,
+      value: DESGLOSE_SATELITE_COLUMNAS.falta,
       // R8: la cifra del servidor, tal cual. Aquí no se resta.
       render: (c) => <span className="tabular-nums">{money(c.faltaPorRecibir)}</span>,
     },
@@ -328,43 +375,32 @@ export function ConciliacionSatelite({
       aria-label={DESGLOSE_SATELITE_NOMBRE.region(zonaNombre)}
       className="flex flex-col gap-4 rounded-lg bg-muted/40 p-4"
     >
-      <div className="flex flex-col gap-4 md:flex-row md:items-stretch">
-        {/* «Pendiente de llegar»: el saldo de ESTA bodega, cuadrado por el servidor. */}
-        <div className="flex flex-col gap-1 rounded-lg border border-border bg-card p-4 md:w-72">
-          <span className="text-sm text-muted-foreground">
-            {DESGLOSE_SATELITE.pendienteRotulo}
+      {/* SLT-114 (PA1): sin la tarjeta «Pendiente de llegar»; la cifra está en «Por entregar hoy». */}
+      {/*
+        Q7 — EL AVISO DE LA DIFERENCIA, explicado y no sólo señalado.
+        `role="status"` y no `alert`: es información que hay que ver, no una alarma — nadie ha
+        hecho nada mal, y teñir de rojo una conciliación parcial legítima la haría parecer un
+        error. Tokens semánticos de `DESIGN.md`, cero hex.
+      */}
+      {incompletas.length > 0 ? (
+        <div
+          role="status"
+          className="flex flex-col gap-1 rounded-lg border border-warning/40 bg-warning/10 px-4 py-3 text-sm text-warning-strong"
+        >
+          <span className="font-medium">
+            {DESGLOSE_SATELITE.diferenciaTitulo(incompletas.length)}
           </span>
-          <span className="text-2xl font-semibold tabular-nums text-foreground">
-            {money(pendiente)}
+          <span className="text-[13px] leading-relaxed">
+            {incompletas.length === 1
+              ? DESGLOSE_SATELITE.diferenciaDetalle(
+                  money(incompletas[0].paraLaCentral),
+                  money(incompletas[0].montoRecibido),
+                  money(incompletas[0].faltaPorRecibir),
+                )
+              : DESGLOSE_SATELITE.diferenciaDetalleVarias(money(pendiente))}
           </span>
         </div>
-
-        {/*
-          Q7 — EL AVISO DE LA DIFERENCIA, explicado y no sólo señalado.
-          `role="status"` y no `alert`: es información que hay que ver, no una alarma — nadie ha
-          hecho nada mal, y teñir de rojo una conciliación parcial legítima la haría parecer un
-          error. Tokens semánticos de `DESIGN.md`, cero hex.
-        */}
-        {incompletas.length > 0 ? (
-          <div
-            role="status"
-            className="flex flex-1 flex-col gap-1 rounded-lg border border-warning/40 bg-warning/10 px-4 py-3 text-sm text-warning-strong"
-          >
-            <span className="font-medium">
-              {DESGLOSE_SATELITE.diferenciaTitulo(incompletas.length)}
-            </span>
-            <span className="text-[13px] leading-relaxed">
-              {incompletas.length === 1
-                ? DESGLOSE_SATELITE.diferenciaDetalle(
-                    money(incompletas[0].paraLaCentral),
-                    money(incompletas[0].montoRecibido),
-                    money(incompletas[0].faltaPorRecibir),
-                  )
-                : DESGLOSE_SATELITE.diferenciaDetalleVarias(money(pendiente))}
-            </span>
-          </div>
-        ) : null}
-      </div>
+      ) : null}
 
       {/* El conmutador del desglose: la cola primero, la historia a un clic. */}
       <SegmentedToggle
@@ -386,17 +422,8 @@ export function ConciliacionSatelite({
           data={items}
           rowKey="cierreBodegaId"
           ariaLabel={DESGLOSE_SATELITE_NOMBRE.tabla(zonaNombre)}
-          // SLT-73 (R9): la cuenta entera de cada consolidación, desplegable por fila.
-          renderExpanded={(c) => (
-            <CascadaDinero
-              titulo={CASCADA_CENTRAL_TITULO}
-              ariaLabel={CASCADA_CONSOLIDACION_NOMBRE.region(
-                CASCADA_CENTRAL_TITULO,
-                diaCR(c.solicitadoAt),
-              )}
-              lineas={lineasCuentaConsolidacion(c)}
-            />
-          )}
+          // SLT-114 (R235-R237): dos cuentas en cascada por fila y el enlace al cierre de bodega.
+          renderExpanded={(c) => <CuentasDeLaConsolidacion c={c} />}
           expandAriaLabel={(c) => CASCADA_CONSOLIDACION_NOMBRE.expandir(diaCR(c.solicitadoAt))}
           isLoading={isLoading}
           /* El fallo se cuenta DENTRO de esta fila; la tabla de saldos sigue en pie. */

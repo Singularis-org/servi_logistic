@@ -4,6 +4,7 @@ import { consultarConteoProductos } from "@/lib/actions/conteo-productos";
 import type { ConsultaProductos } from "@/lib/analytics/productos-consulta";
 import type { ConteoProductosDTO } from "@/lib/types/conteo-productos";
 
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 // Ficha 345 / T5.3 — EL BORDE (R4, R9, R53).
 //
 // El servicio entra por `deps`, asi que aqui no hay base de datos ni runtime de Next. Lo que se
@@ -35,7 +36,7 @@ function deps(actor: unknown) {
   const service = { consultar: vi.fn(async (_consulta: ConsultaProductos) => DATOS) };
   const logger = { logError: vi.fn() };
   return {
-    deps: { service, logger, getActor: async () => actor as never, now: () => AHORA },
+    deps: { reglasPais: reglasPaisFijas(), service, logger, getActor: async () => actor as never, now: () => AHORA },
     service,
     logger,
   };

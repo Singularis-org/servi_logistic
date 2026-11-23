@@ -10,6 +10,7 @@ import {
   CAMPOS_PLANTILLA,
   CAMPOS_PLANTILLA_POR_CLAVE,
   DATOS_PLANTILLA_EJEMPLO,
+  necesitaZona,
   resolverValoresPlantilla,
   valorDeCampo,
 } from "@/lib/types/plantilla-datos";
@@ -111,7 +112,38 @@ describe("formato de cada tipo de dato", () => {
     const d = datosPlantillaFixture({
       orden: { asignadoAt: new Date("2026-08-26T02:30:00.000Z") },
     });
-    expect(valorDeCampo("fecha_asignacion", d)).toBe("25/08/2026 20:30");
+    expect(valorDeCampo("fecha_asignacion", d, "America/Costa_Rica")).toBe("25/08/2026 20:30");
+  });
+
+  // SLT-42 (R22): el mismo instante, en la zona del pais de la empresa que se pase.
+  it("SLT-42 R22: el `timestamp` se pinta en la zona del pais de la empresa (CR: el 25; Bogota: el 25 a las 21:30)", () => {
+    const d = datosPlantillaFixture({
+      orden: { asignadoAt: new Date("2026-08-26T02:30:00.000Z"), createdAt: new Date("2026-08-26T05:30:00.000Z") },
+    });
+    expect(valorDeCampo("fecha_asignacion", d, "America/Bogota")).toBe("25/08/2026 21:30");
+    expect(valorDeCampo("fecha_creacion", d, "America/Costa_Rica")).toBe("25/08/2026 23:30");
+    expect(valorDeCampo("fecha_creacion", d, "America/Bogota")).toBe("26/08/2026 00:30");
+    expect(resolverValoresPlantilla(["fecha_creacion"], d, "America/Bogota")).toEqual({ fecha_creacion: "26/08/2026 00:30" });
+  });
+
+  it("SLT-42 R22: con horario de verano, la hora de pared sigue al desfase del instante (Madrid)", () => {
+    const invierno = datosPlantillaFixture({ orden: { asignadoAt: new Date("2026-01-15T12:00:00.000Z") } });
+    const verano = datosPlantillaFixture({ orden: { asignadoAt: new Date("2026-07-15T12:00:00.000Z") } });
+    expect(valorDeCampo("fecha_asignacion", invierno, "Europe/Madrid")).toBe("15/01/2026 13:00");
+    expect(valorDeCampo("fecha_asignacion", verano, "Europe/Madrid")).toBe("15/07/2026 14:00");
+  });
+
+  it("SLT-42 R28: una fecha con hora sin zona lanza; sin instante no la necesita", () => {
+    const conFecha = datosPlantillaFixture({ orden: { asignadoAt: new Date("2026-08-26T02:30:00.000Z") } });
+    expect(() => valorDeCampo("fecha_asignacion", conFecha)).toThrow(/zona horaria/);
+    expect(valorDeCampo("fecha_asignacion", datosPlantillaFixture())).toBe("");
+  });
+
+  it("SLT-42: `necesitaZona` solo es true si alguna variable pinta una fecha con hora", () => {
+    expect(necesitaZona(["cliente", "guia", "fecha_reparto"])).toBe(false);
+    expect(necesitaZona(["cliente", "fecha_asignacion"])).toBe(true);
+    expect(necesitaZona(["fecha_creacion"])).toBe(true);
+    expect(necesitaZona(["clave_inexistente"])).toBe(false);
   });
 
   it("los booleanos se leen, no se imprimen como true/false", () => {
@@ -245,7 +277,7 @@ describe("alias del catalogo (R4/R5)", () => {
 // nace rojo se ALINEA el fixture o el `ejemplo` (design §4.1).
 describe("R12: los datos de ejemplo producen exactamente el `ejemplo` de cada entrada", () => {
   it.each(CAMPOS_PLANTILLA)("$clave resuelve exactamente a su `ejemplo`", (campo) => {
-    expect(valorDeCampo(campo.clave, DATOS_PLANTILLA_EJEMPLO)).toBe(campo.ejemplo);
+    expect(valorDeCampo(campo.clave, DATOS_PLANTILLA_EJEMPLO, "America/Costa_Rica")).toBe(campo.ejemplo);
   });
 
   // El fixture es CRUDO: entra por `leer()` y sale por `transform()`, el mismo par que el
@@ -268,7 +300,9 @@ describe("SL-15 R3 · las descripciones nombran a la empresa o a la plataforma, 
   it("la guia y la zona son de la empresa; el registro y el acceso, de la plataforma", () => {
     expect(descripcion("guia")).toBe("Número de guía de la empresa. Vacío mientras la orden no la tenga asignada.");
     expect(descripcion("zona")).toBe("Zona de reparto de la empresa a la que pertenece la dirección.");
-    expect(descripcion("fecha_creacion")).toBe("Cuándo se registró la orden en Servi Logistic, en hora de Costa Rica.");
+    // SLT-42 (decisión del humano tras T5.5): la descripción dice «hora local», no la de un país.
+    expect(descripcion("fecha_creacion")).toBe("Cuándo se registró la orden en Servi Logistic, en hora local.");
+    expect(descripcion("fecha_asignacion")).toBe("Cuándo se asignó por última vez el mensajero, en hora local.");
     expect(descripcion("mensajero_email")).toBe(
       "Correo con el que el mensajero entra a Servi Logistic. Es una credencial: no lo envíes.",
     );

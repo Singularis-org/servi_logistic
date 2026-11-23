@@ -9,11 +9,11 @@ import {
   HAY_BASE_DE_DATOS,
   crearPrismaDeTestConEspia,
   enTransaccionRevertida,
-  fksDeOrden,
   parametrosDe,
   serializarEscriturasReales,
   type EventoSqlDeTest,
 } from "./_postgres-real";
+import { crearFksDeOrden } from "./_fixtures/orden-minima";
 
 /**
  * ⭑⭑ FEATURE 262 (B28, R37/R38/R40) — LA LECTURA DEL RASTRO, CONTRA POSTGRES DE VERDAD.
@@ -61,29 +61,25 @@ describeSiHayBase("262/B28 — el rastro de una orden, leido de Postgres", () =>
     const espia = crearPrismaDeTestConEspia();
     prisma = espia.prisma;
     eventos = espia.eventos;
+  });
 
-    const fks = await fksDeOrden(prisma);
-    if (fks === null) {
-      throw new Error(
-        "hay DATABASE_URL pero la tabla `orden` esta vacia: sin FKs no se puede sembrar. Corre " +
-          "`pnpm run db:seed` (y las semillas de zonas) antes de esta suite.",
-      );
-    }
-    FKS = fks;
-    ACTOR = fks.tiendaId;
-
-    const actor = await prisma.usuario.findUnique({
-      where: { id: ACTOR },
+  /**
+   * SLT-179 — la tienda (que hace de actor) y la zona del caso nacen en SU transaccion: nada de leer
+   * la primera orden de la base. Control positivo: si la siembra no llega, el caso cae nombrandola.
+   */
+  async function sembrarFks(tx: PrismaClient): Promise<void> {
+    const fks = await crearFksDeOrden(tx);
+    const actor = await tx.usuario.findUnique({
+      where: { id: fks.tiendaId },
       select: { nombre: true },
     });
-    if (!actor) {
-      throw new Error(
-        `el usuario \`${ACTOR}\` (tienda de la orden semilla) no existe: sin actor no hay ` +
-          "`include` del nombre que comprobar.",
-      );
-    }
+    const zonas = await tx.zona.count({ where: { id: fks.zonaId } });
+    if (!actor) throw new Error("SLT-179: la tienda sembrada (actor) no esta en la base");
+    expect(zonas, "SLT-179: la zona sembrada no esta en la base").toBe(1);
+    FKS = fks;
+    ACTOR = fks.tiendaId;
     ACTOR_NOMBRE = actor.nombre;
-  });
+  }
 
   afterAll(async () => {
     await prisma?.$disconnect();
@@ -164,6 +160,7 @@ describeSiHayBase("262/B28 — el rastro de una orden, leido de Postgres", () =>
     return enTransaccionRevertida(prisma, async (tx) => {
       const cliente = tx as unknown as PrismaClient;
       await serializarEscriturasReales(cliente);
+      await sembrarFks(cliente);
       return fn(cliente);
     });
   }

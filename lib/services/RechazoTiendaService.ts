@@ -16,7 +16,9 @@ import type {
 import { derivarIngresoOrden } from "@/lib/utils/ingreso-empresa";
 import { clavePar, type ParTarifa } from "@/lib/utils/cascada-tarifa";
 
-import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
+import { fechaCalendario } from "@/lib/utils/calendario-zona";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
+import { zonaDeLaEmpresa } from "@/lib/services/zona-de-la-empresa";
 
 // Estado de ORIGEN elegible (la DEVOLUCION ANCLADA de la 239: confirmada en bodega, visible para la
 // tienda y con el reloj corriendo) y destino del rechazo. Valores de catalogo ya sembrados
@@ -93,11 +95,13 @@ export class RechazoTiendaService implements IRechazoTiendaService {
     /** FICHA 337 — da de alta el COBRO PENDIENTE dentro de la transaccion del rechazo. */
     private readonly cobroRepo: RechazoCobroRepo,
     /**
-     * Reloj INYECTABLE. Decide el `generado_el` del cobro (dia CALENDARIO de Costa Rica), que es
+     * Reloj INYECTABLE. Decide el `generado_el` del cobro (dia CALENDARIO del pais de la empresa), que es
      * la columna por la que ordena la cola. Un test no puede depender de un `new Date()` escondido
      * aqui dentro.
      */
     private readonly now: () => Date = () => new Date(),
+    /** SLT-42 (R22): la zona del pais de la empresa, con la que se fecha el `generado_el` del cobro. */
+    private readonly reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">,
   ) {}
 
   async rechazar(
@@ -151,7 +155,9 @@ export class RechazoTiendaService implements IRechazoTiendaService {
     //    Va aqui, fuera de la transaccion, a proposito: lo que congela el importe es COPIARLO, no
     //    el aislamiento, y meter dos lecturas mas dentro de una transaccion que escribe dinero solo
     //    alarga su bloqueo de fila. Lo que SI entra en la transaccion es la INSERCION (paso 5).
-    const cobro = await this.congelarCobro(ordenId);
+    // SLT-42 (R22, R28): la zona del pais de la empresa, leida una vez y ANTES de escribir nada.
+    const zona = await zonaDeLaEmpresa(this.reglasPais, "RechazoTiendaService.rechazar");
+    const cobro = await this.congelarCobro(ordenId, zona);
 
     // 5. 💰 Transicion atomica + gestion sintetica via el choke point de la 49 (R8-R16). La guarda
     //    por `estatus_id = devuelta` del repo hace la accion idempotente frente al doble envio y a
@@ -238,6 +244,7 @@ export class RechazoTiendaService implements IRechazoTiendaService {
    */
   private async congelarCobro(
     ordenId: string,
+    zona: string,
   ): Promise<Omit<CrearCobroRechazoTiendaInput, "gestionId"> | null> {
     const base = await this.ordenRepo.findBaseCobroDevolucion(ordenId);
     // La orden desaparecio entre el paso 1 y este (borrado logico). No se cobra, y el rechazo
@@ -287,9 +294,9 @@ export class RechazoTiendaService implements IRechazoTiendaService {
       // `tienda_flete_rechazo`, y esa es la traza. La base rechaza las dos a la vez (CHECK).
       tarifaId: tarifa?.modelo === "viejo" ? tarifa.tarifa.tarifaId : null,
       tarifaValorId: tarifa?.modelo === "nuevo" ? (tarifa.valores.tienda_flete_rechazo?.tarifaValorId ?? null) : null,
-      // Dia CALENDARIO de Costa Rica. NO `toISOString().slice(0,10)`: despues de las 18:00 CR eso
-      // devuelve el dia SIGUIENTE (el off-by-one que cerro la feature 166).
-      generadoEl: fechaCalendarioCR(this.now()),
+      // Dia CALENDARIO del pais de la empresa (SLT-42). NO `toISOString().slice(0,10)`: al oeste
+      // de UTC, por la noche eso devuelve el dia SIGUIENTE (el off-by-one que cerro la feature 166).
+      generadoEl: fechaCalendario(this.now(), zona),
     };
   }
 }

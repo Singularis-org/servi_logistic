@@ -35,6 +35,7 @@
  * SEGURIDAD: se niega a correr contra una base que no sea local (siembra 50 000 filas y
  * dropea/recrea un indice). `--forzar` lo salta, y hay que escribirlo a mano.
  */
+import { construirReglasPaisEmpresa } from "@/lib/services/ReglasPaisEmpresaService";
 import { PrismaClient, type Prisma } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import fs from "fs";
@@ -323,6 +324,9 @@ async function main(): Promise<void> {
         new OrdenDiaRepartoCambioRepository(cliente),
         new OrdenTraspasoRepository(cliente),
       ),
+      undefined, // el parametro opcional previo, con su valor por defecto
+      // SLT-42 (R22): la zona horaria del pais de la empresa.
+      construirReglasPaisEmpresa(cliente),
     );
     const actor: Actor = { usuarioId: "bench", rol: "maestro" };
 

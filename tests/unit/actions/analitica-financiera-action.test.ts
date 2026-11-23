@@ -9,6 +9,7 @@ import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { IAnaliticaFinancieraService } from "@/lib/interfaces/services/IAnaliticaFinancieraService";
 import { armarServicio, AHORA } from "../services/_dobles-analitica-financiera";
 
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 // Feature 127 / T E.1, E.2 y E.5 — EL BORDE: los tres pasos, el 400 contra el 403 y el error
 // con contexto.
 //
@@ -64,7 +65,7 @@ describe("E.1 / R11 · el forbidden se audita con una llamada explicita, antes d
     const respuesta = await consultarMetricaFinanciera(
       "egresos",
       { rango: "dia" },
-      deps({ getActor: async () => TIENDA, logger, service: servicio }),
+      deps({ reglasPais: reglasPaisFijas(), getActor: async () => TIENDA, logger, service: servicio }),
     );
 
     expect(respuesta).toEqual({ status: "forbidden", code: "FORBIDDEN" });
@@ -79,7 +80,7 @@ describe("E.1 / R11 · el forbidden se audita con una llamada explicita, antes d
     await consultarMetricaFinanciera(
       "egresos",
       { rango: "dia", tienda_id: ["t-propia"] },
-      deps({ getActor: async () => TIENDA, logger, service: armarServicio().servicio }),
+      deps({ reglasPais: reglasPaisFijas(), getActor: async () => TIENDA, logger, service: armarServicio().servicio }),
     );
 
     expect(logError.mock.calls[0][0]).toEqual({
@@ -107,7 +108,7 @@ describe("E.1 / R11 · el forbidden se audita con una llamada explicita, antes d
       consultarMetricaFinanciera(
         "egresos",
         { rango: "dia" },
-        deps({ getActor: async () => TIENDA, logger, service: armarServicio().servicio }),
+        deps({ reglasPais: reglasPaisFijas(), getActor: async () => TIENDA, logger, service: armarServicio().servicio }),
       ),
     ).rejects.toThrow("el canal de auditoria esta caido");
   });
@@ -119,7 +120,7 @@ describe("E.1 / R11 · el forbidden se audita con una llamada explicita, antes d
     const respuesta = await consultarMetricaFinanciera(
       "ingreso_flete",
       { rango: "dia" },
-      deps({ getActor: async () => null, logger, service: servicio }),
+      deps({ reglasPais: reglasPaisFijas(), getActor: async () => null, logger, service: servicio }),
     );
 
     expect(respuesta.status).toBe("forbidden");
@@ -134,7 +135,7 @@ describe("E.1 / R11 · el forbidden se audita con una llamada explicita, antes d
     const respuesta = await consultarMetricaFinanciera(
       "ingreso_flete",
       { rango: "dia" },
-      deps({ getActor: async () => MAESTRO, logger, service: servicio }),
+      deps({ reglasPais: reglasPaisFijas(), getActor: async () => MAESTRO, logger, service: servicio }),
     );
 
     expect(respuesta.status).toBe("ok");
@@ -180,7 +181,7 @@ describe("E.2 / R13 · una entrada malformada responde 400 y no deja rastro de d
     const respuesta = await consultarMetricaFinanciera(
       "ingreso_flete",
       { rango: "no_valido" },
-      deps({ getActor: async () => MAESTRO, logger, service: armarServicio(DATOS).servicio }),
+      deps({ reglasPais: reglasPaisFijas(), getActor: async () => MAESTRO, logger, service: armarServicio(DATOS).servicio }),
     );
 
     expect(respuesta.status).toBe("validation_error");
@@ -197,7 +198,7 @@ describe("E.2 / R13 · una entrada malformada responde 400 y no deja rastro de d
     await consultarMetricaFinanciera(
       "ingreso_flete",
       { rango: "no_valido" },
-      deps({ getActor: async () => MAESTRO, logger, service: servicio }),
+      deps({ reglasPais: reglasPaisFijas(), getActor: async () => MAESTRO, logger, service: servicio }),
     );
 
     expect(logError).not.toHaveBeenCalled();
@@ -213,7 +214,7 @@ describe("E.2 / R13 · una entrada malformada responde 400 y no deja rastro de d
     const respuesta = await consultarMetricaFinanciera(
       "egresos",
       { rango: "personalizado", desde: "2026-8-1", hasta: "2026-08-02" },
-      deps({ getActor: async () => TIENDA, logger, service: armarServicio().servicio }),
+      deps({ reglasPais: reglasPaisFijas(), getActor: async () => TIENDA, logger, service: armarServicio().servicio }),
     );
 
     expect(respuesta.status).toBe("validation_error");
@@ -226,7 +227,7 @@ describe("E.2 / R13 · una entrada malformada responde 400 y no deja rastro de d
     const respuesta = await consultarMetricaFinanciera(
       "ingreso_flete",
       { rango: "dia", rol: "maestro" },
-      deps({ getActor: async () => TIENDA, logger, service: armarServicio().servicio }),
+      deps({ reglasPais: reglasPaisFijas(), getActor: async () => TIENDA, logger, service: armarServicio().servicio }),
     );
 
     expect(respuesta.status).toBe("validation_error");
@@ -246,7 +247,7 @@ describe("R5 · una metrica que existe pero no es financiera no se sirve con cer
     const respuesta = await consultarMetricaFinanciera(
       "entregas",
       { rango: "dia" },
-      deps({ getActor: async () => MAESTRO, logger, service: servicio }),
+      deps({ reglasPais: reglasPaisFijas(), getActor: async () => MAESTRO, logger, service: servicio }),
     );
 
     expect(respuesta.status).toBe("error");
@@ -283,7 +284,7 @@ describe("E.5 / R32 · el fallo del repositorio sube con contexto y sin PII", ()
     const respuesta = await consultarMetricaFinanciera(
       "cuenta_por_pagar_tienda",
       { rango: "personalizado", desde: "2026-07-01", hasta: "2026-07-31" },
-      deps({ getActor: async () => MAESTRO, logger, service: servicioQueRevienta() }),
+      deps({ reglasPais: reglasPaisFijas(), getActor: async () => MAESTRO, logger, service: servicioQueRevienta() }),
     );
 
     expect(respuesta.status).toBe("error");
@@ -299,7 +300,7 @@ describe("E.5 / R32 · el fallo del repositorio sube con contexto y sin PII", ()
     const respuesta = await consultarMetricaFinanciera(
       "cuenta_por_pagar_tienda",
       { rango: "dia" },
-      deps({ getActor: async () => MAESTRO, logger, service: servicioQueRevienta() }),
+      deps({ reglasPais: reglasPaisFijas(), getActor: async () => MAESTRO, logger, service: servicioQueRevienta() }),
     );
 
     const serializada = JSON.stringify(respuesta);
@@ -319,7 +320,7 @@ describe("E.5 / R32 · el fallo del repositorio sube con contexto y sin PII", ()
     await consultarMetricaFinanciera(
       "egresos",
       { rango: "dia" },
-      deps({ getActor: async () => MAESTRO, logger, service: servicioQueRevienta() }),
+      deps({ reglasPais: reglasPaisFijas(), getActor: async () => MAESTRO, logger, service: servicioQueRevienta() }),
     );
 
     expect(logError).toHaveBeenCalledTimes(1);
@@ -332,7 +333,7 @@ describe("E.5 / R32 · el fallo del repositorio sube con contexto y sin PII", ()
     const respuesta = await consultarMetricaFinanciera(
       "ingreso_iva",
       { rango: "dia" },
-      deps({ getActor: async () => MAESTRO, logger, service: servicioQueRevienta() }),
+      deps({ reglasPais: reglasPaisFijas(), getActor: async () => MAESTRO, logger, service: servicioQueRevienta() }),
     );
 
     expect(respuesta.status).not.toBe("ok");

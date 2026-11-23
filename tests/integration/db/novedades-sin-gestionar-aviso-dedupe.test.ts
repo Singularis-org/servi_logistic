@@ -7,10 +7,10 @@ import {
   HAY_BASE_DE_DATOS,
   crearPrismaDeTest,
   enTransaccionRevertida,
-  fksDeOrden,
   serializarEscriturasReales,
   type TxDeTest,
 } from "./_postgres-real";
+import { crearUsuarioDePrueba } from "./_fixtures/orden-minima";
 
 // FICHA 409 (T5.5, R41/R42) — LA DEDUPE DEL AVISO DE NOVEDADES, CONTRA POSTGRES DE VERDAD.
 //
@@ -51,6 +51,18 @@ async function crearTienda(tx: TxDeTest, modeloUsuarioId: string): Promise<strin
     modeloUsuarioId,
   );
   return id;
+}
+
+/**
+ * SLT-179 — el usuario MODELO del que `crearTienda` clona la identidad, sembrado en la tx del caso
+ * (antes se leia la tienda de «la primera orden» de la base). Control positivo: si la siembra no
+ * llega, el caso cae nombrando la fila; un `return` temprano lo reportaria `passed`.
+ */
+async function sembrarModelo(tx: TxDeTest): Promise<string> {
+  const modelo = await crearUsuarioDePrueba(tx, "adminTienda");
+  const filas = await tx.usuario.count({ where: { id: modelo.id } });
+  expect(filas, "SLT-179: el usuario modelo sembrado no esta en la base").toBe(1);
+  return modelo.id;
 }
 
 /** Las filas del aviso de esta ficha para una tienda, con su entidad. */
@@ -105,14 +117,10 @@ describeSiHayBase("409/R41 — un aviso por tienda y por DÍA calendario de Cost
   });
 
   it("⭑ dos corridas el MISMO día dejan UNA fila; el día siguiente, DOS", async () => {
-    const fks = await fksDeOrden(prisma);
-    // ⚠️ FALLA RUIDOSAMENTE si la base está vacía: sin un usuario del que clonar la identidad, el
-    // caso no se puede medir y un `return` temprano lo reportaría `passed` sin comprobar nada.
-    expect(fks, "la tabla `orden` está vacía: el caso no se puede medir").not.toBeNull();
-
     const r = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
-      const tienda = await crearTienda(tx, fks!.tiendaId);
+      const modelo = await sembrarModelo(tx);
+      const tienda = await crearTienda(tx, modelo);
       const repo = new NotificacionRepository(tx);
 
       const primera = await emitirNovedadesSinGestionar(
@@ -146,12 +154,10 @@ describeSiHayBase("409/R41 — un aviso por tienda y por DÍA calendario de Cost
     // Se reproduce la mutación a pelo contra el motor: la misma entidad para los dos días. La
     // segunda fila choca con `notificacion_dedupe_key` — y como `crear` absorbe el `P2002`, en
     // producción eso sería SILENCIO TOTAL: el aviso del día 2 no saldría nunca.
-    const fks = await fksDeOrden(prisma);
-    expect(fks).not.toBeNull();
-
     const r = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
-      const tienda = await crearTienda(tx, fks!.tiendaId);
+      const modelo = await sembrarModelo(tx);
+      const tienda = await crearTienda(tx, modelo);
       const repo = new NotificacionRepository(tx);
       const entidadFija = `orden-${randomUUID()}`; // la entidad que NO cambia entre días
 
@@ -167,7 +173,8 @@ describeSiHayBase("409/R41 — un aviso por tienda y por DÍA calendario de Cost
       // Marcar la primera como LEÍDA para que la guardia previa de `emitirFilas` no intervenga y
       // quede al descubierto lo que hace el ÍNDICE.
       const usuarios = await tx.$queryRawUnsafe<{ id: string }[]>(
-        `SELECT "id" FROM "usuario" LIMIT 1`,
+        `SELECT "id" FROM "usuario" WHERE "id" = $1`,
+        modelo,
       );
       expect(usuarios.length, "no hay ningún usuario en la base").toBe(1);
       const creada = await tx.$queryRawUnsafe<{ id: string }[]>(
@@ -210,13 +217,11 @@ describeSiHayBase("409/R42 — CADA tienda recibe SU aviso el mismo día", () =>
   });
 
   it("⭑ dos tiendas con novedades el mismo día -> DOS filas, una para cada una", async () => {
-    const fks = await fksDeOrden(prisma);
-    expect(fks, "la tabla `orden` está vacía: el caso no se puede medir").not.toBeNull();
-
     const r = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
-      const tiendaA = await crearTienda(tx, fks!.tiendaId);
-      const tiendaB = await crearTienda(tx, fks!.tiendaId);
+      const modelo = await sembrarModelo(tx);
+      const tiendaA = await crearTienda(tx, modelo);
+      const tiendaB = await crearTienda(tx, modelo);
       const repo = new NotificacionRepository(tx);
 
       const a = await emitirNovedadesSinGestionar(
@@ -249,13 +254,11 @@ describeSiHayBase("409/R42 — CADA tienda recibe SU aviso el mismo día", () =>
     // La mutación, reproducida a pelo contra el índice REAL. Las dos filas comparten
     // ('novedades_sin_gestionar', '<día>', 'adminTienda', NULL) porque `tienda_id` NO está en la
     // clave: la segunda se descarta y NADIE se entera.
-    const fks = await fksDeOrden(prisma);
-    expect(fks).not.toBeNull();
-
     const r = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
-      const tiendaA = await crearTienda(tx, fks!.tiendaId);
-      const tiendaB = await crearTienda(tx, fks!.tiendaId);
+      const modelo = await sembrarModelo(tx);
+      const tiendaA = await crearTienda(tx, modelo);
+      const tiendaB = await crearTienda(tx, modelo);
       const repo = new NotificacionRepository(tx);
 
       const fila = (tiendaId: string) => ({
@@ -281,13 +284,11 @@ describeSiHayBase("409/R42 — CADA tienda recibe SU aviso el mismo día", () =>
   it("⭑ CONTROL sobre el motor: con el `tiendaId` dentro, las dos filas conviven", async () => {
     // El control positivo del caso anterior: si el `INSERT` fallara por cualquier otra cosa, aquel
     // test estaría verde midiendo su propio ruido.
-    const fks = await fksDeOrden(prisma);
-    expect(fks).not.toBeNull();
-
     const r = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
-      const tiendaA = await crearTienda(tx, fks!.tiendaId);
-      const tiendaB = await crearTienda(tx, fks!.tiendaId);
+      const modelo = await sembrarModelo(tx);
+      const tiendaA = await crearTienda(tx, modelo);
+      const tiendaB = await crearTienda(tx, modelo);
       const repo = new NotificacionRepository(tx);
 
       const fila = (tiendaId: string) => ({

@@ -112,6 +112,11 @@ export const CLASIFICACION_FK_USUARIO: Record<string, ClasificacionFk> = {
     categoria: "bloquea",
     motivo: `Deriva de ordenes suyas rechazadas. ${VIA_ORDEN}`,
   },
+  // SLT-94: FK RESTRICT; la tienda va congelada en el cobro de fulfillment (R21/R31).
+  "OrdenFulfillmentMovimiento.tienda": {
+    categoria: "bloquea",
+    motivo: `Deriva de ordenes suyas: el cobro de fulfillment lo escribe el trigger al crearlas. ${VIA_ORDEN}`,
+  },
   "Notificacion.tienda": {
     categoria: "bloquea",
     motivo:
@@ -225,6 +230,12 @@ export const CLASIFICACION_FK_USUARIO: Record<string, ClasificacionFk> = {
   "CobroTiendaAnulacion.anulador": { categoria: "no_alcanzable", motivo: SOLO_OPERADOR },
   // Ficha 461 (R69): quien anulo una correccion de caja. Solo el acceso total anula.
   "AjusteCajaAnulacion.anulador": { categoria: "no_alcanzable", motivo: SOLO_OPERADOR },
+  // SLT-60 (2026-11-13): quien confirmo un pago a la plataforma. Solo el superadmin confirma
+  // (`esPlataforma`), con sesion; la cuenta dedicada de una key no llega a esa accion. FK `Restrict`.
+  "PagoPlataformaConfirmacion.confirmador": { categoria: "no_alcanzable", motivo: SOLO_OPERADOR },
+  // SLT-143 (2026-11-19): quien anulo un pago confirmado. Solo el superadmin anula (`esPlataforma`), con
+  // sesion, y solo la escribe una funcion del duenio; la cuenta dedicada de una key no llega. FK `Restrict`.
+  "PagoPlataformaAnulacion.anulador": { categoria: "no_alcanzable", motivo: SOLO_OPERADOR },
   "AporteCapital.registrador": { categoria: "no_alcanzable", motivo: SOLO_OPERADOR },
   "AporteCapitalAnulacion.anulador": { categoria: "no_alcanzable", motivo: SOLO_OPERADOR },
   // ⭑ FICHA 457 — el pago de una tienda a la empresa. La tienda la valida `AbonoTiendaService` (R10):
@@ -332,6 +343,18 @@ export const CLASIFICACION_FK_USUARIO: Record<string, ClasificacionFk> = {
       "migracion copia de `push_suscripcion`, que es inalcanzable por lo mismo, asi que tampoco " +
       `puede crearla. ${SOLO_OPERADOR}`,
   },
+  // ── SLT-221 (2026-11-19): el cambio de correo pendiente ────────────────────────────────────────
+  "UsuarioCambioCorreo.usuario": {
+    categoria: "no_alcanzable",
+    motivo:
+      "R1613: `UsuarioService.solicitarCambioCorreo` rechaza con `validation_error` el cambio de " +
+      "correo de una cuenta de rol `apiKey` ANTES de crear el pendiente (no hay persona que lo " +
+      "confirme); lo prueba `usuario-service-cambio-correo.test.ts`.",
+  },
+  "UsuarioCambioCorreo.solicitadoPor": {
+    categoria: "no_alcanzable",
+    motivo: `Pedir un cambio de correo es solo del maestro (SLT-221 R1631): ${SOLO_OPERADOR}`,
+  },
   // ── FICHA 436 (2026-09-17): el contador del asistente de ayuda ────────────────────────────────
   // CASCADE, mismo criterio que sus tres vecinas de arriba: un CONTADOR no es evidencia. Y es
   // INALCANZABLE, pero por un motivo MAS FUERTE que el de aquellas: aqui no es que el camino sea
@@ -390,5 +413,28 @@ export const CLASIFICACION_FK_USUARIO: Record<string, ClasificacionFk> = {
     motivo:
       "Las entregas se crean para los destinatarios RESUELTOS (solo roles de `ROLES_DESTINATARIO`, " +
       "R28) o para el maestro que prueba (R39). Ninguna via produce una entrega a una cuenta `apiKey`.",
+  },
+  // ── SLT-87 (2026-11-09): los reportes de problema del botón flotante ──────────────────────────
+  // CASCADE: la tabla es de plataforma y no debe bloquear el borrado de una cuenta (design §2.1).
+  "BugReport.reporter": {
+    categoria: "no_alcanzable",
+    motivo:
+      "La UNICA escritura es `enviarReporteBugAction` (`lib/actions/reporte-bug.ts`), que fija al " +
+      "dueno con `resolveActorFromSession` antes de validar nada: no hay ruta de API, ni webhook, ni " +
+      "cron que cree un reporte, y el `usuarioId` NO existe en la entrada (el schema es `.strict()`, " +
+      "asi que inyectarlo es `validation_error`). El boton vive en el layout del portal, un gesto de " +
+      "PANTALLA, y la cuenta dedicada no entra por el formulario de login: su contrasena es aleatoria " +
+      "y no se le revela a nadie.",
+  },
+  // ── SLT-98 (2026-11-10): el tope diario de imágenes del reporte (design §16.2) ─────────────────
+  // CASCADE: el cupo es un contador efímero del usuario; no debe bloquear el borrado de una cuenta.
+  "BugReportUploadQuota.user": {
+    categoria: "no_alcanzable",
+    motivo:
+      "La UNICA escritura es `ReporteBugService.prepararSubidas` (consumir) y su devolucion, que se " +
+      "llega solo por `prepararSubidaImagenesReporteAction` (`lib/actions/reporte-bug.ts`) con el " +
+      "`usuarioId` del actor de la SESION: no hay ruta de API, ni webhook, ni cron que toque el cupo. " +
+      "Mismo gesto de PANTALLA que `BugReport.reporter`, y la cuenta dedicada no entra por el " +
+      "formulario de login: su contrasena es aleatoria y no se le revela a nadie.",
   },
 };

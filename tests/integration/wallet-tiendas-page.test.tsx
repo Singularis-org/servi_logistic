@@ -66,6 +66,17 @@ import {
   listarSaldosTiendasPaginadoAction,
 } from "@/lib/actions/wallet-tienda";
 
+// SLT-42 (T5.4): la zona del pais de la empresa es la de CR, como antes. Las reglas reales leen el pais
+// de la empresa en curso con el cliente global, que no ve la empresa de una transaccion revertida ni
+// tiene empresa fuera de `conEmpresa`; la zona por pais la miden `hora-por-pais-wallet` y `demo-qa`.
+vi.mock("@/lib/services/ReglasPaisEmpresaService", async (importOriginal) => {
+  const { reglasPaisFijas } = await import("@/tests/fabricas/reglas-pais");
+  return {
+    ...(await importOriginal<typeof import("@/lib/services/ReglasPaisEmpresaService")>()),
+    construirReglasPaisEmpresa: () => reglasPaisFijas(),
+  };
+});
+
 const resolveActorMock = vi.mocked(resolveActorFromSession);
 const saldosMock = vi.mocked(listarSaldosTiendasPaginadoAction);
 const desgloseMock = vi.mocked(listarMovimientosDeTiendaAction);

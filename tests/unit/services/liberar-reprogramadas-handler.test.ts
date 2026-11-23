@@ -2,9 +2,10 @@ import { describe, it, expect, vi } from "vitest";
 import {
   crearLiberarReprogramadasHandler,
   recurrenciaLiberarReprogramadas,
-  proximaCorridaLiberarCR,
+  proximaCorridaLiberar,
   dedupeKeyLiberar,
 } from "@/lib/services/jobs/liberar-reprogramadas-handler";
+import { reglasPaisFijas, ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 import { startOfDayCR } from "@/lib/utils/fecha-cr";
 import type { ILiberacionReprogramadaService } from "@/lib/interfaces/services/ILiberacionReprogramadaService";
 import type { JobDTO } from "@/lib/interfaces/repositories/IJobRepository";
@@ -43,7 +44,7 @@ describe("crearLiberarReprogramadasHandler (R22)", () => {
         throw new Error("el handler del reloj no libera por correccion (371)");
       }),
     };
-    const handler = crearLiberarReprogramadasHandler(service, () => now);
+    const handler = crearLiberarReprogramadasHandler(service, () => now, reglasPaisFijas());
 
     await handler(job);
 
@@ -52,20 +53,20 @@ describe("crearLiberarReprogramadasHandler (R22)", () => {
   });
 });
 
-describe("proximaCorridaLiberarCR — preserva 00:00 CR = 06:00 UTC (gate F1.4-1)", () => {
+describe("proximaCorridaLiberar (zona CR) — preserva 00:00 CR = 06:00 UTC (gate F1.4-1)", () => {
   it("desde el 19 CR agenda el 20 a las 06:00 UTC (00:00 CR del 20)", () => {
     // 2026-07-19T18:00Z = 12:00 CR del 19 -> proxima = 2026-07-20T06:00Z
-    const next = proximaCorridaLiberarCR(new Date("2026-07-19T18:00:00.000Z"));
+    const next = proximaCorridaLiberar(new Date("2026-07-19T18:00:00.000Z"), [ZONA_DE_CR]).runAfter;
     expect(next.toISOString()).toBe("2026-07-20T06:00:00.000Z");
   });
 
   it("justo tras 00:00 CR (06:00 UTC) del 19 -> proxima es el 20 (no re-agenda hoy)", () => {
-    const next = proximaCorridaLiberarCR(new Date("2026-07-19T06:00:00.000Z"));
+    const next = proximaCorridaLiberar(new Date("2026-07-19T06:00:00.000Z"), [ZONA_DE_CR]).runAfter;
     expect(next.toISOString()).toBe("2026-07-20T06:00:00.000Z");
   });
 
   it("cruce de fin de mes: 31 jul CR -> 1 ago 06:00 UTC", () => {
-    const next = proximaCorridaLiberarCR(new Date("2026-07-31T18:00:00.000Z"));
+    const next = proximaCorridaLiberar(new Date("2026-07-31T18:00:00.000Z"), [ZONA_DE_CR]).runAfter;
     expect(next.toISOString()).toBe("2026-08-01T06:00:00.000Z");
   });
 });
@@ -73,10 +74,11 @@ describe("proximaCorridaLiberarCR — preserva 00:00 CR = 06:00 UTC (gate F1.4-1
 describe("recurrenciaLiberarReprogramadas.siguiente (R23)", () => {
   it("dedupe_key es de la fecha CALENDARIO CR de la proxima corrida", () => {
     const now = new Date("2026-07-19T18:00:00.000Z");
-    const { runAfter, dedupeKey } = recurrenciaLiberarReprogramadas.siguiente(now);
+    const { runAfter, dedupeKey } = recurrenciaLiberarReprogramadas.siguiente(now, [ZONA_DE_CR]);
     expect(runAfter.toISOString()).toBe("2026-07-20T06:00:00.000Z");
-    expect(dedupeKey).toBe("liberar_reprogramadas:2026-07-20");
+    // SLT-42 (design §6.1): la clave lleva tambien la zona de la corrida.
+    expect(dedupeKey).toBe("liberar_reprogramadas:America/Costa_Rica:2026-07-20");
     // coherencia con el helper de clave
-    expect(dedupeKey).toBe(dedupeKeyLiberar(runAfter));
+    expect(dedupeKey).toBe(dedupeKeyLiberar(runAfter, ZONA_DE_CR));
   });
 });

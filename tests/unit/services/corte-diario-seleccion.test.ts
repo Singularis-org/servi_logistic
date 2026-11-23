@@ -11,6 +11,7 @@ import type {
 import type { IOrdenRepository } from "@/lib/interfaces/repositories/IOrdenRepository";
 import type { IZonaRepository } from "@/lib/interfaces/repositories/IZonaRepository";
 import type { ITarifaZonaMensajeroRepository } from "@/lib/interfaces/repositories/ITarifaZonaMensajeroRepository";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // =================================================================================================
 // FEATURE 235 (R26) — EL CORTE DE LA NOCHE, MEDIDO DESDE `ejecutarCorte` Y CON EL REPOSITORIO REAL.
@@ -151,6 +152,8 @@ function build(filas: FilaOrden[]) {
     ordenRepo,
     tarifaZonaRepo,
     { warn: vi.fn() },
+    undefined,
+    reglasPaisFijas(),
   );
   return { service, crearCierre, prisma };
 }

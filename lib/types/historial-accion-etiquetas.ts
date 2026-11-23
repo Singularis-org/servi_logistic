@@ -1,4 +1,4 @@
-import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
+import { fechaCalendario } from "@/lib/utils/calendario-zona";
 
 import type { HistorialAccionEntidad } from "@/lib/types/historial-accion";
 
@@ -26,13 +26,18 @@ import type { HistorialAccionEntidad } from "@/lib/types/historial-accion";
 export const ETIQUETA_MAX_CHARS = 120;
 
 /**
- * FICHA 375 — anchura de `valor_anterior` / `valor_nuevo` (`VarChar(60)`).
+ * FICHA 375 — el tope de `valorDeCatalogo`, y SOLO de el. Nacio como la anchura de `valor_anterior`
+ * / `valor_nuevo` (`VarChar(60)`); desde SLT-221 (R1608) las columnas son `VarChar(254)` y este 60
+ * ya no es la columna: es el recorte de los valores de CATALOGO, que no se cambia para no mover lo
+ * que ya se registraba.
  *
- * ⚠️ POSTGRES NO TRUNCA: un valor mas largo ABORTA la sentencia, y con ella la transaccion entera
- * de la accion. Por eso quien escriba ahi algo que pueda pasarse tiene que recortarlo EN LA FUENTE,
- * exactamente como `appendAccion` recorta `entidad_etiqueta` a 120. Los cinco tipos que nacieron
- * usando estas columnas escriben valores de enum (nunca mas de 20 caracteres) y no lo necesitaban;
- * el nombre de un nodo geografico admite hasta `GEO_NOMBRE_MAX` (80) y si.
+ * El correo y la cedula de un usuario (`usuario_email_cambiado`, `usuario_cedula_cambiada`) NO pasan
+ * por `valorDeCatalogo`: van completos, hasta 254 (D4, D10). Recortarlos dejaria un «valor anterior»
+ * que no sirve (design §9, A6).
+ *
+ * ⚠️ POSTGRES NO TRUNCA: un valor mas largo que la columna ABORTA la sentencia, y con ella la
+ * transaccion entera de la accion. Quien escriba ahi algo que pueda pasarse tiene que recortarlo EN
+ * LA FUENTE, como `appendAccion` recorta `entidad_etiqueta` a 120.
  */
 export const VALOR_MAX_CHARS = 60;
 
@@ -81,8 +86,12 @@ export interface FuentesEtiqueta {
   zona: { nombre: string };
   vehiculo: { nombre: string };
   plantilla_mensaje: { nombre: string };
-  cierre_dia: { mensajeroNombre: string | null; fecha: Date };
-  cierre_bodega: { zonaNombre: string | null; fecha: Date };
+  /**
+   * SLT-42 (R22): el dia del cierre es el del calendario del pais de la empresa; `zonaHoraria` es su
+   * zona IANA (no la bodega: esa es `zonaNombre`).
+   */
+  cierre_dia: { mensajeroNombre: string | null; fecha: Date; zonaHoraria: string };
+  cierre_bodega: { zonaNombre: string | null; fecha: Date; zonaHoraria: string };
   gestion_orden: FuenteEnvio;
   liquidacion_pago: { beneficiarioNombre: string | null };
   liquidacion_reparto: { beneficiarioNombre: string | null };
@@ -166,8 +175,9 @@ export interface FuentesEtiqueta {
   plan: { nombre: string };
   /**
    * SLT-52 (R14) — un valor del modelo nuevo de tarifas: la etiqueta legible de su concepto y del
-   * nivel donde vive (zona, grupo, tienda). Vocabulario del catalogo y nombres de configuracion;
-   * nunca un dato de cliente. El importe va en `monto`/`valor_*`, no aqui.
+   * nivel donde vive (zona, grupo, tienda, y desde SLT-55 el mensajero con su valor propio). Vocabulario
+   * del catalogo y nombres de configuracion o de operadores; nunca un dato de cliente. El importe va en
+   * `monto`/`valor_*`, no aqui.
    */
   tarifa_valor: { concepto: string; nivel: string | null };
   /** SLT-52 (R14) — un grupo de distritos: su nombre y el de su zona, como `zona`. */
@@ -181,6 +191,8 @@ export interface FuentesEtiqueta {
   nodo_geografico: { nombres: readonly string[] };
   /** SLT-54 (R4) — la activacion es una por empresa: la etiqueta es la del hecho, sin dato variable. */
   tarifa_activacion: Record<string, never>;
+  /** SLT-77 (R41) — el tope es uno por empresa: la etiqueta es la del ajuste, sin dato variable. */
+  organizacion: Record<string, never>;
 }
 
 /**
@@ -237,8 +249,8 @@ const CONSTRUCTORES: {
   zona: (f) => limpiar(f?.nombre),
   vehiculo: (f) => limpiar(f?.nombre),
   plantilla_mensaje: (f) => limpiar(f?.nombre),
-  cierre_dia: (f) => unir(f?.mensajeroNombre, f?.fecha ? fechaCalendarioCR(f.fecha) : null),
-  cierre_bodega: (f) => unir(f?.zonaNombre, f?.fecha ? fechaCalendarioCR(f.fecha) : null),
+  cierre_dia: (f) => unir(f?.mensajeroNombre, f?.fecha ? fechaCalendario(f.fecha, f.zonaHoraria) : null),
+  cierre_bodega: (f) => unir(f?.zonaNombre, f?.fecha ? fechaCalendario(f.fecha, f.zonaHoraria) : null),
   gestion_orden: etiquetaDeEnvio,
   liquidacion_pago: (f) => unir(f?.beneficiarioNombre),
   liquidacion_reparto: (f) => unir(f?.beneficiarioNombre),
@@ -272,7 +284,52 @@ const CONSTRUCTORES: {
   // SLT-43 — el criterio de la 374 (`distrito`), para una cadena de largo variable.
   nodo_geografico: (f) => unir(...(f?.nombres ?? [])),
   tarifa_activacion: () => "Tarifas nuevas",
+  organizacion: () => "Intentos de entrega",
 };
+
+/**
+ * SLT-211 — la etiqueta de `ordenes_retiradas_a_central`: la satelite (entidad `zona`), cuantos
+ * paquetes salieron de ella y sus guias. «Cartago · 3 paquetes: 1001, 1002, 1003».
+ *
+ * Es la etiqueta de la zona (`etiquetaDeEntidad("zona", …)`, su nombre) ampliada con el lote, porque
+ * la fila de esta accion es UNA por satelite y no una por orden: sin las guias, «que paso con la guia
+ * 1002» no tendria respuesta en esta pantalla. Las guias son identificadores de envio de la empresa
+ * (R5), no datos del destinatario.
+ *
+ * Cabe SIEMPRE en `ETIQUETA_MAX_CHARS`: se añaden guias mientras quepan junto al cierre
+ * «, … y M más»; las que no caben se cuentan. Se ordenan de menor a mayor (numericas primero) para
+ * que la misma accion se lea igual en la pantalla y en la descarga.
+ */
+export function etiquetaDeRetiroSatelite(zonaNombre: string, envios: readonly FuenteEnvio[]): string {
+  const zona = etiquetaDeEntidad("zona", { nombre: zonaNombre });
+  const n = envios.length;
+  const guias = envios
+    .map(etiquetaDeEnvio)
+    .sort((a, b) => {
+      const na = Number(a);
+      const nb = Number(b);
+      const aNum = Number.isFinite(na);
+      const bNum = Number.isFinite(nb);
+      if (aNum && bNum) return na - nb;
+      if (aNum !== bNum) return aNum ? -1 : 1;
+      return a.localeCompare(b);
+    });
+  const cabecera = `${zona} · ${n} ${n === 1 ? "paquete" : "paquetes"}`;
+  if (n === 0) return limpiar(cabecera);
+
+  const prefijo = `${cabecera}: `;
+  const listadas: string[] = [];
+  for (let i = 0; i < guias.length; i += 1) {
+    const candidatas = [...listadas, guias[i]!];
+    const restantes = n - candidatas.length;
+    const texto = prefijo + candidatas.join(", ") + (restantes > 0 ? `, … y ${restantes} más` : "");
+    if (texto.length > ETIQUETA_MAX_CHARS) break;
+    listadas.push(guias[i]!);
+  }
+  const restantes = n - listadas.length;
+  if (listadas.length === 0) return limpiar(`${cabecera} (… y ${restantes} más)`);
+  return limpiar(prefijo + listadas.join(", ") + (restantes > 0 ? `, … y ${restantes} más` : ""));
+}
 
 /**
  * La etiqueta legible y CONGELADA de una entidad afectada (R4). Truncada a

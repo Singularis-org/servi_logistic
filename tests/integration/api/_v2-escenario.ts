@@ -10,7 +10,7 @@ import type { ISignedUrlProvider } from "@/lib/interfaces/external/ISignedUrlPro
 import type { IGeografiaApiService } from "@/lib/interfaces/services/IGeografiaApiService";
 import { ORDEN_MODULOS } from "@/lib/modulos/catalogo";
 import { CatalogoGeograficoRepository } from "@/lib/repositories/CatalogoGeograficoRepository";
-import { CupoPlanRepository } from "@/lib/repositories/CupoPlanRepository";
+import { construirReglasPaisEmpresa } from "@/lib/services/ReglasPaisEmpresaService";
 import { OrdenDiaRepartoCambioRepository } from "@/lib/repositories/OrdenDiaRepartoCambioRepository";
 import { OrdenHistorialRepository } from "@/lib/repositories/OrdenHistorialRepository";
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
@@ -216,11 +216,13 @@ export const urlsFirmadas: ISignedUrlProvider = {
 export function depsDeCarga(cli: PrismaClient, autenticar: AutenticadorApiKey): CargaApiDeps {
   const ordenRepo = new OrdenRepository(cli);
   const pdf = new EtiquetasLotePdfService(
-    new EtiquetaGuiaService(ordenRepo),
+    new EtiquetaGuiaService(ordenRepo, construirReglasPaisEmpresa(cli)),
     storageEnMemoria,
     urlsFirmadas,
     etiquetasConfig.SIGNED_URL_TTL_SECONDS,
     etiquetasConfig.MAX_ETIQUETAS_POR_PDF,
+    undefined, // el `build` de produccion
+    construirReglasPaisEmpresa(cli), // SL-21 (R14): la moneda del pais, como en `lib/api/api-carga.ts`
   );
   return {
     autenticar,
@@ -228,7 +230,6 @@ export function depsDeCarga(cli: PrismaClient, autenticar: AutenticadorApiKey): 
       ordenRepo,
       new TarifaVigenteRepository(cli),
       undefined,
-      new CupoPlanRepository(cli),
       new CatalogoGeograficoRepository(cli),
     ),
     descargaService: new EtiquetasDescargaService(pdf, ordenRepo),
@@ -241,6 +242,8 @@ export function depsDeCarga(cli: PrismaClient, autenticar: AutenticadorApiKey): 
         new OrdenDiaRepartoCambioRepository(cli),
         new OrdenTraspasoRepository(cli),
       ),
+      undefined, // el parametro opcional previo, con su valor por defecto
+      construirReglasPaisEmpresa(cli), // SLT-42 (R22): la zona horaria del pais, como en `lib/api/api-carga.ts`
     ),
   };
 }

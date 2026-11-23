@@ -53,6 +53,7 @@ import { lineaDeFila } from "@/components/shared/estado-cuenta/estado-cuenta-lin
 import { MiEstadoCuenta, ROTULOS_MI_WALLET } from "@/app/(app)/mi-wallet/_components/MiEstadoCuenta";
 import { fechaDiaMovimientoCR } from "@/lib/utils/fecha-dia-iso";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 /** 22:00 del 24/09/2026 en Costa Rica (UTC-6). */
 const NOCHE_CR = "2026-09-25T04:00:00.000Z";
 const DIA_CR = "2026-09-24";
@@ -68,7 +69,6 @@ const PAGO_POR_CUENTA: WalletMovimientoDTO = {
   origenTipo: "pago_por_cuenta_tienda",
   origenId: "0b6c1f7e-7a44-4b43-9c1a-5e0f2d9a1c11",
   descripcion: "Tania Tienda · A Facebook · Pauta",
-  registradoPor: null,
   fechaMovimiento: NOCHE_CR,
   dueno: "terceros",
   documento: { tipo: "pago_por_cuenta_tienda", anulado: false, tieneComprobante: false },
@@ -102,20 +102,20 @@ afterEach(() => {
 
 describe("459/F1 — el día de Costa Rica de un instante de la wallet", () => {
   it("las 22:00 del 24 en Costa Rica son el 24; las 23:59 también; las 00:00 del 25, el 25", () => {
-    expect(fechaDiaMovimientoCR(NOCHE_CR)).toBe(DIA_CR);
-    expect(fechaDiaMovimientoCR("2026-09-25T05:59:59.999Z")).toBe("2026-09-24");
-    expect(fechaDiaMovimientoCR("2026-09-25T06:00:00.000Z")).toBe("2026-09-25");
-    expect(fechaDiaMovimientoCR("2026-09-24T15:00:00.000Z")).toBe("2026-09-24");
+    expect(fechaDiaMovimientoCR(NOCHE_CR, ZONA_CR)).toBe(DIA_CR);
+    expect(fechaDiaMovimientoCR("2026-09-25T05:59:59.999Z", ZONA_CR)).toBe("2026-09-24");
+    expect(fechaDiaMovimientoCR("2026-09-25T06:00:00.000Z", ZONA_CR)).toBe("2026-09-25");
+    expect(fechaDiaMovimientoCR("2026-09-24T15:00:00.000Z", ZONA_CR)).toBe("2026-09-24");
   });
 
   it("la medianoche UTC de la liquidación (ficha 172) conserva su día: no se corre al anterior", () => {
-    expect(fechaDiaMovimientoCR(PAGO_LIQUIDACION)).toBe("2026-09-20");
-    expect(fechaDiaMovimientoCR("2026-09-20")).toBe("2026-09-20");
+    expect(fechaDiaMovimientoCR(PAGO_LIQUIDACION, ZONA_CR)).toBe("2026-09-20");
+    expect(fechaDiaMovimientoCR("2026-09-20", ZONA_CR)).toBe("2026-09-20");
   });
 
   it("lo que no es un instante se devuelve tal cual (la sonda de la guardia de descargas)", () => {
-    expect(fechaDiaMovimientoCR("")).toBe("");
-    expect(fechaDiaMovimientoCR("__sonda.fechaMovimiento__")).toBe("__sonda.fechaMovimiento__");
+    expect(fechaDiaMovimientoCR("", ZONA_CR)).toBe("");
+    expect(fechaDiaMovimientoCR("__sonda.fechaMovimiento__", ZONA_CR)).toBe("__sonda.fechaMovimiento__");
   });
 });
 

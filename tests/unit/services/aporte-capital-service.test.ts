@@ -11,6 +11,7 @@ import type { IFileStorage } from "@/lib/interfaces/external/IFileStorage";
 import { AporteCapitalService } from "@/lib/services/AporteCapitalService";
 import type { AporteCapitalTxRunner } from "@/lib/interfaces/services/IAporteCapitalService";
 import type { RegistrarAporteCapitalInput } from "@/lib/types/aporte-capital";
+import { reglasPaisFijas, ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 
 /**
  * FICHA 459 / T B.11 — `AporteCapitalService` con dobles (R68–R76, R27). La serializacion REAL de
@@ -95,7 +96,8 @@ function montar(opts: {
   const svc = new AporteCapitalService(repo, caja, lectura, storage, urls, runTx as unknown as AporteCapitalTxRunner, () => AHORA, {
     MAX_BYTES: 4 * 1024 * 1024,
     SIGNED_URL_TTL_SECONDS: 300,
-  });
+  },
+  reglasPaisFijas(),);
   return { svc, repo, caja, lectura, storage, runTx, orden };
 }
 
@@ -139,7 +141,7 @@ describe("459/B.11 — registrar un saldo inicial o aporte", () => {
         ],
       },
     });
-    expect(m.lectura.primerDiaDeLaCaja).toHaveBeenCalledWith({ excluirCapital: true });
+    expect(m.lectura.primerDiaDeLaCaja).toHaveBeenCalledWith({ excluirCapital: true, zonaHoraria: ZONA_DE_CR }); // SLT-42: el dia, en la zona del pais
     // El mismo dia SI entra.
     const ok = montar({ primerDia: "2026-08-25" });
     expect((await ok.svc.registrar(entrada({ clase: "saldo_inicial", fecha: "2026-08-25" }), null, MAESTRO)).status).toBe("ok");

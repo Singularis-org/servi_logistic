@@ -11,7 +11,7 @@ import type { PlanDTO } from "@/lib/types/planes";
 
 // SLT-66 (design §4.2, §5; R1, R8, R11) — el costo por orden por el servicio de planes, con un
 // repositorio doble: solo el superadmin lo escribe, la entrada inválida no llega al repositorio y la
-// válida llega entera (crear, editar de inmediato y programar).
+// válida llega entera (crear y programar). SLT-135: editar siempre programa; la fecha de hoy también.
 
 const SUPERADMIN: Actor = { usuarioId: "u-sa", rol: "superadmin", organizacionId: null };
 const EMPRESA = randomUUID();
@@ -27,7 +27,7 @@ const PLAN_DTO: PlanDTO = {
   nombre: "Básico",
   visibilidad: "publico",
   organizacionId: null,
-  topes: { ordenesPorCiclo: 100, porRol: { admin: 2 }, apiKeys: null },
+  topes: { porRol: { admin: 2 }, apiKeys: null },
   modulos: [],
   precio: { tipo: "sin_precio" },
   costoPorOrden: null,
@@ -39,16 +39,16 @@ const CREAR = {
   nombre: "Básico",
   visibilidad: "publico",
   organizacionId: null,
-  topes: { ordenesPorCiclo: 100, porRol: {}, apiKeys: null },
+  topes: { porRol: {}, apiKeys: null },
   modulos: [],
-  precio: { tipo: "monto", mensual: "50000", anual: null },
+  precio: { tipo: "monto", mensual: "50000", descuentos: {} },
   costoPorOrden: "100",
   costoPorOrdenPorcentual: null, // SLT-83: campo nuevo del esquema
 };
 
 const VERSION = {
   nombre: "Básico",
-  topes: { ordenesPorCiclo: 100, porRol: { admin: 2 }, apiKeys: null },
+  topes: { porRol: { admin: 2 }, apiKeys: null },
   modulos: [],
   precio: { tipo: "sin_precio" }, // D1 (ajuste planes-custom): «negociable» ya no existe.
   costoPorOrden: "150.50",
@@ -60,7 +60,6 @@ function doble() {
     empresa: vi.fn<IPlanesRepository["empresa"]>(async (id) => ({ id, nombre: "Mensajería Uno", planId: null })),
     plan: vi.fn<IPlanesRepository["plan"]>(async () => PLAN_DTO),
     crear: vi.fn<IPlanesRepository["crear"]>(async () => PLAN),
-    editar: vi.fn<IPlanesRepository["editar"]>(async () => ({ estado: "ok", cambio: true, avisos: [] })),
     archivar: vi.fn<IPlanesRepository["archivar"]>(),
     asignar: vi.fn<IPlanesRepository["asignar"]>(),
     crearYAsignar: vi.fn<IPlanesRepository["crearYAsignar"]>(),
@@ -76,12 +75,17 @@ function doble() {
     repartirRecordatorio: vi.fn<IPlanesRepository["repartirRecordatorio"]>(),
     destinatariosDelAviso: vi.fn<IPlanesRepository["destinatariosDelAviso"]>(),
     asignables: vi.fn<IPlanesRepository["asignables"]>(),
+    preciosQueRigenDesde: vi.fn<IPlanesRepository["preciosQueRigenDesde"]>(async () => []),
     publicos: vi.fn<IPlanesRepository["publicos"]>(),
     catalogo: vi.fn<IPlanesRepository["catalogo"]>(),
     detalle: vi.fn<IPlanesRepository["detalle"]>(),
     planDeEmpresa: vi.fn<IPlanesRepository["planDeEmpresa"]>(),
     vistaPreviaConTopes: vi.fn<IPlanesRepository["vistaPreviaConTopes"]>(async () => null),
     cambiarTipoCobro: vi.fn<IPlanesRepository["cambiarTipoCobro"]>(async () => ({ estado: "not_found" })),
+    cancelarCambioEmpresa: vi.fn<IPlanesRepository["cancelarCambioEmpresa"]>(),
+    aplicarCambioDeEmpresa: vi.fn<IPlanesRepository["aplicarCambioDeEmpresa"]>(),
+    cambiosDeEmpresaVencidos: vi.fn<IPlanesRepository["cambiosDeEmpresaVencidos"]>(),
+    vistaPreviaCambio: vi.fn<IPlanesRepository["vistaPreviaCambio"]>(),
     vistaPreviaAsignacion: vi.fn<IPlanesRepository["vistaPreviaAsignacion"]>(),
   };
 }
@@ -100,7 +104,7 @@ beforeEach(() => {
 
 const OPERACIONES: [string, (s: PlanesService, a: Actor | null, extra?: Record<string, unknown>) => Promise<unknown>][] = [
   ["crear", (s, a, extra = {}) => s.crear(a, { ...CREAR, ...extra })],
-  ["editar de inmediato", (s, a, extra = {}) => s.editar(a, { planId: PLAN, ...VERSION, vigenteDesde: null, ...extra })],
+  ["editar con la fecha de hoy", (s, a, extra = {}) => s.editar(a, { planId: PLAN, ...VERSION, vigenteDesde: "2026-10-31", ...extra })],
   [
     "programar un cambio",
     (s, a, extra = {}) => s.editar(a, { planId: PLAN, ...VERSION, vigenteDesde: "2026-12-01", ...extra }),
@@ -125,7 +129,7 @@ describe("SLT-66 R11 — solo el superadmin escribe el costo por orden", () => {
 describe("SLT-66 R1, R8 — la entrada inválida es validation_error sin llamar al repositorio", () => {
   for (const [nombre, op] of OPERACIONES) {
     it(`${nombre}: un tope de maestro (R1)`, async () => {
-      const r = await op(servicio, SUPERADMIN, { topes: { ordenesPorCiclo: 10, porRol: { maestro: 3 }, apiKeys: null } });
+      const r = await op(servicio, SUPERADMIN, { topes: { porRol: { maestro: 3 }, apiKeys: null } });
       expect(r).toMatchObject({ estado: "validation_error" });
       expect(Object.keys((r as { fieldErrors: Record<string, string[]> }).fieldErrors).join(" ")).toMatch(/topes/);
       expect(llamadasAlRepositorio()).toBe(0);
@@ -145,10 +149,10 @@ describe("SLT-66 R11 — el costo por orden llega al repositorio con la versión
     expect(repo.crear).toHaveBeenCalledWith(expect.objectContaining({ costoPorOrden: "100" }), "u-sa");
   });
 
-  it("editar de inmediato, también para vaciarlo", async () => {
-    await servicio.editar(SUPERADMIN, { planId: PLAN, ...VERSION, vigenteDesde: null });
-    await servicio.editar(SUPERADMIN, { planId: PLAN, ...VERSION, costoPorOrden: null, vigenteDesde: null });
-    expect(repo.editar.mock.calls.map((c) => c[1].costoPorOrden)).toEqual(["150.50", null]);
+  it("editar con la fecha de hoy, también para vaciarlo (SLT-135: se programa)", async () => {
+    await servicio.editar(SUPERADMIN, { planId: PLAN, ...VERSION, vigenteDesde: "2026-10-31" });
+    await servicio.editar(SUPERADMIN, { planId: PLAN, ...VERSION, costoPorOrden: null, vigenteDesde: "2026-10-31" });
+    expect(repo.programarCambio.mock.calls.map((c) => c[1].costoPorOrden)).toEqual(["150.50", null]);
   });
 
   it("programar un cambio", async () => {
