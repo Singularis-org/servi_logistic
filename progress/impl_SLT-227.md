@@ -404,3 +404,28 @@ Abreviaturas del mapa de `tasks.md`. Los nombres exactos de cada caso están en 
   - `vitest run tests/unit/guards/censo-order-status-rename.test.ts tests/integration/cobro/rebill-proveedor.test.ts`:
     `Test Files 2 passed (2) · Tests 83 passed (83)`.
 - Con esto T2.1 queda cerrada y el «Pendiente» de T2.1 de T5.3 queda resuelto. T4.5 sigue como pendiente humano.
+
+## Review vuelta 1: E2E en local (B1) y rojo de CI en `orden-traspaso-migration` (2026-11-23)
+
+### E2E en local (B1 de `progress/review_SLT-227.md`)
+- **`grep -rl` en `e2e/`:**
+  - `cobro_proveedor_credencial`: no aparece en ningún archivo.
+  - `rebill`: solo en `e2e/_rebill-falso/servidor.mjs`, el doble de esta ficha.
+
+  Ningún spec E2E cubre la tabla ni el adaptador. Se corre el grupo `dinero` entero porque la ficha toca dinero.
+- **Base:** una desechable nueva, `servi_logistic_slt227_e2e`, con `prisma migrate deploy` y `db:seed`. Su URL está en
+  `scratchpad/dburl_SLT227_e2e`.
+- **Build:** `pnpm exec next build`, con `NEXT_PUBLIC_APP_URL=http://localhost:3000` y `APP_BASE_URL=http://localhost:3000`
+  (como `.github/workflows/gate.yml`), `SESSION_SECRET` generado y `NODE_OPTIONS=--max-old-space-size=8192`. Terminó
+  con rc=0.
+- **Comando:** `pnpm exec playwright test --project=dinero --reporter=line`, con el mismo entorno.
+- **Resultado:** `143 passed (11.4m)`, con 0 failed, 0 flaky y 0 skipped.
+
+### `tests/integration/db/orden-traspaso-migration.test.ts` (rojo de CI de #277)
+- **Causa:** la lista de migraciones POSTERIORES a la de la tabla terminaba en `20261126120100_mora_congelamiento`. Le
+  faltaba la de esta ficha.
+- **Fallo reproducido en local** contra `servi_logistic_slt227`: `1 failed | 14 passed`, en «su timestamp es POSTERIOR
+  al de la ultima migracion anterior del arbol», con diff `+ "20261127120000_cobro_proveedor_credencial"`.
+- **Arreglo:** se añade esa entrada al final de la lista, con su comentario. Lo que afirma sobre las demás migraciones no
+  cambia.
+- **Después del arreglo:** `Test Files 1 passed (1) · Tests 15 passed (15)`.
