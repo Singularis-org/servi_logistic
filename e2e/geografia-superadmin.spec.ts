@@ -289,7 +289,9 @@ test("el superadmin da de alta un país, carga su división por CSV, crea una lo
     await page.getByRole("option", { name: `${PAIS.nombre} (${PAIS.id})`, exact: true }).click();
     // SLT-46 (R53, R54): el alta arranca con tres filas de nivel, en orden; Islandia usa las tres.
     for (const [etiqueta, valor] of Object.entries(NIVELES_IS)) {
-      await alta.getByLabel(etiqueta, { exact: true }).fill(valor);
+      // Por rol y nombre accesible: el texto del `<label>` lleva el «*» de obligatorio (aria-hidden),
+      // así que `getByLabel(…, { exact: true })` no casa; el nombre accesible del textbox sí.
+      await alta.getByRole("textbox", { name: etiqueta, exact: true }).fill(valor);
     }
     // R63: «Disponible para crear empresas» nace desmarcada y se deja así; el caso siguiente la enciende.
     await expect(alta.getByRole("checkbox", { name: "Disponible para crear empresas" })).not.toBeChecked();
