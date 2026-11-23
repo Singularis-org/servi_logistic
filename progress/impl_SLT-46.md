@@ -1,0 +1,1347 @@
+# impl SLT-46 — geo-jerarquica-admin
+
+> Bitácora del implementer. Base de pruebas: `logistic_slt46` en localhost (desechable, creada para esta
+> feature, todas las migraciones aplicadas; sin siembra de catálogos ni usuarios). Memoria baja:
+> `--maxWorkers=1`, `NODE_OPTIONS=--max-old-space-size=8192`.
+
+## Tanda 1 (2026-11-06): T0.1, T1, T2
+
+Sha de partida: `44d5d02e` (docs(SLT-46): F2.0, aprobado y choque con SLT-77 aceptado).
+T0.2 (maqueta) y T6 (UI) fuera de esta tanda: T0.2 la hace una persona. Sin push (lo hace el leader).
+
+### T0.1 — la rama arranca en verde
+
+- `pnpm exec vitest run tests/integration/db/geo-sincronia-geografia.test.ts tests/integration/db/carga-division.test.ts --maxWorkers=1`
+  (con base, en `44d5d02e`) → `Test Files 2 passed (2) · Tests 24 passed (24)`.
+- `./init.sh` (rápido) en `44d5d02e`, con la base exportada: typecheck, lint y perfil verdes; el paso
+  `test:rapido` seleccionó 1364 archivos (el diff contra `origin/dev` es toda la pila 43/44/45/65/71) y
+  tardó ~3,5 h compitiendo con dos subagentes en la misma máquina y base → `9 failed | 18635 passed`,
+  12 archivos «nuevos fuera del baseline». Casi todos son timeouts de 20 s por saturación. Re-corridos
+  uno a uno en el HEAD de la tanda (`29ecb5a3`), con la base y sin carga:
+  `Test Files 1 failed | 11 passed (12) · Tests 95 passed | 12 skipped (107)`. El único rojo,
+  `tests/integration/db/demo-qa.test.ts`, es de entorno: «faltan catálogos en la base (corre
+  `pnpm run db:seed`): vehiculo» (la base local es nueva y sin siembra). No se sembró. No es de SLT-46.
+  Conclusión: el T0.1 no fue un `init.sh` verde limpio; queda pendiente que el leader corra el gate
+  (o el CI) sobre la rama.
+
+### Commits
+
+| sha | task |
+|---|---|
+| `60e6869e` | feat(SLT-46): T2.1 enums de historial de tipos de nivel |
+| `880732ee` | feat(SLT-46): T1.1 validarCodigoDeTipo, la regla de codigo leida del tipo (R17) |
+| `56a1f13e` | feat(SLT-46): T1.2 esquemas por nodo, alta de pais con 2-10 tipos, renombrar tipo y agregar nivel (R22, R24, R49) |
+| `19535ee6` | feat(SLT-46): T1.3 planificarDivision a P profundidades con cabeceras nivel_k (R30, R32, R34) |
+| `65d165f8` | feat(SLT-46): T1.4 nivel 3 vacio repite la etiqueta del nivel 2 (R51, P10) |
+| `e235d2f6` | feat(SLT-46): T2.2 copia del nodo a la geografia vieja |
+| `31d3a041` | test(SLT-46): T2.3 reglas de migracion aditiva compartidas y guardia de SLT-46 |
+| `02b73e3b` | feat(SLT-46): T2.5 pais_tipos_de_nivel sin nivel_3 para paises de 2 niveles |
+| `135eb78b` | test(SLT-46): T2.4 ida y vuelta de las tres migraciones de SLT-46 |
+| `f2025d90` | docs(SLT-46): T1.1-T1.4 hechas |
+| `29ecb5a3` | test(SLT-46): acotar el esquema en las consultas a catalogos de T2 (guardia 421) |
+
+### Archivos
+
+- T1.1: `lib/utils/codigo-geografico.ts` (`ReglaDeCodigoDeTipo`, `validarCodigoDeTipo`, `tipoDeNivelDePais`;
+  `validarCodigo` pasa a envolver la nueva), `tests/unit/utils/codigo-geografico.test.ts` (solo bloques nuevos).
+- T1.2: `lib/types/geografia-nodo.ts`, `lib/types/pais.ts`, `tests/unit/types/geografia-nodo.test.ts`
+  (solo bloques nuevos), `tests/unit/types/pais-schemas.test.ts` (nuevo).
+- T1.3: `lib/types/division-csv.ts`, `lib/utils/division-csv.ts`, `tests/unit/utils/division-csv.test.ts`
+  (solo bloques nuevos).
+- T1.4: `lib/types/pais.ts`, `tests/unit/types/pais-etiquetas.test.ts` (nuevo).
+- T2.1: `db/migrations/20261106120000_slt46_historial_tipos_de_nivel/{migration,down}.sql`, `db/schema.prisma`.
+- T2.2: `db/migrations/20261106120100_slt46_nodo_copia_a_geografia_vieja/{migration,down}.sql`,
+  `lib/db/sqlstate.ts` (`SQLSTATE_NODO_CAMBIA_DE_TABLA_VIEJA = "SLT46"`),
+  `tests/integration/db/slt46-nodo-copia-vieja.test.ts`.
+- T2.3: `tests/unit/db/_migraciones-aditivas.ts` (nuevo), `tests/unit/db/slt43-migraciones-aditivas.test.ts`
+  (solo importa el helper; aserciones intactas), `tests/unit/db/slt46-migraciones-aditivas.test.ts`.
+- T2.5: `db/migrations/20261106120200_slt46_pais_tipos_de_nivel_opcional/{migration,down}.sql`,
+  `tests/integration/db/slt46-pais-tipos-de-nivel.test.ts`.
+- T2.4: `tests/integration/db/migracion-slt46-ida-y-vuelta.test.ts`.
+
+Ninguna aserción de tests existentes cambió. Ningún llamador (service, repositorio, action, pantalla) cambió.
+
+### Mapa R → test (tanda 1)
+
+| R | Test (archivo › it) |
+|---|---|
+| R2 | `tests/integration/db/slt46-nodo-copia-vieja.test.ts` › «R2: el alta de un nodo de profundidad 1, 2 y 3 deja su provincia, cantón y distrito…», «R2: renombre, código, retiro y reactivación…», «R2: dar de alta un hijo bajo un padre retirado…» |
+| R3 | idem › «R3: un nodo de profundidad 4 no crea ni cambia ninguna fila de provincia, cantón ni distrito» |
+| R4 | idem › «R4: escribir el nodo termina sin bucle (pg_trigger_depth ≤ 3)…; y lo mismo desde la provincia por SQL» |
+| R5 (base) | idem › «R5: si la copia choca con un único de la tabla vieja, falla la sentencia entera con 23505…» (la parte `P2002 → conflict` es de T4.4) |
+| R6 | idem › «R6: cambiar la profundidad de una hoja de 1–3, o llevar una de 4 a 3, se rechaza con SLT46…» |
+| R7 | idem › «R7: borrar físicamente un nodo de profundidad 3 (y luego su cantón y su provincia)…» |
+| R8 | `tests/unit/db/slt46-migraciones-aditivas.test.ts` › carpetas exactas con `down.sql`, «verde sobre los migration.sql reales», controles y contraprueba (rojo con DML suelto también en `DO`, `EXECUTE 'DROP …'`, `TRUNCATE`/`RENAME` en cuerpo, `CREATE OR REPLACE FUNCTION geo_sincronizar_canton`); `migracion-slt46-ida-y-vuelta.test.ts` › «R8/R9: la ida pone la copia y la función nueva sin mover ningún dato» |
+| R9 | `tests/integration/db/migracion-slt46-ida-y-vuelta.test.ts` › «R9: los tres down.sql, en orden inverso…», «R9: tras la vuelta la sincronía vieja → nodo sigue…», «R9: reaplicadas las tres, todo queda igual que la primera vez» |
+| R10 | `slt46-migraciones-aditivas.test.ts` › «ninguna de las migraciones de SLT-46 nombra la tabla orden fuera de los comentarios» + contraprueba |
+| R17 | `tests/unit/utils/codigo-geografico.test.ts` › «SLT-46 R17 — validarCodigoDeTipo da lo mismo que la regla de SL-20 (tabla de CR)» (24 casos), «SLT-46 R17 — tipo de cualquier profundidad» |
+| R22 | `tests/unit/types/geografia-nodo.test.ts` › «el renombre acepta `{id, nombre}` y rechaza un `padreId`», «el cambio de estado acepta `{id, activo}` y rechaza un `padreId`» |
+| R24 | `tests/unit/types/pais-schemas.test.ts` › «acepta 2 y 10 tipos, y conserva su orden», «rechaza 1 y 11 tipos», «rechaza un nombre de tipo fuera de 2–40…», «los demás rechazos siguen como en SL-20» |
+| R25/R26 (borde) | `pais-schemas.test.ts` › «rechaza nombres fuera de 2–40, un tipo vacío y claves desconocidas» |
+| R30 | `tests/unit/utils/division-csv.test.ts` › «exige nivel_<k> y codigo_nivel_<k> de 1 a P…», «SLT-46 R30 — P = 2 …», «SLT-46 R30/R17 — P = 4 …» |
+| R31 (parte pura) | `division-csv.test.ts` › «SLT-46 R31 — los casos de SL-20 con P = 3 dan lo mismo por profundidad» (17 casos) |
+| R32 | `division-csv.test.ts` › «nivel_3 vacio con nivel_4 lleno: error en nivel_3 con su linea», «un codigo mas abajo tambien es seguir la fila», «nivel_1 o nivel_2 vacios siguen con el mensaje de SL-20…» |
+| R34 | `division-csv.test.ts` › «cada columna de mas es un aviso…», «en un pais de 3 niveles una columna nivel_4 es un aviso…», «las cotas del archivo no cambian (5 MB, 10 000 filas, 200 errores)» |
+| R44 | `slt46-nodo-copia-vieja.test.ts` › «R44: el trigger de orden y los de las zonas siguen con el cuerpo de SLT-43…» + `orden-nodo-escritura.test.ts` (existente) verde |
+| R46 | `tests/integration/db/slt46-pais-tipos-de-nivel.test.ts` › «R46: un país con '' en el nivel 3 queda con 2 tipos tras el INSERT…» + «R46 contraprueba: con la función de SLT-43…» |
+| R47 | idem › «R47: Costa Rica y un país de 3 tipos quedan con los mismos tipos que con la función de SLT-43…» |
+| R49 | `pais-schemas.test.ts` › «rechaza nombres fuera de 2–40 caracteres», «no admite posición: siempre va al final…» |
+| R50 (función) | `slt46-pais-tipos-de-nivel.test.ts` › «R50: poner '' en el nivel 3 de un país que ya tiene nivel_3 no lo borra ni lo cambia» |
+| R51 | `tests/unit/types/pais-etiquetas.test.ts` › «con el nivel 3 vacío devuelve la etiqueta del nivel 2…», «nunca devuelve un texto vacío…», «con nombre en el nivel 3 devuelve ese nombre» |
+
+Pendientes de tandas siguientes: R1, R11–R16, R18–R21, R23, R25–R29, R33, R35–R43, R45, R48, R52 y el
+resto de R5/R31/R50.
+
+### Salida real de la verificación
+
+- Por task (subagentes): `slt46-nodo-copia-vieja` 9/9; `slt43`+`slt46-migraciones-aditivas` 21/21 (T2.3),
+  26 con `slt46-pais-tipos-de-nivel` (T2.5); `slt46-pais-tipos-de-nivel` 4/4; `migracion-slt46-ida-y-vuelta`
+  5/5 (no queda ninguna base `slt46_*`). Contrapruebas en rojo comprobadas: sin el trigger de T2.2, 7/9 rojos;
+  sin T2.5, R46 y R50 rojos; un espacio en el `down.sql` de T2.5 pone rojo el caso de vuelta.
+- `vitest related --run` sobre los 10 archivos de T1 → `Test Files 243 passed | 19 skipped (262) · Tests 3923 passed | 206 skipped (4129)`.
+- `prisma migrate diff` (base ↔ schema) vacío tras T2.1 y con las tres aplicadas.
+- Suites existentes tras T2.2 y T2.5 (`geo-sincronia-geografia`, `carga-division`, `geo-nodo-rls`,
+  `orden-nodo-escritura`, `geo-nodo-invariantes`, `geo-tipo-nivel`, `api/v2-paises-de-prueba.route`,
+  `geografia-*`, `pais-*`): sin rojos nuevos. De entorno (base local sin siembra):
+  `geografia-historico-intacto` y `geografia-ordenes-sin-entregar` (no hay `orden`);
+  `geografia-cascada-reversible`, `geografia-registro-accion` y `geografia-renombrado` necesitan un
+  `usuario` (con un superadmin temporal pasaron; se retiró porque `carga-division` y
+  `geografia-superadmin-sin-empresa` exigen base sin superadmin, y esas dan 20/20).
+- Cierre de tanda, en `29ecb5a3`, por el implementer:
+  - `pnpm exec tsc --noEmit` → exit 0.
+  - `pnpm exec eslint <los .ts/.tsx tocados desde 44d5d02e>` → exit 0.
+  - Guardias, todas (336 archivos `*guard*` en 7 lotes de ≤ 50): un único rojo,
+    `tests/unit/guards/dependencias-declaradas-presentes.guardia.test.ts` (4 casos), que está en
+    `tests/baseline-rojos.json`. En la primera pasada salió además rojo
+    `catalogo-postgres-acota-esquema.guardia.test.ts` (ficha 421) por tres consultas a `pg_trigger`/`pg_proc`
+    sin esquema en los tests de T2; arreglado en `29ecb5a3` → 7/7, y los dos tests de integración
+    re-corridos 14/14.
+
+### Decisiones de implementación a revisar (reviewer)
+
+1. Esquemas nuevos en paralelo, sin cambiar los viejos en sitio (`altaDeNodoSchema`, `renombrarNodoSchema`,
+   `cambiarActivacionNodoSchema`, `nodoPorIdSchema`, `crearPaisConTiposSchema`), para no romper llamadores
+   antes de T4/T6. T4 pasa los consumidores y retira los viejos o les da el nombre de §4.1.
+2. `TipoNivelDTO` lleva `digitosCodigo` y `codigoHeredaPrefijo`, que §4.6 no lista: sin ellos
+   `validarCodigoDeTipo` no puede usarse con lo que devuelven `contextoDeAlta`/`leerDivisionDePais` (§4.3/§4.4).
+3. `planificarDivision` con dos firmas: la nueva `(filas, nodos planos con profundidad, tipos)` y la de
+   SL-20, que traduce a P = 3 y devuelve el plan idéntico. Claves de alta nuevas `nivel_<k>-<n>`.
+   Con una regla de dígitos del país a medias, la firma vieja ahora lanza al empezar (antes al validar un
+   código); el CHECK de la base impide ese estado.
+4. Mensaje nuevo de hueco (R32): «nivel_k: está vacío pero la fila sigue en <columna>; no se puede saltar
+   un nivel.» (desde la profundidad 3; nivel_1/2 conservan «es obligatorio.»).
+5. R5 probado sin base propia: un nodo de profundidad 1 con otro tipo pasa el único del nodo y choca con el
+   de `provincia` → 23505 (§11 proponía apagar la sincronía en base propia).
+6. R4 medido con un trigger temporal dentro de la transacción revertida: profundidad máxima 2.
+7. `down.sql` de T2.1 es `SELECT 1` con su motivo (un `ADD VALUE` de enum no se quita, §3).
+8. Con la copia puesta, los fixtures que insertan nodos de profundidad 1–3 por SQL (`geo-43`,
+   `paises-de-prueba-geo`) también crean su fila vieja; las suites existentes siguen verdes.
+
+### Bloqueos / avisos
+
+- Ninguno de código. `tests/unit/services/carga-division-service.test.ts` › «CONTRAPRUEBA: exactamente 5 MB
+  no se rechaza por tamaño» dio un timeout de 20 s bajo carga; falla igual con los archivos de HEAD
+  restaurados y pasó en la corrida de `related`. Flake de saturación, no de SLT-46.
+- La guardia `nodo-geografico-sin-escritor` sigue verde (aún no hay escritor del nodo en `lib/`); T3 la
+  pondrá roja y T7.1 la retira.
+
+## T3.2 (2026-11-06): PaisRepository con tipos de nivel
+
+Archivos: `lib/repositories/PaisRepository.ts`, `lib/interfaces/repositories/IPaisRepository.ts`,
+`lib/types/pais.ts` (`DatosDeAltaDePaisConTipos`), tests nuevos `tests/integration/db/pais-alta-tipos.test.ts`,
+`pais-tipos-edicion.test.ts`, `pais-agregar-nivel.test.ts`; en `tests/unit/services/pais-service.test.ts` y
+`tests/unit/actions/geografia-plataforma-action.test.ts` solo los tres métodos nuevos en los dobles (sin
+tocar aserciones).
+
+| R | Test (archivo › it) |
+|---|---|
+| R23 | `pais-alta-tipos` › «R23: con 2, 3 y 4 tipos crea exactamente P tipos en orden, y pais.nivel_N_* = …», «R23/R37: si el historial falla no queda ni el país ni sus tipos…», «R23: un código que ya está es `duplicado`…» |
+| R24 (defensa del repo) | `pais-alta-tipos` › «R24 (defensa): 1 u 11 tipos no llegan a la base; 2 y 10 sí» |
+| R25 | `pais-tipos-edicion` › «R25: renombrar el tipo 2 cambia el tipo y pais.nivel_2_*…», «R25: renombrar el tipo 4 cambia solo el tipo…», «R25/R37: si el historial falla…» |
+| R26 | `pais-tipos-edicion` › «R26: los mismos nombres son `sin_cambio`… CONTRAPRUEBA…», «R26: un tipo que no existe es `no_existe`…» |
+| R27 (datos) | `pais-tipos-edicion` › «R27: en el contexto de la empresa, deLaEmpresa devuelve el nombre nuevo del tipo 1…» |
+| R37 | `pais-alta-tipos` › «R37: pais_creado y una tipo_nivel_geografico_creado por tipo…»; `pais-tipos-edicion` › «R37: cambiar los dos nombres deja dos filas…»; `pais-agregar-nivel` › «R48/R37: 2 → 3…» |
+| R46 | `pais-alta-tipos` › «R46: un país de 2 tipos sigue sin nivel_3 tras el alta, tras renombrar el tipo 1 y el 2 y tras un UPDATE pais SET nombre» (con contraprueba) |
+| R48 | `pais-agregar-nivel` › «R48/R37: 2 → 3 crea nivel_3, lo copia a pais.nivel_3_*…», «R48: 4 → 5 crea solo el tipo; … nodos intactos», «R48/R37: si el historial falla…» |
+| R49 | `pais-agregar-nivel` › «R49: con 10 tipos es `tope`… CONTRAPRUEBA…», «R49: sin país es `no_existe`…», «R49: dos altas de nivel en paralelo… P2002», «R49 CONTRAPRUEBA de la carrera…» |
+| R50 | sin método que borre tipos; `geografia-sin-borrado-fisico` y `nodo-geografico-escritor-unico` verdes |
+
+Verificación (base `logistic_slt46`, `--maxWorkers=1`): los 3 nuevos + `pais-repositorio`, `pais-disponible`,
+`pais-service`, `geografia-plataforma-action` y las guardias `nodo-geografico-escritor-unico`,
+`geografia-sin-borrado-fisico`, `historial-accion-escrituras-cubiertas`, `catalogo-postgres-acota-esquema` →
+`Test Files 11 passed (11) · Tests 289 passed` (ninguno saltado). `tsc --noEmit` exit 0; eslint de los 8
+archivos exit 0. Contrapruebas por mutación (restaurado después): sin la copia a `pais` en `renombrarTipo` →
+2 rojos (R25 tipo 2, R27); sin la copia en `agregarNivel` → 1 rojo (2 → 3); con el nivel 2 repetido en vez
+de `''` → 6 rojos (R23, R46, R48, R49).
+
+Decisiones a revisar:
+1. El alta con tipos es un método nuevo, `crearConTipos`, y `crear` (seis nombres) queda igual: cambiarlo
+   rompería `pais-repositorio.test.ts`, que afirma `historial = [pais_creado]` y 1 fila; con R37 el alta deja
+   P + 1 filas. **Aviso para T4.3**: al pasar `PaisService.crear` a tipos, ese test (R23/R33 de SL-20)
+   cambia de resultado por R37; hace falta decidir cómo se adapta antes de retirar `crear`.
+2. `agregarNivel` relee el tipo tras el `pais.update` (P+1 = 3) porque el upsert del trigger aplica la regla
+   de código de `pais` a ese nivel; devuelve lo que quedó escrito.
+3. `crearConTipos` lanza (no escribe) con < 2 o > 10 tipos: defensa, el service ya lo valida.
+4. Etiqueta del historial de un tipo = su singular (nuevo, en el renombre), como §7.
+5. La carrera de R49 commitea el país `XV` (sin usuario: actor sistema), bajo `bajoLockDeEscrituraReal`, y lo
+   borra en `finally` (también al empezar); el `afterAll` exige 0 residuos. Para que las dos lean P = 2
+   antes de escribir, una tercera transacción hace `FOR UPDATE` del país hasta ver las dos esperando.
+
+## Tanda 2 (2026-11-06 → 2026-11-09): T3, T4, T7
+
+El implementer de la tanda se colgó tras commitear (`22f314b2`…`56939f04`, ya subidos) sin marcar
+`tasks.md` ni escribir esta sección. La cierra un implementer de verificación (2026-11-09) que **no
+implementa nada nuevo**: comprueba el «Hecho» de cada tarea, audita los cambios de aserción de los tests
+existentes, corre la verificación y escribe esto. T5, T6 y T8 siguen pendientes.
+
+### Commits
+
+| sha | commit |
+|---|---|
+| `22f314b2` | feat: T3.1 GeoRepository sobre nodo_geografico a cualquier profundidad |
+| `5193ae2c` | test: T7.1 escritor único del nodo y de los tipos (R43) |
+| `619d1652` | test: T7.2 geografía vieja sin escritor (R1) y renombre punto único al nodo |
+| `4d302269` | test: T7.3 sin borrado físico de nodos ni tipos, también por SQL |
+| `2ed8028b` | test: T3.1 recupera en el nodo lo que SL-20 afirmaba de las escrituras |
+| `b87733e9` | feat: T3.2 PaisRepository con tipos de nivel, renombrar tipo y agregar nivel |
+| `54bccc13` | docs: architecture cita las guardias de escritor único y geografía vieja |
+| `7303f7f6` | feat: T4.1 GeografiaService por nodo a N niveles (R14–R20, R39) |
+| `74417592` | feat: T4.2 CargaDivisionService a P niveles (R30–R34, R39) |
+| `b78c8645` | refactor: retirar de GeoRepository las formas por nivel de SL-20 |
+| `72e635e5` | test: forma de entrada por nodo en carga-division, geografia-registro-accion y geografia-renombrado |
+| `0b1f5b77` | feat: T4.3 PaisService con tipos, renombrar tipo y agregar nivel |
+| `13345c30` | test: T7.1 control positivo de tipoNivelGeografico en escritor único |
+| `53c1d455` | feat: T4.4 actions por nodo, renombrar tipo y agregar nivel; un esquema por operación |
+| `56939f04` | test: guardias de superficie y test citado tras T4.4 y T7.1 |
+
+### Estado de cada tarea (comprobado contra su «Hecho»)
+
+- **T3.1** hecha. `IGeoRepository`/`GeoRepository` tienen exactamente los métodos de §4.4 por nodo; no
+  queda ningún método por nivel (`crear(nivel,…)`, `findHermanos`, `findHermanosDeNodo`,
+  `listArbolDePais`, `leerNodoParaActivacion` retirados en `b78c8645`); `GeoPrismaClient` sin
+  `provincia`/`canton`/`distrito`; historial con entidad `nodo_geografico`.
+- **T3.2** hecha (sección «T3.2» de arriba). Queda `PaisRepository.crear` (seis nombres) junto a
+  `crearConTipos`: ver «Desviaciones» 3.
+- **T4.1–T4.4** hechas. Un solo esquema por operación, con los nombres de §4.1 (`crearNodoGeograficoSchema`,
+  `renombrarNodoGeograficoSchema`, `cambiarActivacionGeograficaSchema`, `nodoGeograficoSchema`,
+  `crearPaisSchema`, `renombrarTipoNivelSchema`, `agregarNivelPaisSchema`); los paralelos de la tanda 1
+  (`altaDeNodoSchema`, `renombrarNodoSchema`, `cambiarActivacionNodoSchema`, `nodoPorIdSchema`,
+  `crearPaisConTiposSchema`) ya no existen en `lib/`, `app/` ni `tests/`.
+- **T7.1–T7.3** hechas: `nodo-geografico-sin-escritor` retirada; `nodo-geografico-escritor-unico` y
+  `geografia-vieja-sin-escritor` nuevas, `geografia-renombrado-punto-unico` y
+  `geografia-sin-borrado-fisico` ampliadas; todas con contraprueba (archivo inventado en rojo).
+
+(La verificación de esta sección se completa en «Salida real» abajo.)
+
+### Cierre de T4.4 (2026-11-09)
+
+`15a8f761` test(SLT-46): T4.4 el log de fallo de la action nombra el id, no el nivel (§4.1). Cuatro
+aserciones de `geografia-plataforma-action.test.ts` seguían afirmando `nivel=distrito`/`nivel=canton` en
+la línea de log de un fallo; desde `53c1d455` la entrada no trae nivel (§4.1) y la action escribe
+`padre=c1` / `nodo=d1` / `nodo=c1`. Se cambió solo ese `toContain` (siguen `toContain(operación)` y
+`not.toContain("Juan")`, que es lo que exige §4.2: «log sin datos»). Antes: 4 rojos; después 99/99.
+
+### Cambios de aserción en tests existentes (auditoría `b0b7ff43..HEAD`)
+
+«Forma» = solo cambia la entrada (`{id}`, `{paisId}|{padreId}`) o el doble por nodo, con los mismos
+valores esperados (T5.5, design §4.1). Los tests nuevos de la tanda no van aquí.
+
+| Archivo | Qué aserciones cambiaron | Respaldo |
+|---|---|---|
+| `integration/db/geografia-alta` | Forma (`altaPorNivel`, `{paisId}`/`{padreId}`); todos los `expect` iguales | §4.1, T5.5 |
+| `integration/db/geografia-cascada-reversible` | Forma (`cambiarActivacion(id,…)`). «id inexistente en los tres niveles» queda como 3 pasadas idénticas (valor esperado igual; cobertura por nivel perdida) | §4.1, T3.1 (débil) |
+| `integration/db/geografia-registro-accion` | Forma; sin aserción nueva de entidad `nodo_geografico` (es T5.4) | §4.1, T5.5 |
+| `integration/db/geografia-renombrado` | Forma (`hermanosDeNodo(id)`). El `it` «`null` en los TRES niveles» queda con 3 `expect` idénticos | T3.1, §4.4 (débil) |
+| `integration/db/geo-sincronia-geografia` | `creados: {provincia:1, canton:2, distrito:1}` → `{1:1, 2:2, 3:1}` (mismas cifras); filas del CSV y `division.{nodos,tipos}` (forma) | R33, §4.4, §5 |
+| `integration/db/geografia-superadmin-sin-empresa` | `arbol.provincias[0].cantones[0]` → `arbol.raices[0].hijos[0]` (lo afirmado, igual); conteo a `{id}`. **El resto del bloque sigue con la forma vieja** (`crearPaisAction` de seis campos, `{nivel, cantonId}`, `{nivel, id}`) y los `expect` de `creados`/`renombrado` siguen con `provincia`/`nivel`: queda rojo hasta T5.4 | §4.3 (lo cambiado); lo no cambiado es T5.4 |
+| `integration/db/carga-division` | Forma (filas `niveles`, `nodos/tipos`). **El `it` de `listArbolDePais` llama al método retirado con un cast y queda rojo a propósito** («hasta que T5.3 la decida»). El caso P6 «dos homónimos normalizados» sigue sin retirar | **SIN RESPALDO** el cast (ninguna tarea admite dejar un test en rojo); P6 es T5.3, pendiente |
+| `integration/db/geo-lecturas-catalogo` | Mismo valor esperado, pero ya no compara `GeoRepository.listArbolDePais` con «hoy»: compara `arbolDeTresNiveles(arbolDePais(p).raices)`, una proyección de `app/(app)/plataforma/geografia/_components/` | **SIN RESPALDO** (ni design ni tasks nombran ese sustituto para la equivalencia de SLT-44 R17) |
+| `unit/repositories/geo-repository.escrituras` | Reescrito (22 → 28 `it`). `entidadTipo` provincia/canton/distrito → `nodo_geografico`; casos por nivel retirados con equivalente por nodo; orden del log con 1–3 `findUnique` de la cadena; `throw` interno `/falta el padre/` → `/raiz/`; `creados` por profundidad; «no borra» → «el delegado no declara `delete`»; retirado sin equivalente «un id de otra profundidad que la del nivel es `no_existe`» (no hay nivel en la entrada) | P5/R35, §4.4, §7, R33/R36, R42, §4.1; T3.1 «adaptado» |
+| `unit/services/geografia-service` | Los `ok` de `crear`/`renombrar`/`cambiarActivacion` pierden `nivel`; `listarArbolDePais` → `{ok, tipos, raices}`; argumentos al repo por nodo. Ningún mensaje ni status de CR cambia | §4.3, §4.4; el `ok` sin `nivel`, **respaldo débil** (§4.1 solo quita `nivel` de la entrada; la UI no lee `res.nivel`) |
+| `unit/services/carga-division-service` | Rechazo por cabecera: antes «`leerDivisionDePais` no se llama», ahora `toHaveBeenCalledTimes(1)` (status y motivo iguales); `altas`/`creados` por profundidad | §4.3 (columnas según P tras leer la división), R30, R33, §5 |
+| `unit/services/nombres-que-imprime-la-etiqueta` | Forma | §4.1 |
+| `unit/services/pais-service` | `fieldErrors` `nivel1Plural`… → `tipos`; `repo.crear` → `repo.crearConTipos`; ningún `it` retirado | R23, R24, §4.1, T4.3 |
+| `unit/actions/geografia-plataforma-action` | Entradas por nodo («cantón sin padre» → «hijo con `provinciaId`», sigue `validation_error`); `crearConTipos`; `{tipos}`; log de fallo `nivel=…` → id (`15a8f761`) | §4.1, §4.2, R22, R23, T4.3, T4.4 |
+| `unit/actions/geografia-plataforma.composition-root` | Árbol vacío `{ok, provincias: []}` → `{ok, tipos: [], raices: []}` | §4.3, R21 |
+| `unit/components/geografia-plataforma-page` | Ninguna; solo dobles (`raices`, `creados` por profundidad) | §4.3, §5 |
+| `unit/types/geografia-nodo` | Retirados «un nivel desconocido no entra» (cubierto por «rechaza … un `nivel`») y «`padreDeAlta` …» (helper retirado con la unión por nivel); «canton exige provinciaId / distrito exige cantonId» → «el hijo exige su padreId»; esquemas paralelos renombrados a §4.1 | §4.1, R22, T4.4 |
+| `unit/types/pais-schemas` | Ninguna; `crearPaisConTiposSchema` → `crearPaisSchema` | §4.1 |
+| guardia `geografia-renombrado-punto-unico` | Detector de las tres tablas viejas → `nodoGeografico` (`update`/`updateMany`/`upsert`); retirados el caso de los tres niveles y el negativo `zonaDistrito` (lo cubre `geografia-vieja-sin-escritor`); `codigoDta` → `(codigoDta\|codigoOficial)` | R43, §9, T7.2 |
+| guardia `geografia-sin-borrado-fisico` | Ninguna retirada; detector ampliado a `nodoGeografico`, `tipoNivelGeografico`, `?.` y `DELETE FROM` | R42, R50, T7.3 |
+| guardia `nodo-geografico-sin-escritor` | Retirada entera (SLT-43 R37) | T7.1 |
+
+### Costa Rica igual (R11, R12): `44d5d02e`/`b0b7ff43` → HEAD
+
+Mensajes, status y desenlaces **iguales para CR** en alta (nombre, `paisId`, código por
+`validarCodigoDeTipo` con los mismos literales, homónimo → `conflict`, padre inexistente → `not_found`),
+renombre, retiro, reactivación, conteo y CSV (`.csv`, 5 MB, UTF-8, tope de filas, «Faltan columnas
+obligatorias: …», mensajes por fila con `nivel_k`/`codigo_nivel_k`, aviso de columna ignorada). Nuevos con
+respaldo: R15 («Este país no tiene un nivel por debajo de X» / «Este país no tiene ningún nivel.»), R32
+(hueco), R49 («Este país ya tiene 10 niveles»). Diferencias, todas con entradas que la pantalla de hoy no
+manda o en casos extremos:
+
+1. Clave del padre en `fieldErrors`: `provinciaId`/`cantonId` → `padreId` (consecuencia de la entrada de
+   §4.1; design no lo dice explícitamente).
+2. Con `z.union` (antes `discriminatedUnion("nivel")`), una entrada sin `nombre` o con la forma vieja da
+   `fieldErrors.entrada` en vez de `nombre`. **No previsto en design**: necesita decisión.
+3. CSV: «Faltan columnas obligatorias» se comprueba ahora después del tope de filas y de leer la
+   división; un archivo sin columnas y con más filas que el tope cambia de motivo. Caso extremo que R31 no
+   exceptúa.
+4. Los `ok` de alta/renombre/estado ya no llevan `nivel` (forma, no desenlace).
+
+### Hallazgo: la pantalla de hoy no puede escribir
+
+`GeografiaAdminModule.tsx` (alta, renombre, retiro, reactivación, conteo) y `GeografiaPlataformaModule.tsx`
+(alta de país) siguen mandando la forma de SL-20 (`{nivel, provinciaId|cantonId, …}`, seis campos
+`nivelN*`). Con los esquemas `.strict()` de T4.4, **las 8 llamadas responden `validation_error`**. `tsc` no
+lo ve (las actions reciben `unknown`). La lectura sí tiene puente (`arbol-de-tres-niveles.ts`, T4.1); las
+escrituras no. Pasarlas a la entrada nueva es UI (T6, bloqueada por la maqueta T0.2): no se tocó.
+
+### Desviaciones del design a revisar (reviewer)
+
+1. **Etiqueta del historial de un nodo de la hoja a la raíz** («Cabagra · Buenos Aires · Puntarenas»),
+   mientras §7 dice «cadena raíz → nodo». Se eligió el orden de las etiquetas de provincia/cantón/distrito
+   de SL-20 (`etiquetaDeEntidad`), para que CR no cambie de texto (R12). `GeoRepository.cadenaDeNombres`.
+2. **`TipoNivelDTO` con `digitosCodigo` y `codigoHeredaPrefijo`** (de `ReglaDeCodigoDeTipo`), que §4.6 no
+   lista: sin ellos `validarCodigoDeTipo` no se puede usar con lo que devuelven `contextoDeAlta` y
+   `leerDivisionDePais` (ya anotado en la tanda 1).
+3. **`PaisRepository.crear` (seis nombres) sigue** junto a `crearConTipos`; §4.4 pide un solo
+   `crear(datos con tipos)`. Ya no tiene llamador en la app (`DatosDeAltaDePais` lo dice); solo lo usa
+   `tests/integration/db/pais-repositorio.test.ts`, que afirma `historial = [pais_creado]` y 1 fila, y R37
+   pide P + 1 filas: retirarlo cambia el resultado de ese test. **Pendiente de decisión** (aviso de T3.2).
+   En `GeoRepository`/`IGeoRepository` no queda ninguna forma por nivel.
+4. Los `ok` de alta/renombre/estado del service sin `nivel` (ver la auditoría).
+5. `CargaDivisionService` lee la división antes de mirar las columnas obligatorias (necesita P): un país
+   inexistente con cabecera mala es `not_found` (antes `archivo_rechazado`). §4.3 lo ordena así.
+6. Puente de lectura `app/(app)/plataforma/geografia/_components/arbol-de-tres-niveles.ts` (T4.1) y
+   `creados[1..3]` en `GeografiaPlataformaModule.tsx` (T4.2): la pantalla sigue pintando 3 niveles hasta T6.
+7. `tests/integration/db/_fixtures/alta-por-nivel-46.ts`: adaptador de los tests existentes al alta por
+   nodo (calcula la profundidad y el tipo con `contextoDeAlta`), para que esas suites solo cambien la llamada.
+
+### Mapa R → test (tanda 2)
+
+| R | Test (archivo › caso) |
+|---|---|
+| R1 | `tests/unit/guards/geografia-vieja-sin-escritor.guardia.test.ts` (+ contraprueba); `geo-repository.escrituras` › «el doble no declara provincia/canton/distrito» |
+| R5 (borde) | `tests/unit/actions/geografia-plataforma-action.test.ts` › alta con P2002 / 23505 del driver → `conflict`; otra causa → `error` con log |
+| R12 (unit) | `tests/unit/services/geografia-service.test.ts` (casos de SL-20 con nodos de CR, mismos mensajes de código) y `carga-division-service.test.ts` (P = 3) |
+| R14, R15, R16 | `geografia-service.test.ts` › tipo de la profundidad, profundidad 4, sin tipo → `validation_error` sin llamar `crear`, raíz/hijo/padre retirado, `conflict`, `not_found` |
+| R18, R19 | `geografia-service.test.ts` (profundidad 4, sin cambio) + `geo-repository.escrituras` (solo escribe `nombre`/`activo`) |
+| R20 | `geografia-service.test.ts` › 1/2/3 → nivel al repo de órdenes; 4/10/inexistente → 0 sin llamarlo |
+| R21 (datos) | `geografia-service.test.ts` › `{tipos, raices}`; `composition-root` › árbol vacío |
+| R22 | `geografia-nodo.test.ts` (`padreId` en renombre/estado → error) y `geografia-plataforma-action.test.ts` › lista exacta de exports, sin mover |
+| R23, R24 | `pais-service.test.ts` (orden, 2/10 aceptados, 0/1/11 → `validation_error`) + `pais-alta-tipos` (T3.2) |
+| R25, R26 | `pais-service.test.ts` + `pais-tipos-edicion` (T3.2) + `composition-root` › `not_found` sin escribir |
+| R28 | `pais-service.test.ts` › `cambiarDisponible` con un doble que solo admite ese método |
+| R30, R32, R34 | `carga-division-service.test.ts` › P = 2/3/4, «Faltan columnas obligatorias», hueco, tope de filas sin leer la base |
+| R33, R36 (unit) | `geo-repository.escrituras` › `importarDivision` por profundidad, `division_cargada` con `creados` por profundidad solo si escribe |
+| R35 (unit) | `geo-repository.escrituras` › `entidadTipo = nodo_geografico` en alta, renombre y estado, a profundidad 4 |
+| R39 | `geografia-service`, `carga-division-service`, `pais-service` › `maestro` → `forbidden` con doble que revienta si se le llama (+ contraprueba) |
+| R42 | `tests/unit/guards/geografia-sin-borrado-fisico.guardia.test.ts` (nodo, tipo, `DELETE FROM`) |
+| R43 | `tests/unit/guards/nodo-geografico-escritor-unico.guardia.test.ts` y `geografia-renombrado-punto-unico.guardia.test.ts` |
+| R48, R49 | `pais-service.test.ts` › `tope` → `validation_error` «Este país ya tiene 10 niveles», `not_found`, P2002 sube; `geografia-plataforma-action.test.ts` › P2002/23505 → `conflict`; `pais-agregar-nivel` (T3.2) |
+| R50 | `geografia-sin-borrado-fisico` (tipo) y `geografia-plataforma-action.test.ts` › exports sin «quitar» |
+
+Pendientes (T5, T6, T8, T9): R11, R13, R21 (pantalla), R27 (componente), R29, R31 (integración),
+R35/R36/R38/R40 (integración, T5.4), R41, R45, R52, y la equivalencia de R12 en integración.
+
+### Salida real de la verificación (2026-11-09, sobre `56939f04` + `15a8f761`)
+
+Base `logistic_slt46` local; `--maxWorkers=1`, `NODE_OPTIONS=--max-old-space-size=8192`. Sin `./init.sh`.
+
+- `pnpm exec tsc --noEmit` → exit 0.
+- `pnpm exec eslint` sobre los 43 `.ts/.tsx` tocados en `b0b7ff43..HEAD` → exit 0, 0 errores, 1 aviso
+  (`tests/integration/db/geografia-alta.test.ts:102` `'s' is defined but never used`).
+- Unit tocados (11 archivos: `geo-repository.escrituras`, `geografia-service`, `carga-division-service`,
+  `nombres-que-imprime-la-etiqueta`, `pais-service`, `geografia-plataforma-action`,
+  `geografia-plataforma.composition-root`, `geografia-plataforma-page`, `geografia-nodo`, `pais-schemas`,
+  `components/GeografiaPlataformaAltaPais`): primera corrida `Test Files 1 failed | 10 passed (11) ·
+  Tests 4 failed | 445 passed (449)` (los 4 `nivel=…` del log); tras `15a8f761`,
+  `geografia-plataforma-action` → `Tests 99 passed (99)`. Total: 449/449.
+- Guardias, todas (337 archivos con `guard` en la ruta, 7 lotes de ≤ 50): `552`, `663`,
+  `4 failed | 767`, `812`, `710`, `750 | 1 skipped`, `475` → **4 734 tests, 4 rojos, todos de
+  `tests/unit/guards/dependencias-declaradas-presentes.guardia.test.ts`** (en `tests/baseline-rojos.json`).
+  Las cuatro de T7 en verde.
+- Integración tocada, una por una:
+
+| Suite | Resultado | Lectura |
+|---|---|---|
+| `geografia-alta` | 15/15 | verde |
+| `geo-sincronia-geografia` | 8/8 | verde |
+| `geo-lecturas-catalogo` | 8/8 | verde (ver «SIN RESPALDO» de la auditoría) |
+| `pais-alta-tipos` / `pais-tipos-edicion` / `pais-agregar-nivel` | 6/6, 7/7, 7/7 | verde (T3.2) |
+| `pais-disponible` | 4/4 | verde |
+| `geografia-cascada-reversible`, `geografia-registro-accion`, `geografia-renombrado` | paran en `beforeAll` | **entorno**: «`usuario` está vacía» (base sin siembra); no se creó usuario |
+| `geografia-superadmin-sin-empresa` | 2 rojos / 2 verdes | **T5.4 pendiente**: el bloque sigue mandando la forma vieja (`crearPaisAction` de seis campos → `validation_error`, luego `raices[0]` indefinido; conteo con `{nivel,id}` → `validation_error`) |
+| `carga-division` | 9 rojos / 7 verdes | **T5.3 pendiente**: `creados` `{provincia,canton,distrito}` frente a `{1,2,3}` (mismas cifras), el cast de `listArbolDePais` (`is not a function`) y el caso P6 de homónimos sin retirar |
+| `pais-repositorio` | 1 rojo / 6 verdes | **decisión pendiente** (Desviaciones 3): «R23/R33/R41: crea el país…» llama a `PaisService.crear` con seis campos → `validation_error` desde T4.3; adaptarlo a `tipos` cambia su `historial = [pais_creado]` por R37 |
+
+Ningún rojo de integración es de T3/T4/T7 fuera de lo que T5 tiene que adaptar o de la decisión de
+`pais-repositorio`; el comportamiento nuevo (T3.2) está verde contra Postgres.
+
+## Tanda 3 (2026-11-09): T3.3, T3.4, T4.5, T4.6, T5, T8 (backend, sin UI)
+
+Sha de partida: `f12f6529`. Sin T6 ni `@dnd-kit` (tanda siguiente). Base `logistic_slt46` local.
+
+### R52 — maqueta aprobada (T0.2)
+
+- **Fecha:** 2026-11-09 (anterior a cualquier commit de T6: aún no hay ninguno).
+- **Referencia:** lienzo https://claude.ai/artifact/QFq31uvvXmLXF4AGt9PFfH, **versión 7**.
+- **Quién la hizo:** Claude, a pedido del humano.
+- **Aprobación:** el humano, el 2026-11-09, con «aprobado» (`progress/features/SLT-46.md > Decisiones`).
+- Contenido aprobado: reordenar solo arrastrando por ⠿ (sin flechas visibles; teclado con la manija
+  enfocada), título «Niveles N (máximo 10)», modal de confirmación antes → después en guardar, editar,
+  crear, agregar nivel y retirar, validando antes de escribir.
+
+### Decisiones del humano (2026-11-09) que entran en esta tanda
+
+- Retirar `PaisRepository.crear` (seis nombres) y su contrato; `pais-repositorio.test.ts` a la forma
+  nueva (historial P+1 filas, R37). Cambio de aserción autorizado.
+- Entrada de alta de nodo (`z.union`): sin `nombre` → `fieldErrors.nombre`; forma vieja → error claro
+  de formato no válido (no `fieldErrors.entrada`).
+- P11: «Disponible» y CSV confirman en la pantalla. En backend: §4.7 y R61 no les asignan «antes» ni
+  control de cambio concurrente (R61 solo nombra renombre de nodo, edición de tipo y agregar nivel; R57
+  el reordenar). No se inventa contrato: se reporta al leader.
+- P12: estado pedido = actual → éxito sin escribir (R19 tal cual).
+
+### T3.3 — reordenar tipos, candado del país y «antes» en las escrituras de tipos (2026-11-09)
+
+**Archivos.** `lib/interfaces/repositories/IPaisRepository.ts`, `lib/repositories/PaisRepository.ts`,
+`lib/interfaces/services/IPaisService.ts`, `lib/services/PaisService.ts`, `lib/types/pais.ts`; tests
+nuevos `tests/integration/db/pais-reordenar-tipos.test.ts` (9 casos) y
+`tests/integration/db/geografia-cambio-concurrente.test.ts` (parte de tipos, 6 casos); adaptados
+`pais-repositorio`, `pais-alta-tipos`, `pais-tipos-edicion`, `pais-agregar-nivel` (integración),
+`pais-service`, `pais-schemas`, `geografia-plataforma-action`, `geografia-plataforma.composition-root` (unit).
+
+**Qué hace.**
+- `reordenarTipos(paisId, niveles, actor)` (§2.4): candado → conjunto de ids y nombres vigentes (si no,
+  `cambio_concurrente`) → `sin_cambio` si ninguna profundidad cambia → `update` de nombres por tipo +
+  un solo `pais.update` de los niveles 1–3 que cambian → una fila `tipo_nivel_geografico_renombrado` por
+  nombre con `detalle = {campo, origen: "reordenado"}`.
+- Candado `SELECT "id" FROM "pais" WHERE "id" = $1 FOR UPDATE` (`bloquearPais`) en `reordenarTipos`,
+  `renombrarTipo` (tras leer el `paisId` del tipo; relee el tipo bajo el candado) y `agregarNivel`.
+- `renombrarTipo(tipoId, nombres, anterior, actor)`: `sin_cambio` ANTES que el «antes»; luego
+  `cambio_concurrente` si los actuales ≠ `anterior`. `agregarNivel(paisId, nombres, profundidad, actor)`:
+  `tope` ANTES que la profundidad; `cambio_concurrente` si P+1 ≠ `profundidad`.
+- **Retirado** (decisión humana 2026-11-09) el `crear` de seis nombres y su tipo `DatosDeAltaDePais` viejo;
+  `crearConTipos` pasa a llamarse `crear` (§4.4) y `DatosDeAltaDePaisConTipos` → `DatosDeAltaDePais`,
+  `CrearPaisConTiposRepoResultado` → `CrearPaisRepoResultado`. Llamadores y dobles actualizados.
+- Sin migraciones ni valores de enum nuevos.
+
+**Desviación (adelanto de T4.5).** Para que el service no pasara un «antes» inventado, en este commit ya
+entran `anterior` en `renombrarTipoNivelSchema`, `profundidad` (entero 3–10) en `agregarNivelPaisSchema` y
+la variante `{ status: "conflict"; motivo: "cambio_concurrente" }` en los resultados de `renombrarTipo` y
+`agregarNivel` del service (con su mapeo). Sin eso, `typecheck` solo se podía mantener pasando los nombres
+pedidos como «antes» (todo renombre real habría sido `cambio_concurrente`) o una profundidad falsa. T4.5
+completa el resto (reordenar en el service, nodo, tests de los desenlaces nuevos).
+
+**Cambios de aserción en tests existentes.**
+
+| Archivo › caso | Cambio | Respaldo |
+|---|---|---|
+| `pais-repositorio` › «R23/R33/R41: crea el país…» | Entrada `{id, tipos}`; historial `[pais_creado]` → 4 filas (`pais_creado` + 3 `tipo_nivel_geografico_creado`) | Decisión humana 2026-11-09 (P+1, R37) |
+| `pais-repositorio` › «R23: un código o un nombre…» | `repo.crear` con `tipos`; `historial` 1 → `tipos.length + 1` (4) | Ídem |
+| `pais-agregar-nivel` › carrera | Título; vigila el `FOR UPDATE` del país (no el `INSERT`); `{ganadas:["nivel_3"], unicos:1}` → `{ganadas:["nivel_3"], rechazos:["cambio_concurrente"], unicos:0}` | Leader: «la carrera puede dar `cambio_concurrente` en vez del único» (§2.4, la action responde `conflict` en ambos) |
+| `pais-service` › «crea el país con el nombre DEL CATÁLOGO…» | Retirado `expect(repo.crear).not.toHaveBeenCalled()` (afirmaba que el `crear` de seis nombres no se llamaba; ese método ya no existe y el nombre pasó a la única alta) | Decisión humana 2026-11-09 (retirar `crear` viejo) |
+| `pais-service` › «R49: una posición (`profundidad`)…» | `fieldErrors` esperado `entrada` → `profundidad` (sigue `validation_error` sin tocar la base: `profundidad: 2` ya no es un campo de más sino uno fuera de 3–10) | §4.1 (gana `profundidad`) |
+| `geografia-plataforma.composition-root` › «SLT-46 R49: agregar un nivel… `not_found`» | «el país se buscó con `pais.findUnique`» → «con el `$queryRaw … FOR UPDATE`» (el doble del cliente gana `$queryRaw`) | §2.4 «Candado del país» |
+| Resto (`pais-tipos-edicion`, `pais-alta-tipos`, `pais-agregar-nivel` salvo la carrera, `pais-service`, `pais-schemas`, `geografia-plataforma-action`, composition-root del renombre) | Solo la forma de la entrada (`{nombreSingular, nombrePlural}` + `anterior`/`profundidad` vigentes) y `crearConTipos` → `crear`; mismos resultados | §4.1, §4.4 |
+
+**Salida real** (base `logistic_slt46` local, `--maxWorkers=1`):
+- `pnpm run typecheck` → exit 0. `pnpm exec eslint` de los 15 archivos tocados → exit 0, sin avisos.
+- Integración (`pais-reordenar-tipos`, `geografia-cambio-concurrente`, `pais-tipos-edicion`,
+  `pais-agregar-nivel`, `pais-alta-tipos`, `pais-repositorio`): `Test Files 6 passed (6) · Tests 41 passed (41)`.
+- Unit (`pais-service`, `geografia-plataforma-action`, `geografia-plataforma.composition-root`,
+  `pais-schemas`, `paises-plataforma.composition-root`): `Test Files 5 passed (5) · Tests 205 passed (205)`.
+- Guardias que miran repositorios/SQL (`aprobacion-escrituras-cubiertas`, `catalogo-postgres-acota-esquema`,
+  `geografia-lecturas-sin-nodo-fk`, `geografia-sin-borrado-fisico`, `geografia-sin-cte-recursiva`,
+  `nodo-geografico-escritor-unico`, `sql-a-mano-por-empresa`, `geografia-renombrado-punto-unico`,
+  `geografia-vieja-sin-escritor`): `Test Files 9 passed (9) · Tests 142 passed (142)`.
+
+### T3.4 — `GeoRepository.renombrar` con `nombreAnterior` (2026-11-09)
+
+**Archivos.** `lib/interfaces/repositories/IGeoRepository.ts`, `lib/repositories/GeoRepository.ts`,
+`lib/interfaces/services/IGeografiaService.ts`, `lib/services/GeografiaService.ts`,
+`lib/types/geografia-nodo.ts`; tests: parte de nodos de `geografia-cambio-concurrente.test.ts` (3 casos
+nuevos); adaptados `geo-repository.escrituras` (+1 caso R61), `geografia-service`,
+`nombres-que-imprime-la-etiqueta`, `geografia-nodo` (unit), `geografia-plataforma-action`, la guardia
+`geografia-renombrado-punto-unico`, y en integración `geografia-renombrado`, `geo-sincronia-geografia`,
+`carga-division`, `geografia-registro-accion` (una llamada cada uno).
+
+**Qué hace.** `renombrar(id, nombre, nombreAnterior, actorId)`: `no_existe` → `sin_cambio` si el nombre
+actual ya es el pedido (antes que el «antes», R18) → `updateMany({ where: { id, nombre: nombreAnterior } })`
+y, con 0 filas, `cambio_concurrente` sin historial (R61). `valorAnterior` del historial = `nombreAnterior`
+(es el valor que el `updateMany` reemplazó). El service lo traduce a `{ status: "conflict", motivo:
+"cambio_concurrente" }`.
+
+**Desviación (adelanto de T4.5, mismo motivo que en T3.3).** `nombreAnterior` (string no vacío, sin cotas
+de longitud: es un dato de la base, no tecleado, y uno heredado de antes de las cotas tiene que poder
+compararse) entra ya en `renombrarNodoGeograficoSchema`, y la variante con `motivo` en
+`RenombrarNodoGeograficoServiceResult` (reusa `CambioConcurrenteResult` de `IPaisService`). La firma de
+`renombrar` va en una sola línea porque la guardia `geografia-renombrado-punto-unico` localiza el cuerpo
+por el literal `async renombrar(id: string,`.
+
+**Cambios de aserción en tests existentes.**
+
+| Archivo › caso | Cambio | Respaldo |
+|---|---|---|
+| `geo-repository.escrituras` › «escribe SOLO `nombre`…» | `update` llamado 1 vez con `{where:{id}, data:{nombre}}` → `updateMany` 1 vez con `{where:{id, nombre:"Barrio Uno"}, data:{nombre}}` (sigue: solo `nombre`) | §4.4 («`updateMany({ where: { id, nombre: nombreAnterior } })`»), T3.4 |
+| `geo-repository.escrituras` › «`no_existe` y `sin_cambio` cortan…» | Añadido `updateMany` no llamado (además de `update`) | Ídem (aserción añadida, no cambiada) |
+| guardia `geografia-renombrado-punto-unico` › «dentro de GeoRepository, `nombre` solo se escribe en el cuerpo del renombre» | Hallazgo esperado `nodoGeografico.update escribe nombre` → `nodoGeografico.updateMany escribe nombre` | §4.4/§4.7 |
+| `geografia-renombrado` (fixture, no aserción) | El actor se crea en la transacción revertida de cada caso (`crearOrganizacion` + `insertarUsuario`), en vez de `usuario.findFirst()` en el `beforeAll` | Leader: «si una suite necesita filas de `usuario`, créalas dentro del propio test» |
+| Resto | Solo la entrada: `nombreAnterior` = el nombre vigente del nodo (o una constante en los dobles que no lo comparan); mismos resultados | §4.1 |
+
+**Salida real** (base `logistic_slt46` local, `--maxWorkers=1`):
+- `pnpm run typecheck` (con `NODE_OPTIONS=--max-old-space-size=8192`; sin él, `tsc` murió una vez por
+  memoria, exit 134) → exit 0. `eslint` de los archivos tocados → 0 problemas.
+- Unit (`geo-repository.escrituras`, `geografia-service`, `nombres-que-imprime-la-etiqueta`,
+  `geografia-plataforma-action`, `geografia-plataforma.composition-root`, `geografia-nodo`):
+  `Test Files 6 passed (6) · Tests 282 passed (282)`.
+- Guardias geo (`geografia-renombrado-punto-unico`, `nodo-geografico-escritor-unico`,
+  `geografia-vieja-sin-escritor`, `geografia-sin-borrado-fisico`): `Tests 87 passed` (tras ajustar la de
+  punto único; antes 3 rojos por la firma multilínea y el `update` → `updateMany`).
+- Integración: `geografia-cambio-concurrente` + `geo-sincronia-geografia` verdes; `geografia-renombrado`
+  **16/17**: `Test Files 1 failed | 2 passed (3) · Tests 1 failed | 33 passed (34)`.
+- `carga-division`: `9 failed | 7 passed (16)`, idéntico a antes de esta tanda (rojos de T5.3);
+  `geografia-registro-accion` sigue parando en su `beforeAll` («`usuario` está vacía», T5.4).
+
+**Bloqueo (T3.4 NO se marca `[x]`).** El rojo de `geografia-renombrado` es «una fila
+`nodo_geografico_renombrado` sobre la entidad del nivel»: espera `entidad_tipo = "distrito"` y la base
+escribe `"nodo_geografico"` desde T3.1 (R35, design §7, P5). No lo causa T3.4: la suite estaba parada en
+el `beforeAll` y nunca había corrido contra el código de T3.1; al crear el actor en el test, aparece.
+Cambiar `"distrito"` → `"nodo_geografico"` es un cambio de resultado que ni tasks ni el leader autorizaron
+para este archivo: **pendiente de autorización** (es una línea, respaldada por R35/§7).
+
+**Cierre de T3.4 (2026-11-09).** El leader autorizó (decisión para T5.4: las aserciones de `entidad_tipo`
+por nivel pasan a `nodo_geografico`, P5) cambiar esa línea:
+
+| Archivo › caso | Cambio | Respaldo |
+|---|---|---|
+| `geografia-renombrado` › «una fila `nodo_geografico_renombrado` sobre la entidad del nivel» | `entidad_tipo` `"distrito"` → `"nodo_geografico"` (sigue: 1 fila, acción y `entidad_id` iguales) | R35, design §7, P5; autorización del leader |
+
+Salida real (base `logistic_slt46` local, `--maxWorkers=1`): `eslint` → «No issues found»;
+`geografia-renombrado` + `geografia-cambio-concurrente`: `Test Files 2 passed (2) · Tests 26 passed (26)`;
+`geo-repository.escrituras`: `Test Files 1 passed (1) · Tests 32 passed (32)`. T3.4 marcada `[x]`.
+
+### T4.5 — esquemas, `PaisService.reordenarTipos` y `conflict` con motivo (2026-11-09)
+
+**Archivos.** `lib/types/pais.ts` (`reordenarTiposSchema`, `TIPO_REPETIDO_AL_REORDENAR`),
+`lib/types/geografia-nodo.ts` (alta de nodo sin `z.union`; `CAMPO_DE_FORMATO`, `mensajeDeFormatoNoValido`,
+`DESTINO_SIN_DECIDIR`), `lib/interfaces/services/IPaisService.ts` (`ReordenarTiposServiceResult`,
+`reordenarTipos`), `lib/services/PaisService.ts` (`reordenarTipos`); tests `pais-schemas`, `geografia-nodo`,
+`pais-service`, `geografia-service` (casos nuevos) y el doble de `IPaisService` en
+`geografia-plataforma-action`. `anterior`, `profundidad`, `nombreAnterior` y la variante `{ status:
+"conflict"; motivo: "cambio_concurrente" }` en `renombrarTipo`/`agregarNivel`/`renombrar` ya entraron en
+T3.3/T3.4 (ver sus «Desviación»).
+
+**Qué hace.**
+- `reordenarTiposSchema`: `{ paisId, niveles: { tipoId, nombreSingular, nombrePlural }[] }` `.strict()`,
+  2–10 elementos, nombres 2–40 (normalizados como el alta), `tipoId` distintos por `superRefine` (el error
+  cae en `fieldErrors.niveles`).
+- `PaisService.reordenarTipos`: rol → esquema → `repo.reordenarTipos` → `no_existe` → `not_found`;
+  `cambio_concurrente` → `conflict` con motivo; `sin_cambio`/`reordenado` → `ok`.
+- **Alta de nodo (decisión del humano 2026-11-09).** `crearNodoGeograficoSchema` deja de ser
+  `z.union` de dos `.strict()`: es UN objeto con `paisId?`, `padreId?`, `nombre`, `codigo?` (`.loose()`)
+  más un `superRefine` que corre aunque otro campo haya fallado (`when: () => true`) y un `transform` a la
+  unión `{paisId,…} | {padreId,…}` (el tipo `CrearNodoGeograficoInput` no cambia para quien lo usa).
+  Resultado:
+  - sin `nombre` → `fieldErrors.nombre` (como antes de SLT-46), sin `formErrors`;
+  - claves que no son de esta forma (p. ej. la vieja `{ nivel, provinciaId|cantonId, … }`) →
+    `fieldErrors.formato = ["Formato no válido: no se admiten los campos nivel, provinciaId. El alta lleva
+    el país (raíz) o el padre (hijo), el nombre y, si se quiere, el código."]`;
+  - país y padre a la vez, o ninguno → `fieldErrors.formato = ["Formato no válido: el alta lleva el país
+    (raíz) o el padre (hijo), uno de los dos."]`;
+  - una forma vieja sin nombre da los dos (`nombre` y `formato`).
+  **Decisión a revisar:** el campo elegido es `formato` (constante `CAMPO_DE_FORMATO`), no `nombre` ni
+  `entrada`: no es un dato que la persona teclee y así no se confunde con el error del nombre. La pantalla
+  vieja (`mensajeDeValidacion` de `GeografiaAdminModule.tsx`) solo lee `nombre`/`codigo`: con la forma
+  vieja con nombre, el toast mostrará el genérico de `validation_error` hasta T6 (no se tocó UI).
+
+**Tests nuevos (T4.5 «Hecho»).**
+- `pais-schemas`: `anterior` obligatorio (sin él, incompleto o con clave de más → error; con él, se
+  normaliza); `profundidad` obligatoria (2, 11, 3.5, "4" → error; 3 y 10 → ok); reordenar: 2 y 10 ok, orden
+  conservado y normalizado; 1 y 11 → error en `niveles`; repetido → `TIPO_REPETIDO_AL_REORDENAR` (con
+  contraprueba); nombres fuera de 2–40, `tipoId` vacío, claves de más, país no alfa-2.
+- `geografia-nodo`: `nombreAnterior` obligatorio y sin normalizar; los seis casos de la decisión del alta
+  (sin nombre, campo propio, forma vieja, forma vieja sin nombre, destino sin decidir, contraprueba).
+- `pais-service`: `reordenarTipos` `reordenado`/`sin_cambio` → `ok` con la lista normalizada en su orden;
+  `no_existe` → `not_found`; `cambio_concurrente` → `conflict` con motivo; repetido / 1 / 11 →
+  `validation_error` en `niveles` sin tocar el repo; `renombrarTipo` y `agregarNivel` con
+  `cambio_concurrente` → `conflict` con motivo; contraprueba: los `conflict` del alta de país siguen sin
+  `motivo`; R39: `reordenarTipos` (válida e inválida) → `forbidden` con el repo que lanza, y contraprueba.
+- `geografia-service`: `cambio_concurrente` → `conflict` con motivo, el repo recibe el «antes»;
+  contraprueba: el `conflict` por hermano sigue sin `motivo` y no llega al repositorio.
+
+**Cambios de aserción en tests existentes.** Ninguno en esta task (los casos existentes del alta de nodo
+—`validation_error` con `cantonId`, raíz sin país, etc.— siguen verdes sin tocarlos).
+
+**Salida real.**
+- `pnpm run typecheck` (`NODE_OPTIONS=--max-old-space-size=8192`) → exit 0; `eslint` de lo tocado → 0.
+- Unit (`pais-service`, `geografia-service`, `pais-schemas`, `geografia-nodo`, `geografia-plataforma-action`,
+  `geografia-plataforma.composition-root`, `nombres-que-imprime-la-etiqueta`):
+  `Test Files 7 passed (7) · Tests 374 passed (374)`; tras ajustar el tipo del helper de
+  `geografia-nodo`: `Tests 30 passed (30)` en ese archivo.
+
+### T4.6 — `reordenarTiposAction` y el «antes» por el borde (2026-11-09)
+
+**Archivos.** `lib/actions/geografia-plataforma.ts`; tests `tests/unit/actions/geografia-plataforma-action.test.ts`
+y `geografia-plataforma.composition-root.test.ts`.
+
+**Qué hace.** `reordenarTiposAction(input)`: `puerta` → `PaisService.reordenarTipos` dentro de
+`comoPlataforma`; la entrada pasa tal cual (la valida el service, como `renombrarTipoNivelAction` y
+`agregarNivelPaisAction`); un fallo de la base es `error` con log `reordenamiento de niveles -` (sin datos).
+Lleva `@sin-superficie` (T6.3 le da pantalla) para la guardia `superficie-de-uso`. El «antes» de las
+actions existentes ya viaja: `renombrarNodoAction` valida con `renombrarNodoGeograficoSchema` (con
+`nombreAnterior`) y pasa `parsed.data`; `renombrarTipoNivelAction` y `agregarNivelPaisAction` pasan la
+entrada al service, que valida `anterior`/`profundidad`. Comentarios del módulo y de
+`agregarNivelPaisAction` actualizados (la carrera ahora sale por cambio concurrente; el único, de respaldo).
+`EXCEPCIONES_DE_PLATAFORMA` no cambia: lista el ARCHIVO, que ya estaba.
+
+**Tests nuevos.**
+- R60: 15 entradas inválidas (alta de país con 11 tipos y con nombre de 1 carácter, disponibilidad sin
+  `disponible`, alta y renombre de nodo con nombre de 1 carácter, renombre sin «antes», retiro sin `activo`,
+  CSV sin archivo, edición de tipo con nombre de 1 carácter y sin «antes», agregar nivel con nombre de 1
+  carácter y sin `profundidad`, reordenar con 11 niveles, con `tipoId` repetidos y con nombre de 1 carácter)
+  → `validation_error`, con servicios REALES sobre repositorios que lanzan si se tocan; contraprueba: con
+  entrada válida el mismo repositorio sí se toca.
+- R61: edición de tipo, agregar nivel, reordenar y renombre de nodo con `cambio_concurrente` en el repo →
+  `{ status: "conflict", motivo: "cambio_concurrente" }`, y el «antes» llega al repositorio tal cual;
+  contraprueba: el `conflict` del único sigue sin `motivo`.
+- R55–R57 por el borde: `reordenado`/`sin_cambio` → `ok`; `no_existe` → `not_found`; fallo → `error` con log
+  sin datos; corre en `comoPlataforma`.
+- Decisión del alta de nodo por el borde: sin `nombre` → `fieldErrors.nombre`; forma vieja →
+  `fieldErrors.formato` («Formato no válido…»), sin `entrada`.
+- `ACCIONES` (sin sesión → `unauthenticated`, `maestro` → `forbidden`, sin tocar servicios) y «corre en
+  plataforma» ganan `reordenarTiposAction`; composition-root: reordenar con el cliente falso → candado sin
+  fila → `not_found`, sin historial.
+
+**Cambios de aserción en tests existentes.** La lista exacta de exports (R22, R50) gana
+`"reordenarTiposAction"` (lo pide T4.6); sigue sin ninguna action de mover ni de quitar nivel (el filtro
+`/mover|padre|quitar|borrar|eliminar|retirarNivel|retirarTipo/` no cambia). Ninguna otra.
+
+**Salida real.**
+- `pnpm run typecheck` (`NODE_OPTIONS=--max-old-space-size=8192`) → exit 0; `eslint` de los 3 archivos →
+  «No issues found».
+- `geografia-plataforma-action`: `Test Files 1 passed (1) · Tests 127 passed (127)`.
+- `geografia-plataforma.composition-root` + guardias `superficie-de-uso` y `plataforma-solo-en-lista`:
+  `Test Files 3 passed (3) · Tests 34 passed (34)`.
+- **Todas las guardias** (332 archivos con `guard` en la ruta, 7 lotes de ≤ 50, `--maxWorkers=1`):
+  `1 failed | 527 passed | 24 skipped (552)`, `666`, `4 failed | 763 passed (767)`, `836`, `726`,
+  `720 | 1 skipped`, `423` → 5 rojos, ninguno de esta tanda:
+  - 4 de `tests/unit/guards/dependencias-declaradas-presentes.guardia.test.ts` (en `tests/baseline-rojos.json`);
+  - 1 de `tests/guards/guard-dependencias-aprobadas.test.ts` › «el registro no lista paquetes que ya no
+    están instalados»: `@dnd-kit/{core,sortable,utilities}` están aprobadas en `docs/dependencias.md`
+    (`f12f6529`) y aún no instaladas (lo hace T6). Preexistente; no se tocó.
+
+### T5.1 — `geografia-admin-n-niveles.test.ts` (2026-11-09)
+
+**Archivo nuevo.** `tests/integration/db/geografia-admin-n-niveles.test.ts` (16 casos). País `XP` de 4
+niveles (`sembrarPaisDePruebaGeo(PAIS_CUATRO_NIVELES)`) y un actor real creado en la misma transacción
+revertida; `GeografiaService` sobre `clienteConSavepoint`. El `afterAll` exige
+`residuosDePaisesDePrueba = 0`.
+
+| R | Casos |
+|---|---|
+| R14 | alta bajo una comuna → profundidad 4, activo, `tipo_id` = `nivel_4`, padre; raíz → nivel_1 … nivel_4, cada alta con el tipo de su profundidad |
+| R15 | alta bajo un nodo 4 → `validation_error` `padreId: «Este país no tiene un nivel por debajo de Sector»`, sin escribir nodo ni historial |
+| R16 | bajo padre retirado nace activo; hermano 4 con nombre normalizado → `conflict`; código de otro nodo `nivel_4` → el service deja escapar el único `(pais_id, tipo_id, codigo_oficial)` y `crearNodoAction` responde `conflict`, sin escribir; contraprueba: mismo código en un nodo 3 entra; padre / país inexistente → `not_found` |
+| R18 | renombre de un nodo 4 cambia solo su nombre + 1 fila de historial; renombre de un nodo 3 deja sus descendientes 4 intactos; mismo nombre → `ok` sin escribir ni historial; hermano 4 normalizado → `conflict`; id inexistente → `not_found` |
+| R19 / P12 | retiro y reactivación de un nodo 4: solo `activo`, reactivar deja el país igual que antes, una fila `desactivado` + una `activado`; retirar un nodo 3 no toca el `activo` del 4; pedir el estado que ya tiene (activo→activo, retirado→retirado) → `ok` sin escribir ni historial; id inexistente → `not_found` |
+
+**Cambios de aserción en tests existentes.** Ninguno.
+
+**Salida real** (`logistic_slt46` local, `--maxWorkers=1`): `Test Files 1 passed (1) · Tests 16 passed (16)`;
+`eslint` → «No issues found»; `pnpm run typecheck` (`NODE_OPTIONS=--max-old-space-size=8192`) → exit 0.
+
+### T5.2 — `slt46-equivalencia-geografia.test.ts` (2026-11-09)
+
+**Archivo nuevo.** `tests/integration/db/slt46-equivalencia-geografia.test.ts` (4 casos). Comparación fila
+a fila en SQL: `nodo_geografico` (profundidad ≤ 3) `FULL OUTER JOIN` la unión de
+`provincia`/`canton`/`distrito` del país por `id`, comparando nombre, código, `activo`, padre, país y
+profundidad con `IS NOT DISTINCT FROM`; un id de un solo lado también es diferencia.
+
+- **Control:** CR antes de la secuencia = 0 diferencias.
+- **CR (R11, R12):** en una transacción revertida, por `GeografiaService`/`CargaDivisionService` con un
+  actor real: alta de provincia sin código, cantón `199` y distrito `19901` bajo San José (regla 1/3/5
+  dígitos con prefijo); renombre de la provincia, el cantón y un distrito sembrado; retiro y
+  reactivación de un cantón sembrado; retiro del distrito nuevo; CSV de SL-20 que completa el código `8`
+  de la provincia nueva y le crea un cantón y dos distritos (`creados {1:0, 2:1, 3:2}`, `existentes 1`,
+  `codigosCompletados 1`). Resultado: 0 diferencias en los ~591 nodos de CR y 6 filas más a cada lado.
+- **País de 4 niveles (`XP`):** altas en 1–4, renombres en 2, 3 (sembrado) y 4, retiro/reactivación en 3,
+  reactivación de un sembrado retirado, retiro de una raíz, CSV de 4 niveles (`creados {1:1,2:1,3:1,4:1}`,
+  un código completado). 0 diferencias en 1–3 (13 filas) y ningún nodo de profundidad 4 (5) con fila vieja (R3).
+- **Contraprueba:** con `nodo_geografico_copia_a_geografia_vieja` apagado en la transacción revertida, un
+  renombre por el service deja exactamente 1 diferencia (la comparación no es vacía por construcción);
+  tras el rollback el trigger sigue encendido.
+
+**Cambios de aserción en tests existentes.** Ninguno.
+
+**Salida real** (`logistic_slt46` local, `--maxWorkers=1`): `Test Files 1 passed (1) · Tests 4 passed (4)`
+(dos rojos intermedios eran conteos esperados mal sumados por mí: 7 sembrados en 1–3 y 3 en 4, no 8 y 2);
+`eslint` → «No issues found»; `pnpm run typecheck` → exit 0.
+
+### T5.3 — carga CSV a la forma nueva y a P niveles (2026-11-09)
+
+**Archivos.** Adaptados `tests/integration/db/carga-division.test.ts` y
+`tests/integration/db/geo-lecturas-catalogo.test.ts`; nuevo `tests/integration/db/carga-division-n-niveles.test.ts`
+(11 casos).
+
+**Cambios de aserción en tests existentes.**
+
+| Archivo › caso | Cambio | Respaldo |
+|---|---|---|
+| `carga-division` › «crea, cuelga cada nodo…», «R33: … `division_cargada`», «la segunda carga…», «a un nodo sin codigo…», «la geografia de OTRO pais…» | `creados` `{provincia, canton, distrito}` → `{1, 2, 3}` con las mismas cifras (también en `detalle.creados` del historial) | R33, §5, §7; leader: «es forma» |
+| `carga-division` › «decision 4: con dos homonimos normalizados…» | **Retirado**; en su lugar, un comentario que cita P6 (SL-20 R49 superado por SLT-46) | P6, design §5, tasks T5.3; leader |
+| `carga-division` › «T4.1 `listArbolDePais`…» → «T4.1 `arbolDePais`…» | Sin cast: llama a `GeoRepository.arbolDePais("XA")` y afirma `raices` con los mismos nodos, nombres, códigos, `activo` y orden (Región › Comuna › Aldea, Barrio); la forma pasa a `hijos` y cada nodo gana `profundidad` y `tipoId`. CR: `raices.length > 0` y sin «Región», igual que antes | §4.4; leader (a) |
+| `carga-division` › «retirar uno ya retirado…» y su CONTRAPRUEBA | `{ status: "ok", nivel: "provincia", id, activo }` → `{ status: "ok", id, activo }` (3 `toEqual`). **Ver nota abajo** | §4.1 (la entrada pierde `nivel`); contrato del service de T4.1 (`IGeografiaService`: «los `ok` ya no repiten el `nivel` de la entrada») |
+| `geo-lecturas-catalogo` › «R17 — CR y XA: mismos ids, nombres, codigos y flags propios» | Ya no importa `arbolDeTresNiveles` de `app/`: compara `GeoRepository.arbolDePais(p).raices` (sin `tipoId`) con `hoy.listArbolDePais` puesto en forma de nodo (profundidad 1/2/3 por tabla, distrito sin hijos), con el mismo `arbolCanonico` (ahora también canoniza `hijos`). Mismos valores esperados (CR y XA iguales, XA no vacío, código `"1"`, sin la provincia de CR) | Leader: «que pruebe el REPOSITORIO sin importar nada de `app/`» |
+
+**Nota para el reviewer (`nivel` en el `ok`).** El leader no nombró estas tres aserciones. Las cambié
+porque son la misma forma que autorizó para `geografia-superadmin-sin-empresa` (T5.4, «pasar el bloque a la
+forma nueva», cuyos `expect` de `renombrado`/`retiro` llevaban `nivel`) y porque el `nivel` del `ok` era el
+eco del campo de entrada que §4.1 retira: el status, el id y el `activo` siguen afirmados. Si no se acepta,
+basta revertir esas tres líneas (quedarían rojas: el service ya no devuelve `nivel` desde T4.1).
+
+**Nuevo `carga-division-n-niveles.test.ts`** (R30–R34, R36):
+- `XP` (4 niveles): crea a las 4 profundidades bajo sembrados y en rama nueva, cada nodo con `nivel_<k>`
+  y bajo su padre (`creados {1:1,2:1,3:2,4:2}`, `existentes 3`); una sola `division_cargada` (entidad `pais`,
+  `creados` por profundidad, actor); completa el código vacío de un nodo 4 sin renombrar ni reactivar, y
+  la recarga no escribe nodos ni historial; sin `codigo_nivel_4` → `archivo_rechazado` «Faltan columnas
+  obligatorias: codigo_nivel_4.»; hueco entre filas buenas → `invalido` línea 3, sin escribir; fallo del
+  único en el `createMany` de la profundidad 4 → nada de las profundidades 1–3 queda; CR no cuenta como
+  existente en XP.
+- `XT` (2 niveles, por `PaisRepository.crear`, sin `nivel_3`): cuatro columnas bastan, tipos por profundidad;
+  columnas `nivel_3`/`codigo_nivel_3` → dos avisos y nada a profundidad 3; completar códigos + historial
+  `creados {1,2}` en cada carga que escribe; código con espacio entre filas buenas → `invalido`, sin escribir.
+
+**Salida real** (`logistic_slt46` local, `--maxWorkers=1`): `carga-division` + `carga-division-n-niveles` +
+`geo-lecturas-catalogo`: `Test Files 3 passed (3) · Tests 34 passed (34)` (antes: `carga-division` 9 rojos de
+16). `eslint` de los tres → «No issues found»; `pnpm run typecheck` → exit 0.
+
+### T5.4 — historial, superadmin sin empresa y disponible a N niveles (2026-11-09)
+
+**Archivos.** `tests/integration/db/geografia-registro-accion.test.ts`,
+`tests/integration/db/geografia-superadmin-sin-empresa.test.ts`, `tests/integration/db/pais-disponible.test.ts`.
+
+**Tests nuevos.**
+- `geografia-registro-accion` › bloque «SLT-46 R35/R36/R38» (4 casos, `XP` de 4 niveles, service real):
+  R35 alta/renombre/retiro/reactivación de un nodo 4 → 4 filas `nodo_geografico` con la cadena
+  («Los Pinos · Quilpué · Marga Marga · Valparaíso»; el renombre con el nombre nuevo, `valor_anterior` y
+  `valor_nuevo`), país `XP`, actor y nombre congelado; R35 misma transacción: con el historial roto ni el
+  alta, ni el renombre, ni el retiro de un nodo 4 quedan, y la contraprueba con el historial sano sí;
+  R38: las cinco escrituras (con CSV) → 0 filas nuevas en `historial_accion` y 5 en `historial_plataforma`;
+  R36: la carga que escribe deja una `division_cargada` (entidad `pais`, `creados {1:0,2:0,3:0,4:1}`) y la
+  recarga del mismo archivo ninguna.
+- `geografia-superadmin-sin-empresa` › «SLT-46 R40: tipos … y nodos de profundidad 4 por las actions»: país
+  `HM` (catálogo ISO, deshabitado, como `BV`) creado, tipo 2 editado con su «antes», tipos reordenados,
+  4.º nivel agregado con `profundidad: 4`, CSV de 4 niveles (`creados {1:1,2:1,3:1,4:1}`), alta/renombre/
+  conteo (0, R20)/retiro/reactivación de un nodo 4, todo por las actions reales con la extensión de
+  aislamiento y sin empresa; historial con el superadmin en todas las filas y entidad `nodo_geografico`.
+  `limpiarPais` limpia `BV` y `HM` y ahora borra `nodo_geografico` de la hoja a la raíz (la copia borra la
+  fila vieja, R7) antes de las tablas viejas y del país.
+- `pais-disponible` › «SLT-46 R28»: `XP` de 4 niveles (con nodos 4) se apaga y se enciende por
+  `PaisService.cambiarDisponible` → `ok` y la columna cambia; historial `_desactivada` + `_activada` con el actor.
+
+**Cambios de aserción en tests existentes.**
+
+| Archivo › caso | Cambio | Respaldo |
+|---|---|---|
+| `geografia-registro-accion` › «una fila, con la accion y la entidad del nivel» (renombrado a «… `nodo_geografico` (SLT-46 P5)») | `entidad_tipo` `"distrito"` → `"nodo_geografico"` | R35, §7, P5; leader |
+| `geografia-registro-accion` › «un canton y una provincia se registran en SU entidad…» | `"canton"`/`"provincia"` → `"nodo_geografico"` (las cadenas, iguales) | Ídem |
+| `geografia-registro-accion` › «SL-20/R33: un alta escribe UNA fila…» | `entidad_tipo` `"distrito"` → `"nodo_geografico"` (etiqueta, país y actor iguales) | Ídem |
+| `geografia-registro-accion` (fixture) | El actor se crea en la transacción revertida de cada caso (`crearOrganizacion` + `insertarUsuario`) en vez de `usuario.findFirst()` en el `beforeAll` (la base no tiene usuarios: la suite no corría) | Leader: filas de `usuario` dentro del propio test (mismo cambio que `geografia-renombrado` en T3.4) |
+| `geografia-superadmin-sin-empresa` › «crea el país, carga un CSV…» | Entradas a la forma nueva: `crearPaisAction` `{id, tipos}` (los mismos seis nombres), `crearNodoAction` `{padreId}`, `renombrarNodoAction` `{id, nombre, nombreAnterior}`, conteo y estado `{id}`. `creados` → `{1:1, 2:1, 3:2}`; los `ok` de renombre/retiro/reactivación sin `nivel`; la lista de acciones del historial gana tres `tipo_nivel_geografico_creado` (el alta del país registra uno por tipo) | Leader: «pasar el bloque a la forma nueva … con el "antes"» y «ampliarlo a tipos»; §4.1; R33; R37 y decisión humana 2026-11-09 (historial P+1, la misma que en `pais-repositorio`) |
+| `geografia-superadmin-sin-empresa` › «dos empresas en XA…» | Conteo `{nivel, id}` → `{id}`; mismos 3 / 3 / 2 | §4.1 (forma) |
+| `pais-disponible` | Ninguna (solo el caso nuevo) | — |
+
+**Salida real** (`logistic_slt46` local, `--maxWorkers=1`): `pais-disponible` + `geografia-registro-accion` +
+`geografia-superadmin-sin-empresa`: `Test Files 3 passed (3) · Tests 28 passed (28)` (antes: `registro-accion`
+parado en el `beforeAll`, `superadmin-sin-empresa` 2 rojos). Tras la corrida, `BV`/`HM`/`XP`/`XN`/`XT`/`XA` y
+sus nodos: 0 en la base; `usuario`: 0. `eslint` de los tres → «No issues found»; `pnpm run typecheck` → exit 0
+(un rojo intermedio de tipo, `rol: string` en el actor de `pais-disponible`, corregido con `as const`).
+
+### T5.5 — las suites existentes en verde (2026-11-09)
+
+**Corrida.** `tests/integration/db/geografia-*.test.ts` (18 archivos), `geo-sincronia-geografia`,
+`geo-nodo-rls`, `orden-nodo-escritura` y `tests/integration/api/v2-paises-de-prueba.route.test.ts`.
+Antes de esta task: `Test Files 3 failed | 19 passed (22) · Tests 223 passed | 26 skipped (249)`. Los tres
+rojos eran el `beforeAll` de suites que leían filas de una base sembrada (`usuario.findFirst()`,
+`orden.findFirst()`); `logistic_slt46` no tiene usuarios ni órdenes, así que sus 26 casos ni corrían.
+
+**Cambios en tests existentes (solo fixture; ninguna aserción).**
+
+| Archivo | Cambio | Motivo |
+|---|---|---|
+| `geografia-cascada-reversible` | El actor se crea en la transacción revertida de cada caso (`crearOrganizacion` + `insertarUsuario`) en vez de `usuario.findFirst()` en el `beforeAll` | Leader: filas de `usuario` como fixture dentro del test; mismo cambio que `geografia-renombrado` (T3.4) y `geografia-registro-accion` (T5.4) |
+| `geografia-historico-intacto` | Estatus, tienda y zona de la orden histórica con `crearFksDeOrden` (SL-11) en la transacción revertida (tras `crearOrganizacion` + `fijarEmpresa`), en vez de `orden.findFirst()` | Leader: filas de `orden`/`usuario` como fixture dentro del test |
+| `geografia-ordenes-sin-entregar` | Tienda y zona con `crearFksDeOrden` en la transacción revertida, en vez de `orden.findFirst()`; los estatus siguen leyéndose del catálogo (`order_status`, de migración) | Ídem |
+
+Las demás suites de la lista ya estaban verdes con la forma de entrada que les dieron T3/T4 (`{id}`,
+`{paisId}|{padreId}`, `altaPorNivel`), auditada en «Tanda 2 › Cambios de aserción»; ninguna cambia aquí.
+`geo-nodo-rls` (R41), `orden-nodo-escritura` (R44) y `v2-paises-de-prueba.route` (R29) pasan sin tocarlas.
+
+**Resumen de T5 — cambios de aserción en tests existentes y su autorización.**
+- `geografia-renombrado`, `geografia-registro-accion` (4 `expect`): `entidad_tipo` por nivel →
+  `nodo_geografico` (P5, R35; autorizado por el leader).
+- `carga-division`, `geografia-superadmin-sin-empresa`: `creados` por nivel → por profundidad, mismas cifras
+  (R33; «es forma», leader).
+- `carga-division`: caso P6 retirado con comentario (P6; leader); `listArbolDePais` por cast →
+  `GeoRepository.arbolDePais` con los mismos valores (leader (a)).
+- `geo-lecturas-catalogo`: compara el repositorio con la lectura de hoy sin `app/` (leader).
+- `geografia-superadmin-sin-empresa`: entradas a la forma nueva con el «antes»; historial +3
+  `tipo_nivel_geografico_creado` (R37, decisión humana P+1; leader «ampliarlo a tipos»).
+- **A revisar:** el `ok` de renombre/retiro/reactivación sin `nivel` en `carga-division` (3) y
+  `geografia-superadmin-sin-empresa` (3). Ver la nota de T5.3.
+
+**Salida real** (`logistic_slt46` local, `--maxWorkers=1`): las 22 suites → `Test Files 22 passed (22) ·
+Tests 249 passed (249)`. `eslint` de los tres archivos → exit 0; `pnpm run typecheck` → exit 0.
+
+**Guardias** (332 archivos con `guard` en la ruta, 7 lotes de ≤ 50, `--maxWorkers=1`): `1 failed | 527 passed |
+24 skipped (552)`, `666`, `5 failed | 762 passed (767)`, `836`, `726`, `720 | 1 skipped`, `423`. Rojos:
+- 4 de `dependencias-declaradas-presentes` y 1 de `guard-dependencias-aprobadas` (`@dnd-kit` aprobada y aún sin
+  instalar): los mismos 5 preexistentes que anotó T4.6.
+- 1 **mío**: `catalogo-postgres-acota-esquema` marcó la consulta a `pg_trigger` de la contraprueba de
+  `slt46-equivalencia-geografia.test.ts` (T5.2) por no acotar el esquema. Corregido aquí (`JOIN pg_namespace …
+  nspname = 'public'`, como `carga-division`): la guardia → `Tests 7 passed (7)` y la suite →
+  `Tests 4 passed (4)`.
+
+**Cierre de T5.5 (implementer, 2026-11-09).** Revisados los tres diffs: solo cambia de dónde salen el
+actor y las FK (fixture dentro de la transacción revertida); ningún `expect` cambia. Ajuste de estilo: el
+tipo de `tx` usa `TxDeTest` de `_postgres-real` en vez de repetir su definición. Recorrida propia
+(`logistic_slt46`, `--maxWorkers=1`): las 22 suites → `Test Files 22 passed (22) · Tests 249 passed (249)`;
+`eslint` de los tres → «No issues found».
+
+**Verificación de T5.1–T5.4 y T8.1 por nombre** (`logistic_slt46`, `--maxWorkers=1`):
+`geografia-admin-n-niveles`, `slt46-equivalencia-geografia`, `carga-division`, `carga-division-n-niveles`,
+`geo-lecturas-catalogo`, `geografia-registro-accion`, `geografia-superadmin-sin-empresa`, `pais-disponible`,
+`geo-equivalencia-geografia` → `Test Files 9 passed (9) · Tests 89 passed (89)`. T5.5 y T8.1 marcadas `[x]`.
+
+### `migracion-slt43-ida-y-vuelta` en rojo por las migraciones de SLT-46 (2026-11-09)
+
+**Diagnóstico.** Es la lista del test de SLT-43, no la migración. Su `beforeAll` arma una base propia con
+`aplicarMigracionesHasta(db, "99999999999999", DE_SLT43)`: todas menos las seis de SLT-43, porque las de `dev`
+posteriores «no tocan lo que crean las seis». Las tres de SLT-46 (`20261106120000/120100/120200`) rompen esa
+premisa: `120100` crea un trigger sobre `nodo_geografico` y `120200` reemplaza una función que escribe en
+`tipo_nivel_geografico`, objetos que crean las seis. Aplicadas antes de la ida → `42P01`. Las migraciones de
+SLT-46 están bien ordenadas (van detrás de SLT-43 en disco) y no se tocan.
+
+**Arreglo** (solo preparación de la base; ninguna aserción cambia). Constante `SOBRE_SLT43` con las tres de
+SLT-46, excluidas de la base propia junto con `DE_SLT43`; cabecera actualizada con la excepción. Ninguna de las
+tres añade columnas, así que el Prisma de las fábricas no las echa en falta. La ida y vuelta de SLT-46 sigue
+cubierta por `migracion-slt46-ida-y-vuelta`.
+
+**Salida real** (`logistic_slt46` local, bases desechables `slt43_`/`slt46_`, `--maxWorkers=1`):
+`migracion-slt43-ida-y-vuelta` + `migracion-slt46-ida-y-vuelta` → `Test Files 2 passed (2) · Tests 13 passed (13)`.
+`eslint` → «No issues found».
+
+### Dependencias `@dnd-kit/*` instaladas (2026-11-09)
+
+Aprobadas por el humano el 2026-11-09 en `docs/dependencias.md` (filas de `@dnd-kit/core`, `/sortable`,
+`/utilities`, con la excepción al check 2). `pnpm add --save-exact @dnd-kit/core@6.3.1 @dnd-kit/sortable@10.0.0
+@dnd-kit/utilities@3.2.2`: `package.json` +3 líneas (versión exacta); `pnpm-lock.yaml` +56 / −0 (las tres y la
+transitiva `@dnd-kit/accessibility@3.1.1`; ninguna otra entrada cambia). Aún sin uso en código (T6).
+`tests/guards/guard-dependencias-aprobadas.test.ts` → `Test Files 1 passed (1) · Tests 2 passed (2)`.
+
+### Revisión del `ok` sin `nivel` (implementer, 2026-11-09)
+
+El backend_dev quitó `nivel` de los `ok` de renombrar/retirar/reactivar en `carga-division` (3) y
+`geografia-superadmin-sin-empresa` (3) sin autorización explícita. Contraste con el contrato:
+- En la base de la rama (`merge-base` con `dev`, `689cc9dff`) `IGeografiaService` devolvía
+  `{ status: "ok"; nivel: NivelGeografico; id; … }`, con `NivelGeografico = "provincia" | "canton" | "distrito"`.
+- design §4.1 quita `nivel` de las tres entradas («Sin `nivel`») y la forma nueva administra nodos de
+  profundidad 1–10 (R14, P2): para un nodo de profundidad ≥ 4 no existe valor de `NivelGeografico` que
+  devolver. §4.3 no enumera la forma del `ok`, pero describe los métodos por nodo (`id`), y §4.6 sustituye
+  el vocabulario por `profundidad`/`tipoId`. Desde T4.1 `IGeografiaService` (`lib/interfaces/services/`) es
+  `{ status: "ok"; id }`, `{ …; id; activo }` y `{ …; id; nombre }`; ningún consumidor de `app/` lee `res.nivel`.
+- **Veredicto:** consecuencia de la forma nueva, no un cambio de resultado: el campo deja de poder
+  representarse a N niveles. Los demás valores de esos `ok` (`id`, `activo`, `nombre`) no cambian. Vale;
+  queda como **respaldo derivado** (§4.1 + R14), no textual, por si el reviewer lo quiere explícito en el design.
+
+### T8.2 — guion del ensayo de design §10 (para la persona que lo corre; ningún agente lo ejecuta)
+
+**Quién y dónde.** Una persona del equipo, sobre una **copia restaurada** de producción (nunca producción).
+Antes de cada comando, comprobar que `DATABASE_URL` y `DIRECT_URL` apuntan a la copia (host/ref de la copia;
+no el de producción). Anotar cada resultado en esta bitácora, sección «Ensayo T8.2 — resultados», con fecha.
+
+**0. Preparación**
+1. Restaurar el backup más reciente de producción en la copia y comprobar que abre (regla 4 de la épica).
+2. En la copia, `SELECT migration_name FROM _prisma_migrations ORDER BY finished_at DESC LIMIT 5;` →
+   la última es la misma que en producción y ninguna `20261106*` está aplicada.
+3. Foto previa de los tipos (R47):
+   `\copy (SELECT pais_id, clave, nombre_singular, nombre_plural, digitos_codigo, codigo_hereda_prefijo FROM tipo_nivel_geografico ORDER BY 1,2) TO 'tipos_antes.csv' CSV HEADER`
+4. Línea base de SLT-43: `pnpm geo:backfill --equivalencia` → «Equivalentes.» y código 0.
+
+**1. Ida: las tres migraciones, midiendo el trigger**
+1. Aplicar con el mismo camino que el build: `pnpm exec prisma migrate deploy` (con la URL directa de la
+   copia, no el pooler `:6543`). Anotar el tiempo total (`time …`).
+2. Medir el `CREATE TRIGGER` aislado: en `psql` con `\timing on`, ejecutar `down.sql` de
+   `20261106120100_slt46_nodo_copia_a_geografia_vieja` y luego su `migration.sql`; anotar el tiempo de la
+   sentencia `CREATE TRIGGER "nodo_geografico_copia_a_geografia_vieja"` y si esperó por bloqueos
+   (`SELECT * FROM pg_locks WHERE NOT granted;` en otra sesión mientras corre). El `lock_timeout`, si hace
+   falta, lo decide el humano (como en SLT-43).
+3. Comprobar R47: repetir la foto del paso 0.3 en `tipos_despues.csv` y `diff tipos_antes.csv tipos_despues.csv`
+   → sin diferencias.
+4. `SELECT tgenabled FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid JOIN pg_namespace n ON n.oid =
+   c.relnamespace WHERE t.tgname = 'nodo_geografico_copia_a_geografia_vieja' AND n.nspname = 'public';` → `O`.
+
+**2. Edición desde la app apuntada a la copia (Costa Rica, superadmin)**
+1. Alta de un cantón bajo una provincia, renombre de ese cantón, retiro de un distrito sin órdenes y su
+   reactivación; cada una confirmando en el modal.
+2. Carga CSV pequeña de CR (cabecera `nivel_1,codigo_nivel_1,nivel_2,codigo_nivel_2,nivel_3,codigo_nivel_3`,
+   3–5 filas bajo una provincia existente).
+3. `pnpm geo:backfill --equivalencia-geografia` → «Geografía equivalente.» y código 0 (P8, R13).
+4. `pnpm geo:backfill --equivalencia` → «Equivalentes.» y código 0.
+
+**3. Carga de 10 000 filas frente a los 120 s**
+1. Generar un CSV de CR con 10 000 filas de datos (el tope, `DIVISION_TOPE_DE_FILAS_CSV`) y ≤ 5 MB: una
+   provincia nueva «Ensayo SLT-46» con 100 cantones × 100 distritos, códigos vacíos.
+2. Cargarlo desde la pantalla y cronometrar desde «Cargar» hasta la respuesta; anotar el tiempo, los `creados`
+   por profundidad (esperado `{1:1, 2:100, 3:10000}`) y si hubo error de timeout. El timeout de la importación
+   es `TIMEOUT_IMPORTACION_MS = 120_000` (`GeoRepository`); cada nodo hace doble escritura (copia nodo → vieja)
+   y eco (sincronía vieja → nodo de SLT-43, que no hace bucle). **Criterio:** holgura clara bajo 120 s; si pasa
+   de ~90 s, parar y avisar al leader antes de la release.
+3. `pnpm geo:backfill --equivalencia-geografia` → código 0 tras la carga grande.
+
+**4. Vuelta: los `down.sql` en orden inverso**
+1. En `psql`, `down.sql` de `20261106120200`, luego `20261106120100`, luego `20261106120000`, y borrar sus tres
+   filas de `_prisma_migrations`.
+2. Repetir la edición del paso 2.1 desde la app con el código **anterior** (sin SLT-46) apuntado a la copia:
+   debe seguir sincronizando vieja → nodo por SQL (la sincronía de SLT-43 sigue puesta).
+   `pnpm geo:backfill --equivalencia` → código 0.
+3. Ver con `\dT+ historial_plataforma_accion`: los valores de enum añadidos por `120000` se quedan (Postgres no
+   los quita); es lo esperado y no estorba al código anterior.
+
+**5. Reaplicar**
+1. `pnpm exec prisma migrate deploy` → aplica las tres de nuevo sin error.
+2. Repetir 1.3, 1.4 y 2.3: sin diferencias, `O`, código 0.
+
+**6. Ventana del deploy (design §10.2) — a verificar en el ensayo**
+1. Con el código nuevo y la migración forzada a fallar en la copia (p. ej., un rol sin permiso de `CREATE` sobre
+   el esquema), correr el paso de base del build (`tsx scripts/migrate-deploy.ts` con las variables del ensayo)
+   y comprobar que **corta** el build en vez de dejar servir el código sin la migración. Si no corta, parar y
+   avisar al leader. Cómo forzar el fallo sin riesgo lo decide la persona del ensayo.
+2. Recordatorio para el deploy real: avisar al superadmin de no editar geografía durante la ventana.
+
+**Qué anotar (plantilla).**
+| Medida | Valor |
+|---|---|
+| `migrate deploy` de las tres (total) | |
+| `CREATE TRIGGER` aislado / ¿esperó bloqueo? | |
+| R47: `diff` de tipos antes/después | |
+| `--equivalencia-geografia` tras edición / tras carga grande / tras reaplicar | |
+| `--equivalencia` (SLT-43) en cada paso | |
+| Carga de 10 000 filas: tiempo y `creados` (frente a 120 s) | |
+| Vuelta + edición con código anterior | |
+| ¿El build corta si la migración falla? | |
+
+### Verificación de cierre de la tanda 3 (implementer, 2026-11-09)
+
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm exec tsc --noEmit` → exit 0.
+- `eslint` de los 42 `.ts`/`.tsx` tocados desde `f12f6529` → exit 0.
+- Guardias (337 archivos con `guard` en la ruta, 7 lotes de ≤ 50, `--maxWorkers=1`, `logistic_slt46`):
+  `552`, `663`, `4 failed | 767 passed (771)`, `812`, `710`, `750 | 1 skipped`, `475`. Único rojo:
+  `dependencias-declaradas-presentes` (4, el preexistente aceptado). `guard-dependencias-aprobadas`, verde.
+  (El proceso se cortó por memoria del sistema DESPUÉS del séptimo lote; los 337 archivos habían corrido.)
+
+## Tanda 4 (2026-11-09): T6 — pantalla (sobre la maqueta aprobada T0.2, versión 7)
+
+### T6.4 — `ListaReordenable` (R53)
+- Archivos: `app/(app)/plataforma/geografia/_components/ListaReordenable.tsx`,
+  `tests/components/lista-reordenable.test.tsx`.
+- Arrastre con `@dnd-kit/core` + `sortable` (P13, desvío aprobado respecto a «arrastre nativo» de design §6):
+  `PointerSensor` (4 px) y `TouchSensor` (150 ms, tolerancia 5); solo desde la manija (`setActivatorNodeRef`).
+- Teclado: sin `KeyboardSensor` (su modelo espacio-flechas-espacio choca con «la flecha mueve al instante»);
+  manejador propio `ArrowUp`/`ArrowDown` en la manija, foco devuelto a la misma manija, región
+  `aria-live="polite"` «<nombre>: posición k de N». Anuncios de dnd-kit vacíos (venían en inglés).
+- Eje vertical con un `Modifier` propio (no está `@dnd-kit/modifiers`; no se instala nada).
+- `deshabilitado` → `aria-disabled` (la manija no pierde el foco mientras se guarda).
+- Manija 44 px, `touch-none`, `focus-visible:ring-3`.
+- R53 → `tests/components/lista-reordenable.test.tsx` (9 casos). El arrastre real no se prueba en jsdom.
+- Salida: `Test Files 1 passed (1)` · `Tests 9 passed (9)`; eslint de los dos archivos 0; tsc sin errores.
+
+### T6.5 — `ConfirmarCambio` (R58, R59, R61)
+#### Archivos
+- creado `app/(app)/plataforma/geografia/_components/ConfirmarCambio.tsx`
+- creado `tests/components/confirmar-cambio.test.tsx`
+
+#### Firma
+`ConfirmarCambio<R extends ResultadoDeCambio>(props: ConfirmarCambioProps<R>)`, con
+`ResultadoDeCambio = { status: string; motivo?: string }`, `FilaDeCambio = { etiqueta: string; antes: ReactNode | null; despues: ReactNode }`.
+Props: `open`, `onOpenChange`, `titulo`, `descripcion?`, `filas`, `confirmLabel`, `destructivo?`,
+`children?`, `accion: () => Promise<R>`, `onExito?(r: R)`, `onRechazo?(r: R | { status: "error" })`,
+y textos con default (`cancelLabel`, `cerrarLabel`, `encabezadoDato/Antes/Despues`, `textoSinValor`,
+`avisoConcurrente`).
+
+#### Decisión
+Ante `conflict` + `motivo: "cambio_concurrente"` el modal **sigue abierto** con el aviso (`role="alert"`),
+sin botón confirmar y con «Cerrar»; hace `router.refresh()`. §4.7 decía «cierra el modal»; el leader
+pidió esta variante en T6.5. El texto del aviso es el del leader («Otra persona cambió…»), no el
+provisional de §4.7. Si el reviewer pide alinear, §4.7 debe actualizarse.
+
+#### R → test (`tests/components/confirmar-cambio.test.tsx`)
+- R58: «pinta cada fila con su antes y su después…», «confirmar llama a la acción una sola vez…», «con ok cierra…»
+- R59: «cancelar cierra sin llamar a la acción», «con otro desenlace cierra y pasa el resultado a onRechazo…»
+- R61: «con cambio concurrente avisa, refresca, no llama a onExito y deja solo Cerrar»
+
+#### Salida
+- vitest (solo este archivo): Test Files 1 passed (1) · Tests 8 passed (8)
+- eslint (los dos archivos): No issues found
+- tsc --noEmit: sin salida, exit 0
+
+Veredicto: T6.5 hecha, verde en test, lint y typecheck.
+
+### T6.1 — `GeografiaAdminModule`: árbol de N niveles, panel «Lugares» (R12, R14, R20–R22, R52, R58, R59, R61)
+- Reescrito `_components/GeografiaAdminModule.tsx` (props `{ paisId, paisNombre, tipos, raices, cargaErrorInicial? }`;
+  lee el árbol de las props, refresca con `router.refresh()`). `page.tsx` pasa `arbol.tipos`/`arbol.raices`;
+  `GeografiaPlataformaModule.tsx` solo reenvía las props. Borrado `_components/arbol-de-tres-niveles.ts` (sin otros
+  importadores). `app/(app)/configuracion/_shared/filtrar-arbol-geografico.ts` gana `filtrarArbolDeNodos`
+  (N niveles); `filtrarArbolGeografico` (Tarifas) no cambia.
+- Cuatro escrituras (crear, renombrar con `nombreAnterior`, retirar con conteo R20, reactivar) validan con el
+  esquema zod antes de abrir `ConfirmarCambio`.
+- Tests: nuevo `tests/components/geografia-arbol-n-niveles.test.tsx`; ajustados
+  `tests/unit/components/geografia-plataforma-page.test.tsx`, `tests/components/GeografiaPlataformaAltaPais.test.tsx`
+  (solo montaje) y `tests/unit/utils/filtrar-arbol-geografico.test.ts` (+5 casos N niveles).
+- Mapa R → test (`geografia-arbol-n-niveles.test.tsx`): R21 chip por nivel, chevron con aria-expanded, «+ <tipo
+  siguiente>» solo con tipo siguiente y no en retirados ni último nivel; R14 sin campo de tipo; R22 «ninguna fila
+  ofrece mover…»; R58/R59 por cada acción (inválido sin modal ni action; válido con antes → después; cancelar no
+  llama; confirmar llama una vez); R61 «conflict con motivo cambio_concurrente avisa en el modal y refresca»;
+  P12 reactivar ya activo = éxito; R12 caso CR Provincia/Cantón/Distrito.
+- Aserciones cambiadas en `geografia-plataforma-page.test.tsx` (motivo: forma nueva de actions R14 y modal R58):
+  mock del árbol con `tipos`; encabezado «División de <país>» → «Lugares»; altas confirman «Sí, crear» con
+  `{nombre, paisId, codigo}`/`{padreId, nombre}`; R31 «Desactivar» → «Retirar»/«Sí, retirar», conteo `{id}`,
+  cambio `{id, activo}`, «Puedes desactivarlo igual.» → «Puedes retirarlo igual.»; vacío «usa «+ Departamento»».
+- Salida: vitest 4 archivos, `70 passed (70)` (antes 44 en los 3 existentes); eslint 8 archivos sin hallazgos; tsc
+  sin errores; guardia `etiquetas-geograficas-sin-literal` 6/6.
+- **Desvíos a revisar (reviewer/humano):** botones «Sí, crear/renombrar/retirar/reactivar»; «+ <Tipo>» visible con
+  nombre accesible «Añadir <tipo> a <padre>»; textos «Desactivar/Activar/Inactivos» → «Retirar/Reactivar/Retirados»
+  (vocabulario de la maqueta; toca a CR, R12); sin chip «Inactivo por su <nivel>» heredado (nombre atenuado);
+  el confirmar del retiro no se bloquea mientras se cuenta (antes sí); texto propio para id inválido
+  («Este lugar no tiene un identificador válido; recarga la página.»).
+
+### T6.2 — alta de país a 2–10 niveles, «Disponible» y CSV con confirmación (R23, R30, R33, R52–R54, R58, R59, R62; P11)
+- Modificado `_components/GeografiaPlataformaModule.tsx`: alta con `ListaReordenable` (3 filas vacías al arrancar),
+  título «Niveles N (máximo 10)», quitar solo la última y solo con > 2, «Agregar nivel» oculto con 10,
+  equivalencia «Columnas del CSV: nivel_1 = … · …» en vivo; valida con `crearPaisSchema` y confirma con
+  `ConfirmarCambio` («Dar de alta un país», «Sí, crear») → `crearPaisAction({ id, tipos })` en el orden de pantalla.
+  «Disponible» (P11): modal «Disponibilidad de <país>», «Sí, cambiar». CSV (P11): modal «Cargar la división»
+  (Archivo, País), «Sí, cargar»; columnas `nivel_k`/`codigo_nivel_k` k = 1..P desde `tipos`; resumen por profundidad
+  con el plural de cada tipo.
+- Tests: `tests/components/GeografiaPlataformaAltaPais.test.tsx` (14) y `tests/unit/components/geografia-plataforma-page.test.tsx` (31).
+- Mapa R → test: R23/R54 «confirmar llama una vez a la action con `{ id, tipos }` en el orden en pantalla»; R53
+  «cada fila tiene su manija ⠿ y no hay flechas…»; R54 «la equivalencia del CSV se ve en vivo, en el orden en
+  pantalla»; R58/R59 «un dato inválido marca el campo y no abre el modal…», «datos válidos abren la confirmación…;
+  cancelar no llama»; R62 «arranca con 3 filas…», «con 2 filas … no hay forma de quitar otra», «solo la última fila
+  se puede quitar», «llega a 10 filas y … no deja agregar una 11.ª»; R30 «nivel_k y codigo_nivel_k para k = 1..4»,
+  «un país de 2 niveles pide solo cuatro columnas»; R33 «el resumen pinta lo creado en cada profundidad…»; P11
+  «cancelar la confirmación no llama a la action ni mueve el interruptor», «cancelar la confirmación no carga nada».
+- Aserciones cambiadas en `geografia-plataforma-page.test.tsx`: envío del alta `{ id, tipos }` tras «Sí, crear»
+  (R23/R54, R58); conflicto del alta tras «Sí, crear» (R58); R47 interruptor pasa por el modal «Sí, cambiar» (P11);
+  CSV `subir()` pasa por el modal «Sí, cargar» (P11). Llamadas, `aria-checked` y refresh sin cambios.
+- Salida: vitest 3 archivos `66 passed (66)`; eslint 3 archivos sin hallazgos; tsc sin errores; guardia
+  `etiquetas-geograficas-sin-literal` 6/6.
+- **ABIERTO (bloqueo, decide el humano):** la casilla «Disponible para crear empresas» del alta y su aviso «país aún
+  no habilitado» NO están: `crearPaisSchema` es `.strict()` sin `disponible` y la columna nace `DEFAULT true`.
+  Opciones: (a) backend añade `disponible?` al esquema y al repositorio (cambio de backend, fuera del encargo);
+  (b) dos llamadas no atómicas (`crearPaisAction` + `cambiarDisponibilidadPaisAction`); (c) quitar la casilla del alta.
+- Desvíos de texto a cotejar con la maqueta v7: títulos de los modales, «Sí, cambiar»/«Sí, cargar», prefijo
+  «Columnas del CSV:»; «Quitar» oculto (no deshabilitado) donde no aplica.
+
+### T6.3 — `TiposDeNivelPais`, panel «Niveles del país» (R12, R25–R27, R48–R50, R52, R53, R55, R58, R59, R61)
+- Creado `_components/TiposDeNivelPais.tsx` y `tests/components/tipos-de-nivel-pais.test.tsx`. En
+  `GeografiaPlataformaModule.tsx`, rejilla de dos columnas (`lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]`, apilada
+  en móvil): «Niveles del país» a la izquierda y «Lugares» a la derecha.
+- Lista por profundidad: número, singular, «Plural: … · CSV: nivel_k», «Editar», manija ⠿. Reordenar deja el orden
+  en pantalla con «Orden sin guardar» («Descartar» / «Guardar orden…»); con orden sin guardar se deshabilitan
+  Editar y Agregar, y con un formulario o modal abierto no se reordena (para que el «antes» no quede viejo).
+  «+ Agregar nivel al final» oculto con 10. Sin quitar (R50). Modales: «Guardar el orden de los niveles»/«Sí, guardar»,
+  «Editar el nivel k»/«Sí, guardar», «Agregar el nivel P+1»/«Sí, agregar».
+- Mapa R → test (`tipos-de-nivel-pais.test.tsx`): R25/R48/R54 «pinta cada nivel por profundidad con su número,
+  singular, plural y columna CSV nivel_k» (+ página: «la página monta «Niveles del país» con los tipos del país
+  elegido, por profundidad»); R50 «no hay ningún control para quitar un nivel»; R53/R55 «ArrowDown en la manija
+  cambia el orden en pantalla sin llamar a la action y avisa «Orden sin guardar»», ««Descartar» vuelve al orden de
+  hoy»; R58/R59 «Guardar orden… abre el modal con el antes → después por profundidad; cancelar no llama»; R55
+  «confirmar llama una vez con el orden nuevo y los nombres de cada tipo («antes»)»; R61 «con motivo
+  «cambio_concurrente» el modal avisa y la página se refresca»; editar: R59 inválido sin modal ni action, R58/R61
+  válido envía `anterior`, cancelar no llama, R26 `validation_error`/`not_found`; agregar: con 10 no se ofrece, R59
+  inválido, R58 válido con `profundidad` P+1, R49 el tope del servidor; R12 Provincia/Cantón/Distrito. R27 sin test de
+  UI (lo cubre el backend).
+- Aserción cambiada en `geografia-plataforma-page.test.tsx` («con una carga buena muestra el resumen…»):
+  `findByRole("status")` → `findByText("Carga hecha. Altas:").parentElement`, porque `ListaReordenable` añade otra
+  región `role="status"`. Lo comprobado no cambia.
+- Salida: vitest 4 archivos (`tipos-de-nivel-pais`, `geografia-plataforma-page`, `GeografiaPlataformaAltaPais`,
+  `geografia-arbol-n-niveles`) `84 passed (84)`; guardia `etiquetas-geograficas-sin-literal` 6/6; eslint 4 archivos
+  sin hallazgos; tsc sin errores.
+- **BLOQUEO (backend, para el leader):** `tests/unit/guards/superficie-de-uso.guardia.test.ts` 17/18, rojo en
+  «ninguna anotación `@sin-superficie` de acción sobrevive a su motivo». Las tres anotaciones de
+  `lib/actions/geografia-plataforma.ts` (`renombrarTipoNivelAction`, `agregarNivelPaisAction`,
+  `reordenarTiposAction`) dicen que T6.3 les da pantalla y ya sobran. Hay que borrar esas tres líneas de JSDoc (cambio
+  solo de comentarios). El implementer lo intentó y el permiso del entorno lo denegó en `lib/`; queda sin hacer.
+
+### Verificación de cierre de la tanda 4 (implementer, 2026-11-09)
+- Commits: `8a424edb` (T6.4), `b4b44ade` (T6.5), `4fcc2c94` (T6.1), `99aba88d` (T6.2), `7c522482` (T6.3).
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm exec tsc --noEmit` → exit 0.
+- `eslint` de los 14 `.ts`/`.tsx` tocados desde `4a046a29` → exit 0.
+- Tests tocados (7 archivos, `--maxWorkers=1`) → `Test Files 7 passed (7)` · `Tests 120 passed (120)`.
+  Consumidor de `filtrar-arbol-geografico` fuera de la pantalla (`GeografiaSelector`): `geografia-selector-*` 2/2,
+  15/15.
+- Guardias (337 archivos, 7 lotes de ≤ 50, `--maxWorkers=1`, sin `HAY_BASE_DE_DATOS`): `528 | 24 skipped (552)`, `663`,
+  `4 failed | 767 (771)`, `812`, `710`, `1 failed | 749 | 1 skipped (751)`, `475`. Rojos:
+  `dependencias-declaradas-presentes` (4, el aceptado del baseline) y `superficie-de-uso` (1, las tres
+  `@sin-superficie` vencidas de `lib/actions/geografia-plataforma.ts`; ver el bloqueo de T6.3).
+- Sin push. E2E: ninguno escrito ni tocado (R45).
+
+## T6.6 — el alta de país acepta `disponible` (implementer, 2026-11-09; R63)
+
+Decisión del humano («1», 2026-11-09, en `progress/features/SLT-46.md`): el alta guarda `disponible` en la
+misma transacción que el país; la casilla viene desmarcada. Sin migración (la columna ya es
+`NOT NULL DEFAULT true`). Costa Rica y los países existentes no cambian.
+
+### Archivos
+- `lib/types/pais.ts`: `crearPaisSchema` gana `disponible: z.boolean().optional()`.
+- `lib/repositories/PaisRepository.ts`: `crear` pasa `disponible` al mismo `pais.create` (sin segundo
+  paso). `undefined` no se manda y rige el `DEFAULT true`: quien no lo envía se comporta como antes.
+- `lib/interfaces/services/IPaisService.ts`: solo el JSDoc de `crear`.
+- `app/(app)/plataforma/geografia/_components/GeografiaPlataformaModule.tsx`: casilla «Disponible para
+  crear empresas» (`Checkbox` + `Label` existentes), desmarcada, que se reinicia al cerrar; viaja siempre
+  en `crearPaisAction`; fila «Disponibilidad» (sin «antes») en el modal; con una lista que no tiene 3
+  niveles, aviso junto a la casilla (y como su `aria-describedby`): «Con N niveles, sus empresas verán
+  «país aún no habilitado» al crear órdenes hasta SLT-48».
+- Spec: R63 en `requirements.md` (+ cobertura y fila en `## Decisiones cerradas`), `design.md` §4.1, §4.4,
+  §6 (texto y tabla del modal) y §11; T6.6 en `tasks.md` (y T9.1 pasa a R1–R63).
+- Historial: sin cambios. El alta registra lo de R37 (`pais_creado` + una `tipo_nivel_geografico_creado`
+  por tipo); no hay fila de disponibilidad (el test lo fija).
+- `lib/actions/geografia-plataforma.ts` sin tocar (la action pasa la entrada tal cual; las tres
+  `@sin-superficie` siguen esperando al humano).
+
+### Aserciones existentes que cambian (obligadas por la decisión)
+- `GeografiaPlataformaAltaPais.test.tsx` «R58, R59: datos válidos abren la confirmación…»: `Sin valor`
+  pasa de 5 a 6 (la fila «Disponibilidad» no tiene «antes»); se añade la aserción de esa fila.
+- `GeografiaPlataformaAltaPais.test.tsx` «R23, R54: confirmar llama una vez…»: el `toHaveBeenCalledWith`
+  gana `disponible: false`.
+- `tests/unit/components/geografia-plataforma-page.test.tsx` «R23, R42 — alta de país eligiéndolo del
+  catálogo › el envío lleva el id elegido y los niveles en orden, sin nombre de país»: el
+  `toHaveBeenCalledWith` gana `disponible: false` (respaldo R63). Se le pasó a T6.6 y lo encontró la
+  review (vuelta 1, B1); corregido en la vuelta 2.
+
+### R63 → test
+- `tests/unit/types/pais-schemas.test.ts` (describe «R63»): true/false se conservan; sin el campo, la
+  salida no lo inventa; `"true"`, `1` y `null` → error en `["disponible"]`.
+- `tests/integration/db/pais-alta-tipos.test.ts` (2 casos R63, contra `logistic_slt46`): `false`, `true`
+  y sin él → `false`, `true`, `true` tanto en el país que devuelve `crear` (el `RETURNING` del mismo
+  insert) como en la base; historial = R37; con el historial caído y `disponible: false` no queda el país.
+  **Contraprueba:** comentando `disponible` en el `create`, el caso principal sale rojo (1 failed); restaurado.
+- `tests/components/GeografiaPlataformaAltaPais.test.tsx` (3 casos R63): casilla desmarcada; marcada →
+  resumen «Disponible» y la action recibe `disponible: true`; aviso con 2 y 4 niveles, no con 3.
+
+### Salida real
+- `vitest run GeografiaPlataformaAltaPais.test.tsx pais-schemas.test.ts --maxWorkers=1` → `Test Files 2 passed (2)` · `Tests 36 passed (36)`.
+- `vitest run pais-alta-tipos pais-repositorio pais-disponible --maxWorkers=1` (base `logistic_slt46`) → `Test Files 3 passed (3)` · `Tests 20 passed (20)`.
+- `vitest run pais-service.test.ts geografia-plataforma-action.test.ts --maxWorkers=1` → `Test Files 2 passed (2)` · `Tests 226 passed (226)`.
+- `tsc --noEmit` → exit 0. `eslint` de los 7 archivos tocados → exit 0.
+- Guardias (333 archivos: 238 de `tests/unit/guards` en 4 lotes + 95 fuera en 2, `--maxWorkers=1`, sin
+  `HAY_BASE_DE_DATOS`): `4 failed | 775 (779)`, `932`, `1007`, `1 failed | 645 | 1 skipped (647)`,
+  `528 | 24 skipped (552)`, `789`. Rojos: `dependencias-declaradas-presentes` (4, aceptado del baseline) y
+  `superficie-de-uso` (1, las tres `@sin-superficie` de `lib/actions/geografia-plataforma.ts`, pendiente del
+  humano). Ningún rojo nuevo.
+- Sin push. E2E: ninguno escrito ni tocado (R45).
+
+## T9.1 — cierre (implementer, 2026-11-09)
+
+### Marcas `@sin-superficie` vencidas
+
+Autorizado por el humano el 2026-11-09 («aprobado»): borradas las tres líneas `@sin-superficie SLT-46
+T6.3 …` de `lib/actions/geografia-plataforma.ts` (`renombrarTipoNivelAction`, `agregarNivelPaisAction`,
+`reordenarTiposAction`); T6.3 ya les da pantalla en `TiposDeNivelPais.tsx`. Nada más del archivo cambió.
+`superficie-de-uso.guardia.test.ts` → `Test Files 1 passed (1) · Tests 18 passed (18)`. Commit `f670ba76`.
+
+### Mapa `R<n> → test` consolidado (R1–R63)
+
+**Este mapa sustituye a los parciales de las tandas 1 y 2 y a los de cada T** (que quedan arriba como
+historia). Lo que allí decía «pendiente» (R11, R13, R21 pantalla, R27, R29, R31 integración, R35/R36/R38/R40
+integración, R41, R45, R52, R12 en integración) está cubierto abajo. Cada título se comprobó con `grep`
+sobre el árbol en el HEAD de este cierre; los títulos que empiezan por `374/` o `SL-20/` son de otras
+features y no cuentan aquí salvo que se diga.
+
+Rutas: `ti/` = `tests/integration/db/`, `tu/` = `tests/unit/`, `tc/` = `tests/components/`.
+
+| R | Test(s) |
+|---|---|
+| R1 | `tu/guards/geografia-vieja-sin-escritor.guardia.test.ts` › «SLT-46 R1 — ningún archivo de lib/, app/ ni components/ escribe provincia, canton ni distrito» + «contraprueba del detector»; `tu/repositories/geo-repository.escrituras.test.ts` › «SLT-46 R1 — el doble no declara la geografia vieja» |
+| R2 | `ti/slt46-nodo-copia-vieja.test.ts` › «R2: el alta de un nodo de profundidad 1, 2 y 3…», «R2: renombre, código, retiro y reactivación…», «R2: dar de alta un hijo bajo un padre retirado…» |
+| R3 | `ti/slt46-nodo-copia-vieja.test.ts` › «R3: un nodo de profundidad 4 no crea ni cambia ninguna fila…»; `ti/slt46-equivalencia-geografia.test.ts` › «país de 4 niveles: … ninguna fila vieja de profundidad 4» |
+| R4 | `ti/slt46-nodo-copia-vieja.test.ts` › «R4: escribir el nodo termina sin bucle (pg_trigger_depth ≤ 3)…» |
+| R5 | base: `ti/slt46-nodo-copia-vieja.test.ts` › «R5: si la copia choca con un único… 23505…»; borde: `tu/actions/geografia-plataforma-action.test.ts` › «SLT-46 R5 — un único violado en la copia a la geografía vieja es `conflict` en alta y renombre» |
+| R6 | `ti/slt46-nodo-copia-vieja.test.ts` › «R6: cambiar la profundidad de una hoja de 1–3… se rechaza con SLT46…» |
+| R7 | `ti/slt46-nodo-copia-vieja.test.ts` › «R7: borrar físicamente un nodo de profundidad 3…» |
+| R8 | `tu/db/slt46-migraciones-aditivas.test.ts` › «SLT-46 · R8 — migraciones solo aditivas» + «contraprueba con texto inventado»; `ti/migracion-slt46-ida-y-vuelta.test.ts` › «R8/R9: la ida pone la copia y la función nueva sin mover ningún dato» |
+| R9 | `ti/migracion-slt46-ida-y-vuelta.test.ts` › «R9: los tres down.sql, en orden inverso…», «R9: tras la vuelta la sincronía vieja → nodo sigue…», «R9: reaplicadas las tres…» |
+| R10 | `tu/db/slt46-migraciones-aditivas.test.ts` › «SLT-46 · R10 — ninguna migración altera, indexa ni escribe `orden`» (+ contraprueba) |
+| R11 | `ti/slt46-equivalencia-geografia.test.ts` › «Costa Rica: alta, renombre, retiro, reactivación y CSV por los services → 0 diferencias fila a fila», «país de 4 niveles: …», «CONTRAPRUEBA: con la copia apagada… SÍ deja una diferencia» (+ «control») |
+| R12 | `tu/repositories/geo-repository.escrituras.test.ts` › «SLT-46 R12 — lo que SL-20 afirmaba de las formas por nivel, sobre el nodo»; `tu/services/geografia-service.test.ts` y `carga-division-service.test.ts` (casos de SL-20 con CR, mismos mensajes); suites existentes `ti/geografia-*.test.ts` verdes sin cambiar resultados (T5.5); `ti/slt46-equivalencia-geografia.test.ts` (CR); pantalla: `tc/geografia-arbol-n-niveles.test.tsx` › «R12 — Costa Rica, los mismos tres niveles», `tc/tipos-de-nivel-pais.test.tsx` › «R12 — Costa Rica con sus tres niveles y las mismas acciones». Diferencias aceptadas: sección «Costa Rica igual (R11, R12)» de la tanda 2 |
+| R13 | `ti/geo-equivalencia-geografia.test.ts` › «R13: el modo se reconoce…», «R13: con todo igual… código 0», «R13: el código de salida del modo es 0 si y solo si…», «R13: una provincia con otro nombre hace salir con código ≠ 0…» |
+| R14 | `ti/geografia-admin-n-niveles.test.ts` › «R14/R16: el alta bajo una comuna da un nodo de profundidad 4…», «R14: cada alta toma el tipo de SU profundidad…»; `tu/services/geografia-service.test.ts` (tipo de la profundidad); `tc/geografia-arbol-n-niveles.test.tsx` › «+ <tipo siguiente>» solo con tipo siguiente… (R14: sin elegir tipo) |
+| R15 | `ti/geografia-admin-n-niveles.test.ts` › «R15: bajo un nodo de la profundidad máxima (4) no hay tipo 5 → `validation_error` en `padreId`, sin escribir»; `tu/services/geografia-service.test.ts` (sin tipo → `validation_error` sin llamar `crear`) |
+| R16 | `ti/geografia-admin-n-niveles.test.ts` › «R14/R16: …ACTIVO…» y los casos de padre retirado, hermano normalizado → `conflict` y código repetido → `conflict` (tabla de T5.1); `tu/services/geografia-service.test.ts` (raíz/hijo/padre retirado, `conflict`, `not_found`) |
+| R17 | `tu/utils/codigo-geografico.test.ts` › «SLT-46 R17 — validarCodigoDeTipo da lo mismo que la regla de SL-20 (tabla de CR)», «SLT-46 R17 — tipo de cualquier profundidad»; `tu/utils/division-csv.test.ts` › «SLT-46 R30/R17 — P = 4 …» |
+| R18 | `ti/geografia-admin-n-niveles.test.ts` › «R18: renombrar un nodo 4 cambia SOLO su nombre y deja UNA fila de historial…», «R18: renombrar un nodo 3 deja intactos a sus descendientes de profundidad 4» (+ mismo nombre, hermano, inexistente); `tu/services/geografia-service.test.ts`; `tu/repositories/geo-repository.escrituras.test.ts` (solo escribe `nombre`) |
+| R19 | `ti/geografia-admin-n-niveles.test.ts` › «R19: retirar y reactivar un nodo 4 cambia SOLO su `activo`…», «R19: retirar un nodo 3 NO toca el `activo` propio de sus descendientes…», «R19/P12: pedir el estado que ya tiene… → `ok` sin escribir»; `tu/repositories/geo-repository.escrituras.test.ts` (solo `activo`) |
+| R20 | `tu/services/geografia-service.test.ts` › «SLT-46 R20 — el conteo lee la profundidad del nodo y la traduce al nivel de las ordenes» (1/2/3 → repo de órdenes; 4/10/inexistente → 0 sin llamarlo); `tu/actions/geografia-plataforma.composition-root.test.ts` › «R31: el conteo usa el repositorio de órdenes…» (cableado); pantalla: `tc/geografia-arbol-n-niveles.test.tsx` › «R58, R59, R20 — retiro de un lugar» |
+| R21 | `tc/geografia-arbol-n-niveles.test.tsx` › «R21 — el árbol a cualquier profundidad» (chip del tipo, chevron, «agregar hijo» solo con tipo siguiente); datos: `tu/services/geografia-service.test.ts` › «SLT-46 R21 — el arbol del pais a N niveles, con sus tipos» |
+| R22 | `tu/types/geografia-nodo.test.ts` › «el renombre acepta `{id, nombre}` y rechaza un `padreId`», «el cambio de estado acepta `{id, activo}` y rechaza un `padreId`»; `tu/actions/geografia-plataforma-action.test.ts` › «SLT-46 R22, R50 — la lista de exports del borde», «R22: renombre y cambio de estado con un `padreId` son `validation_error`…»; `tc/geografia-arbol-n-niveles.test.tsx` › «R22 — no hay mover» |
+| R23 | `ti/pais-alta-tipos.test.ts` › «R23: con 2, 3 y 4 tipos crea exactamente P tipos en orden…», «R23/R37: si el historial falla…», «R23: un código que ya está es `duplicado`…»; `tu/services/pais-service.test.ts` (orden, 2/10); `tc/GeografiaPlataformaAltaPais.test.tsx` › «R23, R54: confirmar llama una vez a la action con `{ id, tipos }` en el orden en pantalla» |
+| R24 | `tu/types/pais-schemas.test.ts` › «acepta 2 y 10 tipos…», «rechaza 1 y 11 tipos», «rechaza un nombre de tipo fuera de 2–40…», «los demás rechazos siguen como en SL-20»; `tu/services/pais-service.test.ts` (0/1/11 → `validation_error`); `ti/pais-alta-tipos.test.ts` › «R24 (defensa): 1 u 11 tipos no llegan a la base; 2 y 10 sí» |
+| R25 | `ti/pais-tipos-edicion.test.ts` › «R25: renombrar el tipo 2 cambia el tipo y pais.nivel_2_*…», «R25: renombrar el tipo 4 cambia solo el tipo…»; `tu/services/pais-service.test.ts`; `tc/tipos-de-nivel-pais.test.tsx` › «R25, R26 — editar singular y plural» |
+| R26 | `ti/pais-tipos-edicion.test.ts` › «R26: los mismos nombres son `sin_cambio`… CONTRAPRUEBA…», «R26: un tipo que no existe es `no_existe`…»; `tu/types/pais-schemas.test.ts` (2–40); `tu/actions/geografia-plataforma.composition-root.test.ts` (`not_found` sin escribir); `tc/tipos-de-nivel-pais.test.tsx` › «R26: un `validation_error` del servidor va al campo y un `not_found` se dice en el formulario» |
+| R27 | datos: `ti/pais-tipos-edicion.test.ts` › «R27: en el contexto de la empresa, deLaEmpresa devuelve el nombre nuevo del tipo 1 (antes, el viejo)»; pantalla: `tc/etiquetas-geograficas.test.tsx` (de SL-20, sin cambios) › «con una empresa de un país de prueba, la pantalla dice «Departamento»…» — la pantalla imprime lo que lee `deLaEmpresa` en cada carga, así que el nombre nuevo llega en la siguiente |
+| R28 | `ti/pais-disponible.test.ts` › «SLT-46 R28: un país de 4 niveles (con nodos de profundidad 4) se marca disponible y no disponible por el service, con su historial»; `tu/services/pais-service.test.ts` › «R28 (SLT-46): no mira los niveles…» |
+| R29 | `tests/integration/api/v2-paises-de-prueba.route.test.ts` (existente, sin tocar; verde en T5.5) › «R15/R33 (…): crear, lote y cotizacion de v2 responden «pais no habilitado»…», «R5 (…): la carga y la cotizacion de v1 rechazan cada fila con «pais no habilitado»…»; aviso en el alta: `tc/GeografiaPlataformaAltaPais.test.tsx` › «R63: con 3 niveles no hay aviso; con 2 o 4, avisa «país aún no habilitado» hasta SLT-48» |
+| R30 | `tu/utils/division-csv.test.ts` › «exige nivel_<k> y codigo_nivel_<k> de 1 a P…», «SLT-46 R30 — P = 2 …», «SLT-46 R30/R17 — P = 4 …»; `tu/services/carga-division-service.test.ts` › «SLT-46 R30 — las columnas obligatorias son las de los P tipos del pais»; `ti/carga-division-n-niveles.test.ts` › «4 niveles R30: sin `codigo_nivel_4` → `archivo_rechazado`…», «2 niveles R30: cuatro columnas bastan…» |
+| R31 | `tu/utils/division-csv.test.ts` › «SLT-46 R31 — los casos de SL-20 con P = 3 dan lo mismo por profundidad»; `ti/carga-division.test.ts` (suite de SL-20 adaptada solo en la forma, T5.3); `tu/services/carga-division-service.test.ts` › «P = 3 (CR): las seis de SL-20…» |
+| R32 | `tu/utils/division-csv.test.ts` › «SLT-46 R32 — un hueco en la fila es error de linea y no hay plan»; `tu/services/carga-division-service.test.ts` › «R32: un hueco (nivel_3 vacio con nivel_4 lleno) es error de linea y no se escribe nada» |
+| R33 | `ti/carga-division.test.ts` › «R33: deja EXACTAMENTE una fila `division_cargada`…»; `ti/carga-division-n-niveles.test.ts` (crea por profundidad con su tipo); `tu/repositories/geo-repository.escrituras.test.ts` › «SLT-46 R33/R36 — `leerDivisionDePais` e `importarDivision` sobre el nodo»; `tu/services/carga-division-service.test.ts` › «SLT-46 R32, R33 — la fila a P niveles, por el servicio» |
+| R34 | `tu/utils/division-csv.test.ts` › «cada columna de mas es un aviso…», «las cotas del archivo no cambian (5 MB, 10 000 filas, 200 errores)»; `ti/carga-division-n-niveles.test.ts` › «2 niveles R34: las columnas de un nivel 3 que el país no tiene se ignoran con aviso…»; `tu/services/carga-division-service.test.ts` › «P = 3 (CR): … `nivel_4` es un aviso que se ignora (R34)» |
+| R35 | `ti/geografia-registro-accion.test.ts` › «R35: alta, renombre, retiro y reactivación de un nodo 4 → cuatro filas `nodo_geografico`…», «R35 misma transacción: si el historial falla…»; `tu/repositories/geo-repository.escrituras.test.ts` (`entidadTipo = nodo_geografico`) |
+| R36 | `ti/geografia-registro-accion.test.ts` › «R36: la carga que escribe deja UNA `division_cargada` con `creados` por profundidad; la que no escribe, ninguna»; `tu/repositories/geo-repository.escrituras.test.ts` › «SLT-46 R33/R36 …» |
+| R37 | `ti/pais-alta-tipos.test.ts` › «R37: pais_creado y una tipo_nivel_geografico_creado por tipo…», «R23/R37: si el historial falla…»; `ti/pais-tipos-edicion.test.ts` › «R37: cambiar los dos nombres deja dos filas…»; `ti/pais-agregar-nivel.test.ts` › «R48/R37: 2 → 3 …», «R48/R37: si el historial falla…» |
+| R38 | `ti/geografia-registro-accion.test.ts` › «R38: alta, renombre, retiro, reactivación y carga CSV no escriben NINGUNA fila en `historial_accion`»; `ti/carga-division.test.ts` › «R35: la carga no escribe NADA en `historial_accion`» (título de SL-20) |
+| R39 | `tu/services/geografia-service.test.ts` › «SLT-46 R39 — `maestro` es `forbidden` en cada metodo de gestion ANTES de leer nada»; `tu/services/carga-division-service.test.ts` › «SLT-46 R39 — `maestro` es `forbidden` sin leer el archivo ni la base»; `tu/services/pais-service.test.ts` › «R39 — el rol se mira ANTES de validar y de tocar el repositorio» (incluye `reordenarTipos` + contraprueba); `tu/actions/geografia-plataforma-action.test.ts` › «R39: un rol de empresa recibe `forbidden` del borde sin tocar el repositorio»; página: `tu/components/geografia-plataforma-page.test.tsx` › «R21 — la puerta, antes de leer» (404 a rol de empresa; la etiqueta «R21» es la de SL-20, la puerta de la página, no la R21 de SLT-46: el caso prueba lo que pide R39 en el borde de la página) |
+| R40 | `ti/geografia-superadmin-sin-empresa.test.ts` › «SLT-46 R40: tipos (editar, reordenar, agregar el 4.º) y nodos de profundidad 4 por las actions, sin Empresa» |
+| R41 | `ti/geo-nodo-rls.test.ts` (existente, verde en T5.5) › «una empresa no puede crear, cambiar ni borrar nodos, ni de su país (42501), y nada cambia»; `ti/geo-tipo-nivel.test.ts` (existente, de SLT-43) › «R12: una empresa lee solo los tipos de su país y no puede crear, cambiar ni borrar ninguno (42501)». SLT-46 no toca las políticas RLS de ninguna de las dos tablas |
+| R42 | `tu/guards/geografia-sin-borrado-fisico.guardia.test.ts` › «SLT-46 R42/R50 — ni lib/, ni app/, ni components/ borran nodos, tipos ni la geografia vieja»; `tu/repositories/geo-repository.escrituras.test.ts` › «SLT-46 R42 — ninguna escritura del repositorio borra en fisico» |
+| R43 | `tu/guards/nodo-geografico-escritor-unico.guardia.test.ts` › «SLT-46 R43 — solo GeoRepository escribe el nodo y solo PaisRepository escribe los tipos» + «contraprueba del detector»; `tu/guards/geografia-renombrado-punto-unico.guardia.test.ts` |
+| R44 | `ti/slt46-nodo-copia-vieja.test.ts` › «R44: el trigger de orden y los de las zonas siguen con el cuerpo de SLT-43…»; `ti/orden-nodo-escritura.test.ts` (existente, verde en T5.5) |
+| R45 | Sin test propio: es una regla de cómo se verifica. Evidencia: `git diff --name-status 44d5d02e..HEAD -- e2e` vacío (ningún E2E nuevo ni tocado; comprobado en este cierre); todo R se verifica con unit, componente o integración contra Postgres real (esta tabla). «Los E2E existentes en verde» lo da el gate completo de CI en el PR a producción (`docs/gate.md`), no una corrida local |
+| R46 | `ti/slt46-pais-tipos-de-nivel.test.ts` › «R46: un país con '' en el nivel 3 queda con 2 tipos tras el INSERT…» + «R46 contraprueba…»; `ti/pais-alta-tipos.test.ts` › «R46: un país de 2 tipos sigue sin nivel_3 tras el alta, tras renombrar el tipo 1 y el 2…»; `ti/pais-reordenar-tipos.test.ts` › «R46/R55: un país de 2 tipos reordenado sigue sin nivel_3…» |
+| R47 | `ti/slt46-pais-tipos-de-nivel.test.ts` › «R47: Costa Rica y un país de 3 tipos quedan con los mismos tipos que con la función de SLT-43…» |
+| R48 | `ti/pais-agregar-nivel.test.ts` › «R48/R37: 2 → 3 crea nivel_3, lo copia a pais.nivel_3_*…», «R48: 4 → 5 crea solo el tipo…»; `tu/services/pais-service.test.ts`; `tc/tipos-de-nivel-pais.test.tsx` › «R48, R49 — agregar un nivel al final» |
+| R49 | `ti/pais-agregar-nivel.test.ts` › «R49: con 10 tipos es `tope` sin escribir; CONTRAPRUEBA…», «R49: sin país es `no_existe`…», carrera P2002 + contraprueba; `tu/types/pais-schemas.test.ts` (2–40, sin posición); `tu/services/pais-service.test.ts` (`tope` → «Este país ya tiene 10 niveles»); `tu/actions/geografia-plataforma-action.test.ts` (P2002/23505 → `conflict`); `tc/tipos-de-nivel-pais.test.tsx` › «R49: el tope que devuelve el servidor se dice en el formulario» |
+| R50 | `tu/guards/geografia-sin-borrado-fisico.guardia.test.ts` › «SLT-46 R42/R50 …»; `tu/actions/geografia-plataforma-action.test.ts` › «SLT-46 R22, R50 — la lista de exports del borde»; `ti/slt46-pais-tipos-de-nivel.test.ts` › «R50: poner '' en el nivel 3 de un país que ya tiene nivel_3 no lo borra…»; `tc/tipos-de-nivel-pais.test.tsx` › «R50: no hay ningún control para quitar un nivel» |
+| R51 | `tu/types/pais-etiquetas.test.ts` › «R51 — etiqueta del nivel 3 de un país de 2 niveles» («con el nivel 3 vacío devuelve la etiqueta del nivel 2…», «nunca devuelve un texto vacío…») |
+| R52 | Sin test: es una puerta de proceso. Evidencia: sección «R52 — maqueta aprobada (T0.2)» de la tanda 3, añadida en `d74b64ea` (2026-11-09 10:02); el primer commit de T6 es `8a424edb` (T6.4, 2026-11-09 12:44) → la aprobación es anterior |
+| R53 | `tc/lista-reordenable.test.tsx` › «ListaReordenable (R53)» (9 casos; el arrastre real no se prueba en jsdom); `tc/GeografiaPlataformaAltaPais.test.tsx` › «R53: cada fila tiene su manija ⠿ y no hay flechas…»; `tc/tipos-de-nivel-pais.test.tsx` › «R53, R55 — reordenar sin guardar hasta confirmar» |
+| R54 | `tc/GeografiaPlataformaAltaPais.test.tsx` › «R54: la equivalencia del CSV se ve en vivo, en el orden en pantalla», «R23, R54: confirmar llama una vez a la action con `{ id, tipos }` en el orden en pantalla»; persistencia del orden: `ti/pais-alta-tipos.test.ts` › «R23: con 2, 3 y 4 tipos crea exactamente P tipos en orden…» |
+| R55 | `ti/pais-reordenar-tipos.test.ts` › «R55: país de 4 tipos con nodos en las 4 profundidades — invertir 1↔2 y mover el 4 al 1…», «R46/R55 …»; `tu/services/pais-service.test.ts`; `tu/actions/geografia-plataforma-action.test.ts` › «SLT-46 R55–R57 — reordenar los niveles por el borde, con el servicio REAL»; `tc/tipos-de-nivel-pais.test.tsx` › «R55: confirmar llama una vez con el orden nuevo y los nombres de cada tipo («antes»)» |
+| R56 | `ti/pais-reordenar-tipos.test.ts` › «R56: una fila por nombre cambiado, con detalle.campo y origen «reordenado»…», «R56: el orden actual es `sin_cambio` sin escribir ni historial», «R56: si el historial falla, ningún nombre cambia…» |
+| R57 | `ti/pais-reordenar-tipos.test.ts` › «R57: un país que no existe es `no_existe`…», «R57: falta un tipo, sobra uno, uno es de otro país o un nombre no es el actual → `cambio_concurrente`…»; `tu/types/pais-schemas.test.ts` (repetidos, <2, >10); `tu/services/pais-service.test.ts`; `tu/actions/geografia-plataforma.composition-root.test.ts` › «SLT-46 R57: reordenar llega al repositorio de países…» |
+| R58 | `tc/confirmar-cambio.test.tsx` › «pinta cada fila con su antes y su después… (R58)», «confirmar llama a la acción una sola vez aunque se haga doble clic (R58)»; `tc/GeografiaPlataformaAltaPais.test.tsx` › «R58, R59: datos válidos abren la confirmación…»; `tc/geografia-arbol-n-niveles.test.tsx` › «R58, R59, R61 — renombre de un lugar», «R58, R59, R20 — retiro de un lugar»; `tc/tipos-de-nivel-pais.test.tsx` (editar, reordenar, agregar) |
+| R59 | `tc/confirmar-cambio.test.tsx` › «cancelar cierra sin llamar a la acción (R59)», «con otro desenlace cierra y pasa el resultado a onRechazo sin refrescar (R59)»; `tc/GeografiaPlataformaAltaPais.test.tsx` › «R58, R59: un dato inválido marca el campo y no abre el modal ni llama a la action»; `tc/geografia-arbol-n-niveles.test.tsx` y `tc/tipos-de-nivel-pais.test.tsx` (inválido → error en el campo, sin modal) |
+| R60 | `tu/actions/geografia-plataforma-action.test.ts` › «SLT-46 R60 — cada action de escritura con una entrada que la pantalla habría rechazado: `validation_error` sin escribir» (15 entradas) |
+| R61 | `ti/geografia-cambio-concurrente.test.ts` (renombre de nodo, edición de tipo y agregar nivel con «antes» viejo → `cambio_concurrente`; con lo pedido ya en la base → `sin_cambio`); `tu/actions/geografia-plataforma-action.test.ts` (`cambio_concurrente` → `conflict` con `motivo`); `tc/confirmar-cambio.test.tsx` › «con cambio concurrente avisa, refresca, no llama a onExito y deja solo Cerrar (R61)»; `tc/geografia-arbol-n-niveles.test.tsx` › «R61 — un `conflict` con `motivo: cambio_concurrente` avisa en el modal y refresca»; `tc/tipos-de-nivel-pais.test.tsx` › «R61: con motivo «cambio_concurrente» el modal avisa y la página se refresca» |
+| R62 | `tc/GeografiaPlataformaAltaPais.test.tsx` › «R62: arranca con 3 filas vacías y el título dice «Niveles 3 (máximo 10)»», «R62: con 2 filas el título dice 2 y no hay forma de quitar otra», «R62: solo la última fila se puede quitar», «R62: llega a 10 filas y entonces no deja agregar una 11.ª» |
+| R63 | `tu/types/pais-schemas.test.ts` (describe «R63»); `ti/pais-alta-tipos.test.ts` › «R63: el país nace con el `disponible` pedido (false y true) en el mismo insert; sin él, true…»; `tc/GeografiaPlataformaAltaPais.test.tsx` › «R63: la casilla … arranca desmarcada», «R63: marcada, el resumen dice «Disponible»…», «R63: con 3 niveles no hay aviso…» |
+
+**R sin test:** R45 y R52 no son comportamiento del sistema sino reglas de proceso; su evidencia está en
+la tabla (la parte «E2E existentes en verde» de R45 queda en CI). Ningún R de comportamiento queda sin test.
+
+### T0.1 — por qué queda sin marcar
+
+Su «Hecho» pide un `./init.sh` verde anotado con el sha de partida. La mitad con base se cumplió
+(`geo-sincronia-geografia` + `carga-division` en `44d5d02e`: `2 passed · 24 passed`), pero el `init.sh`
+de partida no salió verde limpio (tanda 1: `test:rapido` seleccionó 1364 archivos por la pila
+43/44/45/65/71 y tardó ~3,5 h con rojos de saturación). Repetirlo en local con la pila entera tarda horas
+y el leader pidió no correrlo. **El veredicto de T0.1 (y la parte «`./init.sh` verde» de T9.1) queda en el
+check `gate-completo` de CI** sobre el PR a `dev`. No se marca para no afirmar un verde que no se vio.
+
+### Verificación de cierre (2026-11-09, sobre `f670ba76`)
+
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm exec tsc --noEmit` → exit 0, sin salida.
+- `eslint` de los 77 `.ts/.tsx` existentes de `git diff --name-only 44d5d02e..HEAD` → exit 0, `0 errors,
+  1 warning` (`tests/integration/db/geografia-alta.test.ts:102` `'s' is defined but never used`; la línea
+  es de `1e683bae8`, 2026-10-26, anterior a SLT-46).
+- Guardias: los 333 archivos `*guard*.test.ts` en 5 lotes, `--maxWorkers=1`, con `DATABASE_URL` a
+  `logistic_slt46` local: `69 passed · 787`; `1 failed | 69 passed · 4 failed | 995`; `70 · 1174`;
+  `70 · 1057 | 1 skipped`; `53 · 673`. Único rojo: `dependencias-declaradas-presentes` (4 tests, aceptado,
+  baseline). `superficie-de-uso` ya verde.
+- E2E: ninguno escrito ni tocado (R45). Sin push.
+
+## Vuelta 2 de review (implementer, 2026-11-09): B1, D1–D3, m1, m4–m8
+
+Informe: `progress/review_SLT-46.md` (vuelta 1, CAMBIOS). Decisiones D1–D3 en `progress/features/SLT-46.md`.
+
+### Commits
+| Commit | Qué |
+|---|---|
+| `dab245c7` | B1: `geografia-plataforma-page.test.tsx` espera `disponible: false` (R63); anotado en T6.6 |
+| `6b5c0daf` | D1: design §6 anota que los textos nuevos de CR quedan aceptados (dentro de R12) |
+| `1500c134` | Spec: m1 (P11–P13 cerradas, R58, `@dnd-kit` en design/tasks), m4 (§4.3 `ok` sin `nivel`), m5 (§4.1 `formato`/`nombre`), m6 (desvíos), §4.7 con D2; m8 (abajo) |
+| `3e4a9908` | D2 (frontend_dev): `ConfirmarCambio` cierra el modal ante `cambio_concurrente`, pinta el aviso fuera del modal (`Alert`, `role="alert"`) y llama `router.refresh()`; sin `onExito`/`onRechazo`; el aviso se olvida al reabrir. Se retira `cerrarLabel` (sin otro uso) |
+| `d67d6712` | D3 (frontend_dev): títulos «¿<Verbo> …?», secundario «Volver», «Columnas del CSV de carga» |
+
+### D3 — textos aplicados
+- `TiposDeNivelPais`: «¿Guardar el nuevo orden de niveles?», «¿Guardar el cambio del nivel k?», «¿Agregar el nivel k?».
+- `GeografiaPlataformaModule`: «¿Crear <país> con estos niveles?», «¿Cambiar la disponibilidad de <país>?»,
+  «¿Cargar la división de <país>?», encabezado «Columnas del CSV de carga».
+- `GeografiaAdminModule`: «¿Agregar «<nombre>»?», «¿Renombrar «<nombre>»?», «¿Retirar/Reactivar «<nombre>»?».
+- Secundario por defecto de `ConfirmarCambio` = «Volver» (el default de `components/shared/Modal` no cambia).
+- **A confirmar por el leader:** en el alta de un lugar el confirmar pasa de «Sí, crear» a «Sí, agregar»
+  (mismo verbo que el título, patrón «Sí, <verbo>» de D3). D1 aceptó «Sí, crear» para CR; si se prefiere
+  conservarlo, es una línea en `GeografiaAdminModule` y las aserciones listadas abajo.
+
+### Aserciones existentes que cambian (respaldo D2 o D3, humano/leader 2026-11-09)
+- `confirmar-cambio.test.tsx`: D2 — «con cambio concurrente… deja solo Cerrar» se reescribe: diálogo
+  cerrado, `onOpenChange(false)`, `role="alert"` con «Este dato cambió mientras tanto; revisa el valor
+  actual.», `refresh` 1 vez, acción 1 vez; caso nuevo «el aviso… se olvida al volver a abrir». D3 —
+  «Cancelar» → «Volver».
+- `geografia-arbol-n-niveles.test.tsx`: D2 — «R61 — conflict cambio_concurrente»: diálogo cerrado y aviso
+  en la pantalla. D3 — «Cancelar» → «Volver» y nombre del diálogo por su título nuevo en los cuatro
+  «válido…; cancelar no llama» (alta, renombre, retiro, reactivación); «Sí, crear» → «Sí, agregar» en
+  «confirmar llama una vez con el padre…», «un conflict por nombre de hermano…» y el caso R12 de CR.
+- `tipos-de-nivel-pais.test.tsx`: D2 — «R61: con motivo cambio_concurrente»: diálogo cerrado, aviso en la
+  pantalla, `refresh`, action 1 vez. D3 — nombres de diálogo (orden ×3, nivel 1 y 2, agregar nivel 4) y
+  «Cancelar» → «Volver» (reorden R58/R59, «cancelar el modal no llama a la action»).
+- `GeografiaPlataformaAltaPais.test.tsx`: D3 — «Dar de alta un país» → «¿Crear El Salvador con estos
+  niveles?» (×3, una en `pedirAlta`); «Cancelar» → «Volver» en «R58, R59…»; se añade la aserción de
+  «Columnas del CSV de carga».
+- `geografia-plataforma-page.test.tsx`: D3 — «Sí, crear» → «Sí, agregar» (Petén, Palín); título del alta
+  de país (×2); «Disponibilidad de Guatemala» → «¿Cambiar la disponibilidad de Guatemala?» (×2); «Cargar la
+  división» → «¿Cargar la división de Guatemala?» (×3); «Cancelar» → «Volver» en los dos «P11: cancelar…».
+
+### R61 → test (actualizado por D2)
+`tests/components/confirmar-cambio.test.tsx` › «…cierra el modal, avisa en la pantalla y refresca, sin
+onExito ni onRechazo» (cierre + aviso + `refresh`); en pantalla, `geografia-arbol-n-niveles` y
+`tipos-de-nivel-pais` › casos R61.
+
+### m8
+En el mapa consolidado de T9.1, la fila R39 aclara que el caso de la página lleva la etiqueta «R21» de
+SL-20 (la puerta de la página), no la R21 de SLT-46.
+
+### m7 — tamaño del PR (sin marcador de aceptación; lo decide el humano)
+`scripts/tamano-pr.mjs` no existe en este worktree. Medido con su misma regla (`git diff --numstat`,
+excluye `specs/**`, `progress/**`, lockfiles y snapshots; límite por defecto 40 archivos / 1000 líneas,
+`arnes.config.json` sin `gate.tamano_pr`):
+- diff propio de SLT-46 (`44d5d02e..d67d6712`): **89 archivos, +13 859 / −2 770 = 16 629 líneas**
+  (222 % del máximo de archivos, 1663 % del de líneas).
+- contra el merge-base con `origin/dev` (`689cc9df`, rama apilada sobre SLT-45 y anteriores sin mergear):
+  356 archivos, 53 607 líneas.
+
+### Salida real (sobre `d67d6712`)
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm exec tsc --noEmit` → «No errors found», exit 0.
+- `eslint app/(app)/plataforma/geografia/_components` + los 5 tests de componentes tocados → exit 0.
+- `vitest run geografia-plataforma-page.test.tsx --maxWorkers=1` (B1, archivo entero) → `32 passed (32)`.
+- `vitest run confirmar-cambio geografia-arbol-n-niveles tipos-de-nivel-pais GeografiaPlataformaAltaPais
+  lista-reordenable geografia-plataforma-page --maxWorkers=1` → `Test Files 6 passed (6)` · `Tests 105 passed (105)`.
+- Guardias (337 archivos que casan `guard`, 6 lotes, `--maxWorkers=1`, sin base): `57 | 3 skipped · 670 | 24
+  skipped`; `55 · 757`; `1 failed | 54 · 4 failed | 764`; `55 · 953`; `56 · 852 | 1 skipped`; `56 · 709`.
+  Único rojo: `dependencias-declaradas-presentes` (4, aceptado del baseline).
+- Integración: no se tocó `lib/` ni `db/`; no hizo falta base. E2E: ninguno. Sin push.
+
+## Ajuste 2026-11-23 — «Inactivo: su <nivel> está retirado» (frontend_dev)
+
+Decisión humana: la fila de un lugar ACTIVO apagado por un ascendiente retirado sigue en gris y dice,
+en texto visible, «Inactivo: su <nivel> está retirado», con <nivel> el singular (en minúscula) del
+tipo del ascendiente retirado MÁS CERCANO, sacado de los tipos del país. Un retirado no lo dice.
+
+- `app/(app)/plataforma/geografia/_components/GeografiaAdminModule.tsx`: `rama` arrastra la
+  profundidad del retirado más cercano; `FilaNodo` recibe `motivoInactivo` y lo pinta en un `<span>`.
+- `tests/components/geografia-arbol-n-niveles.test.tsx`: describe «R21 — un lugar activo apagado por
+  arriba dice por qué» (4 tests: padre, más cercano en el nieto, sin texto en retirado/activos, CR).
+- `e2e/geografia-superadmin.spec.ts`: fuera los dos `TODO(SLT-46 merge)`; helpers `filaDelArbol`
+  (`[data-nodo]` filtrado por el nombre exacto) y `esperarInactivoPor`. No se corrió Playwright.
+
+Salida real:
+- `vitest run tests/components/geografia-arbol-n-niveles.test.tsx` → `Test Files 1 passed (1)` · `Tests 25 passed (25)`.
+- `eslint` de los 3 archivos → sin salida, exit 0.
+
+Veredicto: hecho; falta que el CI corra el E2E.
+
+Mapa: R64 → `tests/components/geografia-arbol-n-niveles.test.tsx` (describe «R64 — un lugar activo apagado por arriba dice por qué») + `e2e/geografia-superadmin.spec.ts` (tests de cascada de cantón y provincia).

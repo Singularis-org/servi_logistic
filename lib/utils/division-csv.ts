@@ -1,6 +1,11 @@
 // SL-20 (design §6; R24–R27) — valida las filas de un CSV de division y las cruza con lo que ya
 // hay en la base. PURA: no lee ni escribe; devuelve los errores por linea o el plan que el
 // repositorio escribe en una sola transaccion. Todo o nada: con un error no hay plan.
+//
+// SLT-46 (design §5; R30–R34): el motor va por PROFUNDIDAD (1..P, P = tipos del pais), con la regla
+// de codigo de cada tipo (`validarCodigoDeTipo`). La firma de SL-20 (provincia/canton/distrito y
+// regla del pais) sigue como sobrecarga que traduce a P = 3 y de vuelta, para que el service y el
+// repositorio de hoy no cambien hasta T4. El algoritmo de cruce (§6 de SL-20) no cambia.
 
 import {
   GEO_NOMBRE_MAX,
@@ -9,26 +14,38 @@ import {
   normalizarNombreGeografico,
   type NivelGeografico,
 } from "@/lib/types/geografia-nodo";
-import type {
-  AltaDePlan,
-  ArbolExistente,
-  CodigoACompletar,
-  ColumnaDivision,
-  ErrorDeLinea,
-  FilaDivision,
-  NodoExistente,
-  PlanDivision,
-  RefNodo,
-  ResultadoPlanificacion,
+import {
+  columnaCodigoNivel,
+  columnaNivel,
+  columnasDivision,
+  DIVISION_PROFUNDIDADES_OBLIGATORIAS,
+  type AltaDePlan,
+  type ArbolExistente,
+  type CodigoACompletarPorProfundidad,
+  type ErrorDeLinea,
+  type FilaDivision,
+  type FilaDivisionPorNiveles,
+  type NodoExistente,
+  type NodoExistenteConProfundidad,
+  type PlanDivision,
+  type PlanDivisionPorProfundidad,
+  type RefNodo,
+  type ResultadoPlanificacion,
+  type ResultadoPlanificacionPorProfundidad,
+  type TipoDeDivision,
 } from "@/lib/types/division-csv";
-import { validarCodigo, type ReglaDeCodigoDePais } from "@/lib/utils/codigo-geografico";
+import {
+  tipoDeNivelDePais,
+  validarCodigoDeTipo,
+  type ReglaDeCodigoDePais,
+} from "@/lib/utils/codigo-geografico";
 import { rechazoDeNombreDeEtiqueta } from "@/lib/utils/nombre-imprimible-etiqueta";
 import { normalizeName } from "@/lib/utils/normalize";
 
 /** Un nodo tal como lo describe el archivo, ya identificado contra la base. */
 interface NodoDelArchivo {
   llave: string;
-  nivel: NivelGeografico;
+  profundidad: number;
   nombre: string;
   padre: NodoDelArchivo | null;
   /** El de la base, si el nodo ya existe; `null` si es un alta. */
@@ -39,19 +56,43 @@ interface NodoDelArchivo {
   lineaCodigo: number | null;
 }
 
-const COLUMNAS_DEL_NIVEL: Record<NivelGeografico, { nombre: ColumnaDivision; codigo: ColumnaDivision }> = {
-  provincia: { nombre: "nivel_1", codigo: "codigo_nivel_1" },
-  canton: { nombre: "nivel_2", codigo: "codigo_nivel_2" },
-  distrito: { nombre: "nivel_3", codigo: "codigo_nivel_3" },
-};
+// ── Cabecera y filas (R30, R34) ─────────────────────────────────────────────────────────────
 
-function celdasDeFila(fila: FilaDivision): Record<NivelGeografico, { nombre: string; codigo: string }> {
+/**
+ * R30, R34: qué columnas obligatorias faltan en la cabecera (ya normalizada) de un pais de `p`
+ * tipos, y un aviso por cada columna que no es del formato (decision 4 de SL-20: se ignora y se
+ * dice). Para P = 3 son las mismas columnas y el mismo texto de aviso que SL-20.
+ */
+export function revisarCabeceraDivision(
+  cabecera: readonly string[],
+  p: number,
+): { faltan: string[]; avisos: string[] } {
+  const obligatorias = columnasDivision(p);
+  const conocidas = new Set(obligatorias);
   return {
-    provincia: { nombre: fila.nivel1, codigo: fila.codigoNivel1 },
-    canton: { nombre: fila.nivel2, codigo: fila.codigoNivel2 },
-    distrito: { nombre: fila.nivel3, codigo: fila.codigoNivel3 },
+    faltan: obligatorias.filter((c) => !cabecera.includes(c)),
+    avisos: cabecera
+      .filter((h) => !conocidas.has(h))
+      .map((h) => `La columna «${h}» no es del formato y se ignoró.`),
   };
 }
+
+/** Las celdas de una fila leida (columna → texto) en la forma por profundidad, P entradas. */
+export function filaDeRegistro(
+  linea: number,
+  registro: Readonly<Record<string, string | undefined>>,
+  p: number,
+): FilaDivisionPorNiveles {
+  return {
+    linea,
+    niveles: Array.from({ length: p }, (_, i) => ({
+      nombre: registro[columnaNivel(i + 1)] ?? "",
+      codigo: registro[columnaCodigoNivel(i + 1)] ?? "",
+    })),
+  };
+}
+
+// ── Piezas del cruce ────────────────────────────────────────────────────────────────────────
 
 /** El mismo contrato de nombre que el alta a mano (`crearNodoGeograficoSchema`). */
 function motivoDeNombre(nombre: string): string | null {
@@ -64,19 +105,18 @@ function motivoDeNombre(nombre: string): string | null {
   return rechazoDeNombreDeEtiqueta(nombre)?.nombre?.[0] ?? null;
 }
 
-function indexarPorNivel(
-  arbol: ArbolExistente,
+function indexarPorProfundidad(
+  nodos: readonly NodoExistenteConProfundidad[],
+  p: number,
   llaveDe: (n: NodoExistente) => string | null,
-): Record<NivelGeografico, Map<string, NodoExistente>> {
-  const indice = {} as Record<NivelGeografico, Map<string, NodoExistente>>;
-  for (const nivel of NIVELES_GEOGRAFICOS) {
-    const mapa = new Map<string, NodoExistente>();
-    for (const nodo of arbol[nivel]) {
-      const llave = llaveDe(nodo);
-      // El primero gana: la base ya garantiza unicidad por padre y por codigo dentro del pais.
-      if (llave !== null && !mapa.has(llave)) mapa.set(llave, nodo);
-    }
-    indice[nivel] = mapa;
+): Map<string, NodoExistente>[] {
+  const indice = Array.from({ length: p }, () => new Map<string, NodoExistente>());
+  for (const nodo of nodos) {
+    const mapa = indice[nodo.profundidad - 1];
+    if (mapa === undefined) continue;
+    const llave = llaveDe(nodo);
+    // El primero gana: la base ya garantiza unicidad por padre y por codigo dentro del pais.
+    if (llave !== null && !mapa.has(llave)) mapa.set(llave, nodo);
   }
   return indice;
 }
@@ -97,44 +137,103 @@ function refDe(nodo: NodoDelArchivo): RefNodo {
 }
 
 /**
- * Valida y cruza (§6). `filas` llegan sin cabecera, con su `linea`; `arbolActual` es la geografia
- * del pais que se carga; `pais` aporta la regla de codigo (R17).
+ * Los tipos ordenados por profundidad. Un pais con un hueco o un repetido en sus tipos es un dato
+ * roto (las claves `nivel_1..nivel_P` son contiguas por construccion): fallar es mejor que validar
+ * codigos con la regla de otra profundidad.
+ */
+function tiposEnOrden(tipos: readonly TipoDeDivision[]): TipoDeDivision[] {
+  const ordenados = [...tipos].sort((a, b) => a.profundidad - b.profundidad);
+  ordenados.forEach((t, i) => {
+    if (t.profundidad !== i + 1) {
+      throw new Error(
+        `tipos de nivel del pais no contiguos: profundidades ${ordenados.map((x) => x.profundidad).join(",")}`,
+      );
+    }
+  });
+  return ordenados;
+}
+
+/** R32: la primera columna llena por debajo de `k`, o `null` si la fila acaba en `k - 1`. */
+function primeraColumnaLlenaDesde(fila: FilaDivisionPorNiveles, k: number, p: number): string | null {
+  for (let j = k; j <= p; j++) {
+    const celda = fila.niveles[j - 1];
+    if ((celda?.nombre ?? "").trim() !== "") return columnaNivel(j);
+    if ((celda?.codigo ?? "").trim() !== "") return columnaCodigoNivel(j);
+  }
+  return null;
+}
+
+// ── planificarDivision ──────────────────────────────────────────────────────────────────────
+
+/**
+ * SLT-46: valida y cruza a P profundidades. `filas` llegan sin cabecera, con su `linea`; `nodos`
+ * son los del pais que se carga (con su profundidad); `tipos`, los suyos de 1 a P (R17).
+ */
+export function planificarDivision(
+  filas: readonly FilaDivisionPorNiveles[],
+  nodos: readonly NodoExistenteConProfundidad[],
+  tipos: readonly TipoDeDivision[],
+): ResultadoPlanificacionPorProfundidad;
+/**
+ * SL-20: la forma por provincia/canton/distrito y regla del pais. Traduce a P = 3 y da el mismo
+ * resultado que antes de SLT-46 (R31). Se retira en T4, cuando ningun llamador la use.
  */
 export function planificarDivision(
   filas: readonly FilaDivision[],
   arbolActual: ArbolExistente,
   pais: ReglaDeCodigoDePais,
-): ResultadoPlanificacion {
-  const hijosEnBase = indexarPorNivel(arbolActual, (n) => llaveDeHijo(n.padreId, n.nombre));
-  const codigosEnBase = indexarPorNivel(arbolActual, (n) => n.codigo);
+): ResultadoPlanificacion;
+export function planificarDivision(
+  filas: readonly FilaDivisionPorNiveles[] | readonly FilaDivision[],
+  segundo: readonly NodoExistenteConProfundidad[] | ArbolExistente,
+  tercero: readonly TipoDeDivision[] | ReglaDeCodigoDePais,
+): ResultadoPlanificacionPorProfundidad | ResultadoPlanificacion {
+  if (Array.isArray(tercero)) {
+    return planificarPorProfundidad(
+      filas as readonly FilaDivisionPorNiveles[],
+      segundo as readonly NodoExistenteConProfundidad[],
+      tercero as readonly TipoDeDivision[],
+    );
+  }
+  return planificarPorNivel(
+    filas as readonly FilaDivision[],
+    segundo as ArbolExistente,
+    tercero as ReglaDeCodigoDePais,
+  );
+}
+
+function planificarPorProfundidad(
+  filas: readonly FilaDivisionPorNiveles[],
+  nodosEnBase: readonly NodoExistenteConProfundidad[],
+  tiposDelPais: readonly TipoDeDivision[],
+): ResultadoPlanificacionPorProfundidad {
+  const tipos = tiposEnOrden(tiposDelPais);
+  const p = tipos.length;
+  const hijosEnBase = indexarPorProfundidad(nodosEnBase, p, (n) => llaveDeHijo(n.padreId, n.nombre));
+  const codigosEnBase = indexarPorProfundidad(nodosEnBase, p, (n) => n.codigo);
 
   const nodos = new Map<string, NodoDelArchivo>();
-  const codigosEnArchivo = {} as Record<NivelGeografico, Map<string, NodoDelArchivo>>;
-  for (const nivel of NIVELES_GEOGRAFICOS) codigosEnArchivo[nivel] = new Map();
+  const codigosEnArchivo = Array.from({ length: p }, () => new Map<string, NodoDelArchivo>());
   const errores: ErrorDeLinea[] = [];
   let siguienteClave = 1;
 
-  function resolverNodo(
-    nivel: NivelGeografico,
-    nombre: string,
-    padre: NodoDelArchivo | null,
-  ): NodoDelArchivo {
-    const llave = `${nivel}|${padre?.llave ?? ""}|${normalizeName(nombre)}`;
+  function resolverNodo(k: number, nombre: string, padre: NodoDelArchivo | null): NodoDelArchivo {
+    const llave = `${k}|${padre?.llave ?? ""}|${normalizeName(nombre)}`;
     const visto = nodos.get(llave);
     if (visto) return visto;
 
     // Un padre que es alta no tiene hijos en la base: todo lo que cuelga de el es alta tambien.
     const puedeExistir = padre === null || padre.existente !== null;
     const existente = puedeExistir
-      ? (hijosEnBase[nivel].get(llaveDeHijo(padre?.existente?.id ?? null, nombre)) ?? null)
+      ? (hijosEnBase[k - 1].get(llaveDeHijo(padre?.existente?.id ?? null, nombre)) ?? null)
       : null;
     const nodo: NodoDelArchivo = {
       llave,
-      nivel,
+      profundidad: k,
       nombre,
       padre,
       existente,
-      clave: existente === null ? `${nivel}-${siguienteClave++}` : null,
+      clave: existente === null ? `${columnaNivel(k)}-${siguienteClave++}` : null,
       codigoDeclarado: null,
       lineaCodigo: null,
     };
@@ -142,17 +241,18 @@ export function planificarDivision(
     return nodo;
   }
 
-  /** Las contradicciones del codigo, dentro del archivo y contra la base (R26, R27). */
+  /** Las contradicciones del codigo, dentro del archivo y contra la base (R26, R27 de SL-20). */
   function declararCodigo(nodo: NodoDelArchivo, codigo: string, linea: number): string | null {
     if (nodo.codigoDeclarado !== null) {
       if (nodo.codigoDeclarado === codigo) return null;
       return `«${nodo.nombre}» ya tiene el código «${nodo.codigoDeclarado}» en la línea ${nodo.lineaCodigo}.`;
     }
-    const duenoEnArchivo = codigosEnArchivo[nodo.nivel].get(codigo);
+    const enArchivo = codigosEnArchivo[nodo.profundidad - 1];
+    const duenoEnArchivo = enArchivo.get(codigo);
     if (duenoEnArchivo !== undefined && duenoEnArchivo !== nodo) {
       return `el código «${codigo}» ya es de «${duenoEnArchivo.nombre}» en la línea ${duenoEnArchivo.lineaCodigo}.`;
     }
-    const duenoEnBase = codigosEnBase[nodo.nivel].get(codigo);
+    const duenoEnBase = codigosEnBase[nodo.profundidad - 1].get(codigo);
     if (duenoEnBase !== undefined && duenoEnBase.id !== nodo.existente?.id) {
       return `el código «${codigo}» ya es de «${duenoEnBase.nombre}».`;
     }
@@ -162,22 +262,33 @@ export function planificarDivision(
     }
     nodo.codigoDeclarado = codigo;
     nodo.lineaCodigo = linea;
-    codigosEnArchivo[nodo.nivel].set(codigo, nodo);
+    enArchivo.set(codigo, nodo);
     return null;
   }
 
   for (const fila of filas) {
     let padre: NodoDelArchivo | null = null;
-    const celdas = celdasDeFila(fila);
-    for (const nivel of NIVELES_GEOGRAFICOS) {
-      const { nombre: columnaNombre, codigo: columnaCodigo } = COLUMNAS_DEL_NIVEL[nivel];
-      const nombreCrudo = celdas[nivel].nombre.trim();
-      const codigo = celdas[nivel].codigo.trim();
+    for (let k = 1; k <= p; k++) {
+      const columnaNombre = columnaNivel(k);
+      const columnaCodigo = columnaCodigoNivel(k);
+      const celda = fila.niveles[k - 1];
+      const nombreCrudo = (celda?.nombre ?? "").trim();
+      const codigo = (celda?.codigo ?? "").trim();
       const error = (mensaje: string) => errores.push({ linea: fila.linea, mensaje });
 
       if (nombreCrudo === "") {
-        if (codigo !== "") error(`${columnaCodigo}: hay código pero falta ${columnaNombre}.`);
-        else if (nivel !== "distrito") error(`${columnaNombre}: es obligatorio.`);
+        if (codigo !== "") {
+          error(`${columnaCodigo}: hay código pero falta ${columnaNombre}.`);
+        } else if (k <= DIVISION_PROFUNDIDADES_OBLIGATORIAS) {
+          error(`${columnaNombre}: es obligatorio.`);
+        } else {
+          // R32: un nivel opcional vacio cierra el camino; si la fila sigue mas abajo, colgaria el
+          // nodo profundo de un padre que no existe.
+          const siguiente = primeraColumnaLlenaDesde(fila, k + 1, p);
+          if (siguiente !== null) {
+            error(`${columnaNombre}: está vacío pero la fila sigue en ${siguiente}; no se puede saltar un nivel.`);
+          }
+        }
         break;
       }
       const nombre = normalizarNombreGeografico(nombreCrudo);
@@ -186,7 +297,7 @@ export function planificarDivision(
         error(`${columnaNombre}: ${motivo}`);
         break;
       }
-      const nodo = resolverNodo(nivel, nombre, padre);
+      const nodo = resolverNodo(k, nombre, padre);
       if (codigo !== "") {
         const contradiccion = declararCodigo(nodo, codigo, fila.linea);
         if (contradiccion !== null) {
@@ -204,11 +315,11 @@ export function planificarDivision(
   for (const nodo of nodos.values()) {
     const codigo = nodo.codigoDeclarado;
     if (codigo === null || nodo.existente?.codigo === codigo) continue;
-    const motivo = validarCodigo(pais, nodo.nivel, codigo, codigoEfectivo(nodo.padre));
+    const motivo = validarCodigoDeTipo(tipos[nodo.profundidad - 1], codigo, codigoEfectivo(nodo.padre));
     if (motivo !== null) {
       errores.push({
         linea: nodo.lineaCodigo as number,
-        mensaje: `${COLUMNAS_DEL_NIVEL[nodo.nivel].codigo}: ${motivo}`,
+        mensaje: `${columnaCodigoNivel(nodo.profundidad)}: ${motivo}`,
       });
     }
   }
@@ -216,18 +327,19 @@ export function planificarDivision(
   if (errores.length > 0) {
     return { errores: [...errores].sort((a, b) => a.linea - b.linea) };
   }
-  return { plan: armarPlan(nodos.values()) };
+  return { plan: armarPlan(nodos.values(), p) };
 }
 
-function armarPlan(nodos: Iterable<NodoDelArchivo>): PlanDivision {
-  const altas: Record<NivelGeografico, AltaDePlan[]> = { provincia: [], canton: [], distrito: [] };
-  const codigosACompletar: CodigoACompletar[] = [];
+function armarPlan(nodos: Iterable<NodoDelArchivo>, p: number): PlanDivisionPorProfundidad {
+  const altas: Record<number, AltaDePlan[]> = {};
+  for (let k = 1; k <= p; k++) altas[k] = [];
+  const codigosACompletar: CodigoACompletarPorProfundidad[] = [];
   let existentes = 0;
 
   // `nodos` conserva el orden de insercion, y un padre siempre se inserta antes que sus hijos.
   for (const nodo of nodos) {
     if (nodo.existente === null) {
-      altas[nodo.nivel].push({
+      altas[nodo.profundidad].push({
         clave: nodo.clave as string,
         nombre: nodo.nombre,
         codigo: nodo.codigoDeclarado,
@@ -237,21 +349,85 @@ function armarPlan(nodos: Iterable<NodoDelArchivo>): PlanDivision {
     }
     existentes++;
     if (nodo.existente.codigo === null && nodo.codigoDeclarado !== null) {
-      codigosACompletar.push({ nivel: nodo.nivel, id: nodo.existente.id, codigo: nodo.codigoDeclarado });
+      codigosACompletar.push({
+        profundidad: nodo.profundidad,
+        id: nodo.existente.id,
+        codigo: nodo.codigoDeclarado,
+      });
     }
   }
 
+  const creados: Record<number, number> = {};
+  for (let k = 1; k <= p; k++) creados[k] = altas[k].length;
   return {
     altas,
     codigosACompletar,
-    resumen: {
-      creados: {
-        provincia: altas.provincia.length,
-        canton: altas.canton.length,
-        distrito: altas.distrito.length,
-      },
-      existentes,
-      codigosCompletados: codigosACompletar.length,
-    },
+    resumen: { creados, existentes, codigosCompletados: codigosACompletar.length },
+  };
+}
+
+// ── La forma de SL-20, traducida (R31) ──────────────────────────────────────────────────────
+
+function nivelDeProfundidad(k: number): NivelGeografico {
+  return NIVELES_GEOGRAFICOS[k - 1];
+}
+
+/** `nivel_2-7` → `canton-7`: la clave que daba SL-20, para que el plan sea identico al de antes. */
+function claveDeSL20(clave: string): string {
+  return clave.replace(/^nivel_(\d+)-/, (_, k: string) => `${nivelDeProfundidad(Number(k))}-`);
+}
+
+function refDeSL20(ref: RefNodo | null): RefNodo | null {
+  if (ref === null || ref.tipo === "existente") return ref;
+  return { tipo: "nuevo", clave: claveDeSL20(ref.clave) };
+}
+
+function planificarPorNivel(
+  filas: readonly FilaDivision[],
+  arbolActual: ArbolExistente,
+  pais: ReglaDeCodigoDePais,
+): ResultadoPlanificacion {
+  const tipos = NIVELES_GEOGRAFICOS.map((nivel, i) => ({
+    profundidad: i + 1,
+    ...tipoDeNivelDePais(pais, nivel),
+  }));
+  const nodos = NIVELES_GEOGRAFICOS.flatMap((nivel, i) =>
+    arbolActual[nivel].map((n) => ({ ...n, profundidad: i + 1 })),
+  );
+  const filasPorNiveles = filas.map(
+    (f): FilaDivisionPorNiveles => ({
+      linea: f.linea,
+      niveles: [
+        { nombre: f.nivel1, codigo: f.codigoNivel1 },
+        { nombre: f.nivel2, codigo: f.codigoNivel2 },
+        { nombre: f.nivel3, codigo: f.codigoNivel3 },
+      ],
+    }),
+  );
+
+  const r = planificarPorProfundidad(filasPorNiveles, nodos, tipos);
+  if ("errores" in r) return r;
+  return { plan: planDeSL20(r.plan) };
+}
+
+function planDeSL20(plan: PlanDivisionPorProfundidad): PlanDivision {
+  const altas = {} as PlanDivision["altas"];
+  const creados = {} as PlanDivision["resumen"]["creados"];
+  NIVELES_GEOGRAFICOS.forEach((nivel, i) => {
+    altas[nivel] = plan.altas[i + 1].map((a) => ({
+      ...a,
+      clave: claveDeSL20(a.clave),
+      padre: refDeSL20(a.padre),
+    }));
+    creados[nivel] = plan.resumen.creados[i + 1];
+  });
+  return {
+    altas,
+    codigosACompletar: plan.codigosACompletar.map((c) => ({
+      nivel: nivelDeProfundidad(c.profundidad),
+      id: c.id,
+      codigo: c.codigo,
+    })),
+    resumen: { ...plan.resumen, creados },
   };
 }

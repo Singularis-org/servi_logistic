@@ -174,7 +174,8 @@ describeSiHayBase("SL-20 — la carga de la division de un pais (Postgres real)"
         );
         expect(r).toEqual({
           status: "ok",
-          creados: { provincia: 2, canton: 3, distrito: 3 },
+          // SLT-46 (R33, §5): `creados` por profundidad (1/2/3 = provincia/cantón/distrito); mismas cifras.
+          creados: { 1: 2, 2: 3, 3: 3 },
           existentes: 0,
           codigosCompletados: 0,
           avisos: [],
@@ -216,7 +217,7 @@ describeSiHayBase("SL-20 — la carga de la division de un pais (Postgres real)"
         });
         // Solo cifras (design §2.6): ni un nombre de nodo.
         expect(filas[0].detalle).toEqual({
-          creados: { provincia: 1, canton: 1, distrito: 1 },
+          creados: { 1: 1, 2: 1, 3: 1 },
           existentes: 0,
           codigosCompletados: 0,
         });
@@ -245,7 +246,7 @@ describeSiHayBase("SL-20 — la carga de la division de un pais (Postgres real)"
 
         expect(r).toMatchObject({
           status: "ok",
-          creados: { provincia: 0, canton: 0, distrito: 0 },
+          creados: { 1: 0, 2: 0, 3: 0 },
           existentes: 3,
           codigosCompletados: 0,
         });
@@ -265,7 +266,7 @@ describeSiHayBase("SL-20 — la carga de la division de un pais (Postgres real)"
         const r = await service.cargar("XA", archivo("REGION,R9,Comuna,,,"), actor);
         expect(r).toMatchObject({
           status: "ok",
-          creados: { provincia: 0, canton: 1, distrito: 0 },
+          creados: { 1: 0, 2: 1, 3: 0 },
           existentes: 1,
           codigosCompletados: 1,
         });
@@ -298,35 +299,10 @@ describeSiHayBase("SL-20 — la carga de la division de un pais (Postgres real)"
       });
     });
 
-    it("decision 4: con dos homonimos normalizados bajo el mismo padre, gana el primero (por id)", async () => {
-      await conPais(async ({ tx, service }) => {
-        const p = await tx.provincia.create({
-          data: { nombre: "Región", paisId: "XA" },
-          select: { id: true },
-        });
-        // El UNIQUE de la base compara el nombre LITERAL: los dos caben (datos heredados).
-        // SLT-43 (excepción a R36 autorizada por Camilo, 2026-10-29): este estado es imposible en el modelo
-        // nuevo (R9/R14) y ninguna vía de la app lo crea; se siembra con la sincronía apagada en esta tx revertida.
-        await tx.$executeRawUnsafe(`ALTER TABLE "canton" DISABLE TRIGGER "canton_sincroniza_nodo_geografico"`);
-        const a = await tx.canton.create({ data: { nombre: "San Jose", provinciaId: p.id }, select: { id: true } });
-        const b = await tx.canton.create({ data: { nombre: "San José", provinciaId: p.id }, select: { id: true } });
-        await tx.$executeRawUnsafe(`ALTER TABLE "canton" ENABLE TRIGGER "canton_sincroniza_nodo_geografico"`);
-        const primero = [a.id, b.id].sort()[0];
-        // Misma excepción a R36 (aprobada por Camilo, 2026-10-29): el distrito de la carga necesita el nodo
-        // de su cantón (FK compuesta); solo el ganador lo recibe, con un UPDATE sin cambios que dispara la sincronía.
-        await tx.$executeRawUnsafe(`UPDATE "canton" SET "nombre" = "nombre" WHERE "id" = $1`, primero);
-
-        const r = await service.cargar("XA", archivo("Región,,SAN JOSE,,Barrio,"), actor);
-        expect(r).toMatchObject({ status: "ok", creados: { provincia: 0, canton: 0, distrito: 1 } });
-
-        const barrio = await tx.distrito.findFirst({ where: { nombre: "Barrio", paisId: "XA" }, select: { cantonId: true } });
-        expect(barrio?.cantonId).toBe(primero);
-      });
-      const [trigger] = await prisma.$queryRawUnsafe<{ tgenabled: string }[]>(
-        `SELECT t."tgenabled"::text AS "tgenabled" FROM "pg_trigger" t JOIN "pg_class" c ON c."oid" = t."tgrelid" JOIN "pg_namespace" n ON n."oid" = c."relnamespace" WHERE t."tgname" = 'canton_sincroniza_nodo_geografico' AND n."nspname" = 'public'`,
-      );
-      expect(trigger?.tgenabled).toBe("O");
-    });
+    // SLT-46 (P6, decisión del 2026-11-06; design §5; R31): aquí estaba el caso «decision 4: con dos
+    // homonimos normalizados bajo el mismo padre, gana el primero (por id)». Se retira: SL-20 R49 queda
+    // SUPERADO por SLT-46. La carga lee `nodo_geografico`, cuyo único normalizado (SLT-43) no admite dos
+    // hermanos homónimos, así que ese estado ya no puede darse en la base que la carga cruza.
   });
 
   // ===============================================================================================
@@ -359,12 +335,13 @@ describeSiHayBase("SL-20 — la carga de la division de un pais (Postgres real)"
         const p = await tx.provincia.create({ data: { nombre: "Existente", paisId: "XA" }, select: { id: true } });
         const division = await geo.leerDivisionDePais("XA");
         const plan = planificarDivision(
+          // SLT-46 T5: la forma por profundidad (`niveles`, `nodos`, `tipos`); las mismas dos filas.
           [
-            { linea: 2, nivel1: "Nueva", codigoNivel1: "", nivel2: "Hija", codigoNivel2: "", nivel3: "", codigoNivel3: "" },
-            { linea: 3, nivel1: "Existente", codigoNivel1: "", nivel2: "Choque", codigoNivel2: "", nivel3: "", codigoNivel3: "" },
+            { linea: 2, niveles: [{ nombre: "Nueva", codigo: "" }, { nombre: "Hija", codigo: "" }, { nombre: "", codigo: "" }] },
+            { linea: 3, niveles: [{ nombre: "Existente", codigo: "" }, { nombre: "Choque", codigo: "" }, { nombre: "", codigo: "" }] },
           ],
-          division!.arbol,
-          division!.regla,
+          division!.nodos,
+          division!.tipos,
         );
         if (!("plan" in plan)) throw new Error("el plan de prueba tenia errores");
         await tx.canton.create({ data: { nombre: "Choque", provinciaId: p.id } });
@@ -383,9 +360,10 @@ describeSiHayBase("SL-20 — la carga de la division de un pais (Postgres real)"
         await tx.provincia.create({ data: { nombre: "Existente", paisId: "XA" } });
         const division = await geo.leerDivisionDePais("XA");
         const plan = planificarDivision(
-          [{ linea: 2, nivel1: "Nueva", codigoNivel1: "", nivel2: "Hija", codigoNivel2: "", nivel3: "", codigoNivel3: "" }],
-          division!.arbol,
-          division!.regla,
+          // SLT-46 T5: la forma por profundidad; la misma fila.
+          [{ linea: 2, niveles: [{ nombre: "Nueva", codigo: "" }, { nombre: "Hija", codigo: "" }, { nombre: "", codigo: "" }] }],
+          division!.nodos,
+          division!.tipos,
         );
         if (!("plan" in plan)) throw new Error("el plan de prueba tenia errores");
         await geo.importarDivision("XA", plan.plan, actor.usuarioId);
@@ -399,32 +377,40 @@ describeSiHayBase("SL-20 — la carga de la division de un pais (Postgres real)"
   // El pais acota la lectura del plan
   // ===============================================================================================
 
-  it("T4.1 `listArbolDePais`: el arbol de XA tras la carga, con codigo, sin CR y sin zonas", async () => {
+  it("T4.1 `arbolDePais`: el arbol de XA tras la carga, con codigo, sin CR y sin zonas", async () => {
     await conPais(async ({ geo, service }) => {
       await service.cargar("XA", archivo("Región,R,Comuna,C,Barrio,B", "Región,R,Comuna,C,Aldea,A"), actor);
-      expect(await geo.listArbolDePais("XA")).toEqual([
+      // SLT-46 (T5.3; §4.4): `listArbolDePais` (provincias → cantones → distritos) se retiró; el método
+      // del repositorio es `arbolDePais`, el árbol por nodo (`raices` con `hijos`). Mismos nodos, nombres,
+      // códigos, flags y orden; cada nodo gana su `profundidad` y su `tipoId`.
+      const arbol = await geo.arbolDePais("XA");
+      expect(arbol?.raices).toEqual([
         {
           id: expect.any(String),
           nombre: "Región",
           codigo: "R",
           activo: true,
-          cantones: [
+          profundidad: 1,
+          tipoId: expect.any(String),
+          hijos: [
             {
               id: expect.any(String),
               nombre: "Comuna",
               codigo: "C",
               activo: true,
+              profundidad: 2,
+              tipoId: expect.any(String),
               // Por nombre, y sin `zonaId` ni `zonaEspecial`: son de cada empresa.
-              distritos: [
-                { id: expect.any(String), nombre: "Aldea", codigo: "A", activo: true },
-                { id: expect.any(String), nombre: "Barrio", codigo: "B", activo: true },
+              hijos: [
+                { id: expect.any(String), nombre: "Aldea", codigo: "A", activo: true, profundidad: 3, tipoId: expect.any(String), hijos: [] },
+                { id: expect.any(String), nombre: "Barrio", codigo: "B", activo: true, profundidad: 3, tipoId: expect.any(String), hijos: [] },
               ],
             },
           ],
         },
       ]);
       // Y el de CR no trae nada de XA.
-      const deCR = await geo.listArbolDePais("CR");
+      const deCR = (await geo.arbolDePais("CR"))?.raices ?? [];
       expect(deCR.length).toBeGreaterThan(0);
       expect(deCR.some((p) => p.nombre === "Región")).toBe(false);
     });
@@ -433,7 +419,7 @@ describeSiHayBase("SL-20 — la carga de la division de un pais (Postgres real)"
   it("la geografia de OTRO pais no cuenta como existente: «San José» de CR no evita el alta en XA", async () => {
     await conPais(async ({ service }) => {
       const r = await service.cargar("XA", archivo("San José,,San José,,Carmen,"), actor);
-      expect(r).toMatchObject({ status: "ok", creados: { provincia: 1, canton: 1, distrito: 1 }, existentes: 0 });
+      expect(r).toMatchObject({ status: "ok", creados: { 1: 1, 2: 1, 3: 1 }, existentes: 0 });
     });
   });
 
@@ -464,10 +450,10 @@ describeSiHayBase("SL-20 — la carga de la division de un pais (Postgres real)"
         const servicio = geografia(tx);
         const antes = await tx.historialAccion.count();
 
-        const alta = await servicio.crear({ nivel: "provincia", nombre: "Región Nueva", paisId: "XA" }, actor);
+        const alta = await servicio.crear({ paisId: "XA", nombre: "Región Nueva" }, actor);
         if (alta.status !== "ok") throw new Error(`alta: ${alta.status}`);
-        const renombre = await servicio.renombrar({ nivel: "provincia", id: alta.id, nombre: "Región Renombrada" }, actor);
-        const retiro = await servicio.cambiarActivacion({ nivel: "provincia", id: alta.id, activo: false }, actor);
+        const renombre = await servicio.renombrar({ id: alta.id, nombre: "Región Renombrada", nombreAnterior: "Región Nueva" }, actor);
+        const retiro = await servicio.cambiarActivacion({ id: alta.id, activo: false }, actor);
 
         expect(renombre.status).toBe("ok");
         expect(retiro.status).toBe("ok");
@@ -495,11 +481,12 @@ describeSiHayBase("SL-20 — la carga de la division de un pais (Postgres real)"
         const ctidActiva = await ctidDe(tx, activa.id);
         const accionAntes = await tx.historialAccion.count();
 
-        const otraVezRetiro = await servicio.cambiarActivacion({ nivel: "provincia", id: retirada.id, activo: false }, actor);
-        const otraVezActiva = await servicio.cambiarActivacion({ nivel: "provincia", id: activa.id, activo: true }, actor);
+        const otraVezRetiro = await servicio.cambiarActivacion({ id: retirada.id, activo: false }, actor);
+        const otraVezActiva = await servicio.cambiarActivacion({ id: activa.id, activo: true }, actor);
 
-        expect(otraVezRetiro).toEqual({ status: "ok", nivel: "provincia", id: retirada.id, activo: false });
-        expect(otraVezActiva).toEqual({ status: "ok", nivel: "provincia", id: activa.id, activo: true });
+        // SLT-46 (§4.1, T4.1): el `ok` ya no repite el `nivel`, que dejó de viajar en la entrada.
+        expect(otraVezRetiro).toEqual({ status: "ok", id: retirada.id, activo: false });
+        expect(otraVezActiva).toEqual({ status: "ok", id: activa.id, activo: true });
         // Ni UPDATE (la tupla es la misma) ni fila de registro en ninguno de los dos historiales.
         expect(await ctidDe(tx, retirada.id)).toBe(ctidRetirada);
         expect(await ctidDe(tx, activa.id)).toBe(ctidActiva);
@@ -513,9 +500,9 @@ describeSiHayBase("SL-20 — la carga de la division de un pais (Postgres real)"
         const activa = await tx.provincia.create({ data: { nombre: "Activa", paisId: "XA" }, select: { id: true } });
         const ctid = await ctidDe(tx, activa.id);
 
-        const r = await geografia(tx).cambiarActivacion({ nivel: "provincia", id: activa.id, activo: false }, actor);
+        const r = await geografia(tx).cambiarActivacion({ id: activa.id, activo: false }, actor);
 
-        expect(r).toEqual({ status: "ok", nivel: "provincia", id: activa.id, activo: false });
+        expect(r).toEqual({ status: "ok", id: activa.id, activo: false });
         expect(await ctidDe(tx, activa.id)).not.toBe(ctid);
         expect((await historialDe(tx, "XA")).map((f) => f.accion)).toEqual(["nodo_geografico_desactivado"]);
       });

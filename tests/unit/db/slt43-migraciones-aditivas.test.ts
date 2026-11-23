@@ -2,6 +2,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
+import { faltasR19, sinComentarios } from "./_migraciones-aditivas";
 
 /**
  * SLT-43 · R19 (design §3, §7) — LAS SEIS MIGRACIONES DE SLT-43 SON SOLO ADITIVAS.
@@ -29,73 +30,8 @@ const CARPETAS_SLT43 = [
   "20261104120500_indices_nodo_geografico",
 ];
 
-/**
- * Sin comentarios y sin la comparación `TG_OP = 'DELETE'` de las funciones de trigger (nombra el evento,
- * no lo ejecuta). Los demás literales se quedan: un `EXECUTE 'DROP …'` tiene que seguir saltando.
- */
-function sinComentarios(sql: string): string {
-  return sql
-    .replace(/\/\*[\s\S]*?\*\//g, " ")
-    .replace(/--[^\n]*/g, "")
-    .replace(/\bTG_OP\s*=\s*'[A-Z]+'/g, "TG_OP = ''");
-}
-
-const IDENT = String.raw`(?:ONLY\s+)?"?([A-Za-z_][A-Za-z0-9_]*)"?`;
-
-/** Lo que R19 reprocha en un conjunto de migraciones; vacío = aditivas. Pura, para probarla con texto inventado. */
-function faltasR19(migraciones: readonly { nombre: string; sql: string }[]): string[] {
-  const limpias = migraciones.map((m) => ({ nombre: m.nombre, sql: sinComentarios(m.sql) }));
-  const nuevas = new Set(
-    limpias.flatMap((m) =>
-      [...m.sql.matchAll(new RegExp(String.raw`CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?${IDENT}`, "gi"))].map((x) =>
-        x[1].toLowerCase(),
-      ),
-    ),
-  );
-  const faltas: string[] = [];
-
-  for (const { nombre, sql } of limpias) {
-    const falta = (que: string) => faltas.push(`${nombre}: ${que}`);
-
-    for (const m of sql.matchAll(/\b(DROP|TRUNCATE|RENAME|ALTER\s+COLUMN)\b/gi)) {
-      falta(m[1].toUpperCase().replace(/\s+/g, " "));
-    }
-
-    for (const m of sql.matchAll(/\bALTER\s+TYPE\s+"?[A-Za-z0-9_]+"?\s+([^;]*)/gi)) {
-      if (!/^ADD\s+VALUE\s+IF\s+NOT\s+EXISTS\b/i.test(m[1])) falta(`ALTER TYPE ${m[1].trim().slice(0, 40)}`);
-    }
-
-    for (const m of sql.matchAll(new RegExp(String.raw`\bINSERT\s+INTO\s+${IDENT}`, "gi"))) {
-      if (!nuevas.has(m[1].toLowerCase())) falta(`INSERT en la tabla existente ${m[1]}`);
-    }
-
-    for (const m of sql.matchAll(/\b(DELETE|UPDATE)\b/gi)) {
-      const i = m.index ?? 0;
-      const antes = sql.slice(0, i);
-      const anterior = /([A-Za-z]+)\s*$/.exec(antes)?.[1]?.toUpperCase();
-      const despues = sql.slice(i + m[0].length);
-      const sentencia = antes.slice(antes.lastIndexOf(";") + 1);
-      // Eventos de trigger (`OR UPDATE`, `UPDATE OF`, `AFTER UPDATE`), acciones de FK (`ON DELETE`), el
-      // `DO UPDATE` de un upsert (su tabla la mira la regla de INSERT) y los permisos no escriben filas.
-      if (anterior !== undefined && ["ON", "OR", "DO", "BEFORE", "AFTER"].includes(anterior)) continue;
-      if (/^\s*OF\b/i.test(despues)) continue;
-      if (/^\s*(REVOKE|GRANT)\b/i.test(sentencia)) continue;
-      const tabla =
-        m[1].toUpperCase() === "DELETE"
-          ? new RegExp(String.raw`^\s*FROM\s+${IDENT}`, "i").exec(despues)?.[1]
-          : new RegExp(String.raw`^\s*${IDENT}`, "i").exec(despues)?.[1];
-      if (tabla === undefined || !nuevas.has(tabla.toLowerCase())) {
-        falta(`${m[1].toUpperCase()} sobre ${tabla ?? "una tabla que no se reconoce"}`);
-      }
-    }
-
-    for (const m of sql.matchAll(new RegExp(String.raw`\bALTER\s+TABLE\s+${IDENT}\s+ADD\s+COLUMN\s+([^;]*)`, "gi"))) {
-      if (nuevas.has(m[1].toLowerCase())) continue;
-      if (/\bNOT\s+NULL\b|\bDEFAULT\b/i.test(m[2])) falta(`ADD COLUMN con NOT NULL o DEFAULT en ${m[1]}`);
-    }
-  }
-  return faltas;
-}
+// Las reglas (`faltasR19`, `sinComentarios`) viven en `_migraciones-aditivas.ts` desde SLT-46 (T2.3),
+// sin cambios para SLT-43: este archivo las llama sin opciones.
 
 function leer(nombre: string): { nombre: string; sql: string } {
   return { nombre, sql: readFileSync(resolve(DIR_MIGRACIONES, nombre, "migration.sql"), "utf8") };

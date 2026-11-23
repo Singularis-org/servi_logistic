@@ -108,7 +108,18 @@ function cuerpoDe(carpeta: string, nombre: string): string {
 describe("SLT-86 — la migración de R26 sin plan en disco", () => {
   it("va detrás de la del período, con un down.sql que repone LITERALMENTE el cuerpo de origen", () => {
     const carpetas = carpetasDeMigracion();
-    expect(carpetas.indexOf(M_SIN_PLAN)).toBe(carpetas.indexOf(M_PERIODO) + 1);
+    // Entre las dos solo caben las declaradas aquí, y ninguna redefine `plan_de_la_empresa` (si no, el
+    // down no repondría el cuerpo vigente). SLT-46 (merge de geo_jerarquica, 2026-11-23): sus tres
+    // migraciones se integraron tarde con timestamp 20261106120x; tocan enums de `historial_plataforma`,
+    // un trigger de `nodo_geografico` y la función `pais_tipos_de_nivel`.
+    const entre = carpetas.slice(carpetas.indexOf(M_PERIODO) + 1, carpetas.indexOf(M_SIN_PLAN));
+    expect(carpetas.indexOf(M_PERIODO)).toBeGreaterThanOrEqual(0);
+    expect(entre).toEqual([
+      "20261106120000_slt46_historial_tipos_de_nivel",
+      "20261106120100_slt46_nodo_copia_a_geografia_vieja",
+      "20261106120200_slt46_pais_tipos_de_nivel_opcional",
+    ]);
+    for (const c of entre) expect(sqlDe(c, "migration.sql")).not.toContain("plan_de_la_empresa");
     const origen = cuerpoDe(M_PERIODO, "plan_de_la_empresa");
     expect(sqlDe(M_SIN_PLAN, "down.sql")).toContain(origen);
     // La subida conserva entera la consulta de la empresa con plan: solo añade la rama sin plan.

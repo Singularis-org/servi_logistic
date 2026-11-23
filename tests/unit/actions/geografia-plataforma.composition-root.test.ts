@@ -26,10 +26,15 @@ const nodoGeograficoFindUnique = vi.fn<
   (args: { where: { id: string } }) => Promise<{ paisId: string; profundidad: number } | null>
 >(async () => null);
 const tipoNivelFindMany = vi.fn<(args: { where: Record<string, unknown> }) => Promise<never[]>>(async () => []);
+// SLT-46 (T4.4): renombrar un tipo lo lee primero por id; por defecto no existe (-> `not_found`).
+const tipoNivelFindUnique = vi.fn<(args: { where: { id: string } }) => Promise<null>>(async () => null);
 const paisFindMany = vi.fn(async () => []);
 const paisFindUnique = vi.fn<(args: { where: { id: string } }) => Promise<{ nombre: string } | null>>(async () => null);
 const paisUpdateMany = vi.fn<(args: unknown) => Promise<{ count: number }>>(async () => ({ count: 1 }));
 const historialCreateMany = vi.fn<(args: { data: unknown[] }) => Promise<{ count: number }>>(async () => ({ count: 1 }));
+// SLT-46 (2026-11-09, design §2.4 «Candado del país»): agregar, renombrar y reordenar tipos toman el
+// `SELECT … FOR UPDATE` de la fila `pais` con `$queryRaw`; sin filas, el país no existe.
+const queryRaw = vi.fn<(sql: TemplateStringsArray, ...valores: unknown[]) => Promise<unknown[]>>(async () => []);
 const usuarioFindUnique = vi.fn(async () => ({ nombre: "Super", primerApellido: "Admin", rol: { value: "superadmin" } }));
 
 const cliente = {
@@ -42,7 +47,8 @@ const cliente = {
   usuario: { findUnique: usuarioFindUnique },
   organizacion: {},
   nodoGeografico: { findMany: nodoGeograficoFindMany, findUnique: nodoGeograficoFindUnique },
-  tipoNivelGeografico: { findMany: tipoNivelFindMany },
+  tipoNivelGeografico: { findMany: tipoNivelFindMany, findUnique: tipoNivelFindUnique },
+  $queryRaw: queryRaw,
   $transaction: vi.fn(async (fn: (tx: unknown) => unknown) => fn(cliente)),
 };
 
@@ -61,7 +67,11 @@ beforeEach(() => {
 describe("SL-20 — cada action del superadmin, sin servicio inyectado, llega al cliente real", () => {
   it("R31: el conteo usa el repositorio de órdenes (el SEGUNDO argumento del root)", async () => {
     // El canton c-1 (profundidad 2) de CR, con un distrito d-1 debajo.
-    nodoGeograficoFindUnique.mockResolvedValueOnce({ paisId: "CR", profundidad: 2 });
+    // SLT-46 (R20): el servicio lee primero la profundidad del nodo (la misma consulta) para saber
+    // que es un canton; luego el repositorio de ordenes vuelve a leerlo.
+    nodoGeograficoFindUnique
+      .mockResolvedValueOnce({ paisId: "CR", profundidad: 2 })
+      .mockResolvedValueOnce({ paisId: "CR", profundidad: 2 });
     const nodo = { tipoId: "t", nombreNormalizado: "", codigoOficial: null };
     nodoGeograficoFindMany.mockResolvedValueOnce([
       { ...nodo, id: "p-1", padreId: null, profundidad: 1, nombre: "P" },
@@ -69,7 +79,7 @@ describe("SL-20 — cada action del superadmin, sin servicio inyectado, llega al
       { ...nodo, id: "d-1", padreId: "c-1", profundidad: 3, nombre: "D" },
     ]);
 
-    const r = await acciones.contarOrdenesSinEntregarAction({ nivel: "canton", id: "c-1" }, deps);
+    const r = await acciones.contarOrdenesSinEntregarAction({ id: "c-1" }, deps);
     expect(r).toEqual({ status: "ok", ordenes: 7 });
     expect(nodoGeograficoFindUnique.mock.calls[0][0].where).toEqual({ id: "c-1" });
     expect(nodoGeograficoFindMany.mock.calls[0][0].where).toEqual({ paisId: "CR" });
@@ -83,8 +93,11 @@ describe("SL-20 — cada action del superadmin, sin servicio inyectado, llega al
   });
 
   it("el árbol de un país lee las provincias de ESE país", async () => {
+    // SLT-46 (R21): el árbol de N niveles mira antes que el país exista; un país sin nodos ni tipos
+    // sigue siendo un árbol vacío, ahora con la forma `{tipos, raices}`.
+    paisFindUnique.mockResolvedValueOnce({ id: "XA" } as unknown as { nombre: string });
     const r = await acciones.arbolDePaisAction({ paisId: "XA" }, deps);
-    expect(r).toEqual({ status: "ok", provincias: [] });
+    expect(r).toEqual({ status: "ok", tipos: [], raices: [] });
     expect(nodoGeograficoFindMany.mock.calls[0][0].where).toEqual({ paisId: "XA" });
     expect(tipoNivelFindMany.mock.calls[0][0].where).toEqual({ paisId: "XA" });
   });
@@ -121,6 +134,49 @@ describe("SL-20 — cada action del superadmin, sin servicio inyectado, llega al
         actorNombre: "Super Admin",
       }),
     ]);
+  });
+
+  it("SLT-46 R25: renombrar un tipo llega al repositorio de países: un tipo que no está es `not_found` y no escribe", async () => {
+    const r = await acciones.renombrarTipoNivelAction(
+      {
+        tipoId: "t-x",
+        nombreSingular: "Región",
+        nombrePlural: "Regiones",
+        anterior: { nombreSingular: "Provincia", nombrePlural: "Provincias" },
+      },
+      deps,
+    );
+    expect(r).toEqual({ status: "not_found" });
+    expect(tipoNivelFindUnique.mock.calls[0][0].where).toEqual({ id: "t-x" });
+    expect(historialCreateMany).not.toHaveBeenCalled();
+  });
+
+  it("SLT-46 R49: agregar un nivel llega al repositorio de países: un país que no está es `not_found` y no escribe", async () => {
+    const r = await acciones.agregarNivelPaisAction({ paisId: "XZ", nombreSingular: "Barrio", nombrePlural: "Barrios", profundidad: 3 }, deps);
+    expect(r).toEqual({ status: "not_found" });
+    // SLT-46 (2026-11-09): el país se busca con el candado (`FOR UPDATE`), no con `findUnique` (§2.4).
+    expect(queryRaw.mock.calls.some(([sql, ...valores]) => sql.join("?").includes('FROM "pais"') && valores.includes("XZ"))).toBe(
+      true,
+    );
+    expect(historialCreateMany).not.toHaveBeenCalled();
+  });
+
+  it("SLT-46 R57: reordenar llega al repositorio de países: un país que no está (candado sin fila) es `not_found` y no escribe", async () => {
+    const r = await acciones.reordenarTiposAction(
+      {
+        paisId: "XZ",
+        niveles: [
+          { tipoId: "t-2", nombreSingular: "Comuna", nombrePlural: "Comunas" },
+          { tipoId: "t-1", nombreSingular: "Región", nombrePlural: "Regiones" },
+        ],
+      },
+      deps,
+    );
+    expect(r).toEqual({ status: "not_found" });
+    expect(queryRaw.mock.calls.some(([sql, ...valores]) => sql.join("?").includes("FOR UPDATE") && valores.includes("XZ"))).toBe(
+      true,
+    );
+    expect(historialCreateMany).not.toHaveBeenCalled();
   });
 
   it("R47: pedir el estado que el país ya tiene es `ok` y NO escribe historial", async () => {

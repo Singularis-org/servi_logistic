@@ -3,11 +3,15 @@ import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { PrismaClient } from "@prisma/client";
 
+import { PaisRepository } from "@/lib/repositories/PaisRepository";
+import { PaisService } from "@/lib/services/PaisService";
 import { comoApp, crearOrganizacion, fijarEmpresa } from "@/tests/fabricas/organizaciones";
 import { crearGeografiaDePrueba, crearOrganizacionEnPais, crearPaisDePrueba } from "@/tests/fabricas/paises";
+import { PAIS_CUATRO_NIVELES, sembrarPaisDePruebaGeo } from "@/tests/fixtures/paises-de-prueba-geo";
 import { crearFksDeOrden } from "./_fixtures/orden-minima";
 import { comoDueno, intentar, revertida } from "./_fixtures/pais-20";
-import { HAY_BASE_DE_DATOS, crearPrismaDeTest } from "./_postgres-real";
+import { idDeRol, insertarUsuario } from "./_fixtures/superadmin-32";
+import { HAY_BASE_DE_DATOS, clienteConSavepoint, crearPrismaDeTest } from "./_postgres-real";
 
 // SL-20 (T1.8; enmienda 2026-10-26, decisión 6; design §2.1, §2.6, §3) — `pais.disponible` contra
 // Postgres real (migración 20261026120500_pais_disponible).
@@ -106,6 +110,39 @@ describeSiHayBase("SL-20 — pais.disponible", () => {
       };
     });
     expect(r).toEqual({ nodos: 3, pais: ["XA=false"], orden: null, ordenVista: 1 });
+  });
+
+  // SLT-46 (T5.4; R28): «disponible» no mira los niveles. Un país de 4 niveles, con nodos de
+  // profundidad 4, se apaga y se enciende por el service con el historial de SL-20 (R47).
+  it("SLT-46 R28: un país de 4 niveles (con nodos de profundidad 4) se marca disponible y no disponible por el service, con su historial", async () => {
+    const r = await revertida(base, async (tx) => {
+      const { paisId } = await sembrarPaisDePruebaGeo(tx, PAIS_CUATRO_NIVELES);
+      const org = await crearOrganizacion(tx);
+      const u = await insertarUsuario(tx, await idDeRol(tx, "maestro"), org.id);
+      if (!u.desenlace.ok) throw new Error(`no se sembró el actor: ${JSON.stringify(u.desenlace)}`);
+      const service = new PaisService(new PaisRepository(clienteConSavepoint(tx)));
+      const actor = { usuarioId: u.id, rol: "superadmin" as const };
+      const profundidad4 = await tx.nodoGeografico.count({ where: { paisId, profundidad: 4 } });
+      const apagado = await service.cambiarDisponible({ id: paisId, disponible: false }, actor);
+      const trasApagar = await tx.pais.findUniqueOrThrow({ where: { id: paisId }, select: { disponible: true } });
+      const encendido = await service.cambiarDisponible({ id: paisId, disponible: true }, actor);
+      const trasEncender = await tx.pais.findUniqueOrThrow({ where: { id: paisId }, select: { disponible: true } });
+      const historial = await tx.historialPlataforma.findMany({
+        where: { paisId },
+        orderBy: { createdAt: "asc" },
+        select: { accion: true, actorUsuarioId: true },
+      });
+      return { paisId, profundidad4, apagado, trasApagar, encendido, trasEncender, historial, actorId: u.id };
+    });
+
+    // Anti-vacuidad: el país sí tiene nodos por debajo del tercer nivel.
+    expect(r.profundidad4).toBeGreaterThan(0);
+    expect(r.apagado).toEqual({ status: "ok", id: r.paisId, disponible: false });
+    expect(r.trasApagar).toEqual({ disponible: false });
+    expect(r.encendido).toEqual({ status: "ok", id: r.paisId, disponible: true });
+    expect(r.trasEncender).toEqual({ disponible: true });
+    expect(r.historial.map((h) => h.accion).sort()).toEqual(["pais_disponibilidad_activada", "pais_disponibilidad_desactivada"]);
+    expect(new Set(r.historial.map((h) => h.actorUsuarioId))).toEqual(new Set([r.actorId]));
   });
 
   it("R47 (base): el historial de plataforma acepta las dos acciones de disponibilidad de un país", async () => {

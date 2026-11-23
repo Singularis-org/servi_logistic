@@ -13,10 +13,11 @@
 import { describe, it, expect } from "vitest";
 
 import {
+  filtrarArbolDeNodos,
   filtrarArbolGeografico,
   type FiltroEstadoGeografico,
 } from "@/app/(app)/configuracion/_shared/filtrar-arbol-geografico";
-import type { ProvinciaArbolDTO } from "@/lib/types/geografia-nodo";
+import type { NodoArbolPlataformaDTO, ProvinciaArbolDTO } from "@/lib/types/geografia-nodo";
 
 function distrito(
   id: string,
@@ -301,6 +302,71 @@ describe("374/R59 — texto y estado se componen con AND", () => {
       "Alajuela",
       "Palmares",
       "Buenos Aires",
+    ]);
+  });
+});
+
+// SLT-46 (T6.1; R21) — el mismo filtro sobre el árbol de N niveles del panel «Lugares». Cuatro niveles
+// con una hoja ACTIVA bajo un barrio retirado: el estado se mira en cascada a cualquier profundidad.
+describe("SLT-46 — filtrarArbolDeNodos, a cualquier profundidad", () => {
+  const n = (
+    id: string,
+    nombre: string,
+    profundidad: number,
+    hijos: NodoArbolPlataformaDTO[] = [],
+    activo = true,
+  ): NodoArbolPlataformaDTO => ({ id, nombre, codigo: null, activo, profundidad, tipoId: `t${profundidad}`, hijos });
+
+  const ARBOL_N: NodoArbolPlataformaDTO[] = [
+    n("r1", "Norte", 1, [
+      n("c1", "Arica", 2, [n("b1", "Centro", 3, [n("m1", "Manzana Uno", 4)]), n("b2", "Chinchorro", 3, [n("m2", "Manzana Dos", 4)], false)]),
+    ]),
+    n("r2", "Sur", 1),
+  ];
+
+  const plano = (arbol: NodoArbolPlataformaDTO[]): string[] =>
+    arbol.flatMap((x) => [x.nombre, ...plano(x.hijos)]);
+
+  it("sin filtros devuelve el árbol tal cual", () => {
+    expect(filtrarArbolDeNodos(ARBOL_N, { texto: "", estado: "todos" })).toEqual(ARBOL_N);
+  });
+
+  it("el texto encuentra una hoja de profundidad 4 y conserva su cadena", () => {
+    expect(plano(filtrarArbolDeNodos(ARBOL_N, { texto: "manzana uno", estado: "todos" }))).toEqual([
+      "Norte",
+      "Arica",
+      "Centro",
+      "Manzana Uno",
+    ]);
+  });
+
+  it("el texto de un ascendiente arrastra toda su rama", () => {
+    expect(plano(filtrarArbolDeNodos(ARBOL_N, { texto: "arica", estado: "todos" }))).toEqual([
+      "Norte",
+      "Arica",
+      "Centro",
+      "Manzana Uno",
+      "Chinchorro",
+      "Manzana Dos",
+    ]);
+  });
+
+  it("«retirados» deja el barrio retirado y su hoja activa (caída por él), con su cadena", () => {
+    expect(plano(filtrarArbolDeNodos(ARBOL_N, { texto: "", estado: "retirados" }))).toEqual([
+      "Norte",
+      "Arica",
+      "Chinchorro",
+      "Manzana Dos",
+    ]);
+  });
+
+  it("«activos» descarta la rama caída a cualquier profundidad", () => {
+    expect(plano(filtrarArbolDeNodos(ARBOL_N, { texto: "", estado: "activos" }))).toEqual([
+      "Norte",
+      "Arica",
+      "Centro",
+      "Manzana Uno",
+      "Sur",
     ]);
   });
 });

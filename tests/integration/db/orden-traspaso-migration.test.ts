@@ -285,6 +285,13 @@ describe("427/T2 — el UP y el DOWN, leidos del archivo", () => {
       "20261104150100_cobro_plataforma_porcentual_orden",
       "20261104150200_cobro_plataforma_porcentual_funciones",
       "20261106120000_plan_periodo_facturacion",
+      // SLT-46 (2026-11-23, merge de geo_jerarquica): las tres de administración de países. Como las
+      // de SLT-43, su timestamp es ANTERIOR a migraciones de `dev` ya aplicadas (se integró tarde) y
+      // ninguna toca `orden_traspaso_mensajero` (enums de `historial_plataforma`, trigger de
+      // `nodo_geografico`, función `pais_tipos_de_nivel`).
+      "20261106120000_slt46_historial_tipos_de_nivel",
+      "20261106120100_slt46_nodo_copia_a_geografia_vieja",
+      "20261106120200_slt46_pais_tipos_de_nivel_opcional",
       "20261106130000_plan_de_la_empresa_pendiente_sin_plan",
       "20261106140000_plan_aplicar_cambio_empresa_enum",
       "20261106150000_historial_accion_plan_cambio_empresa_cancelado",

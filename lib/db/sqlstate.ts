@@ -12,7 +12,14 @@
 // Se recorre el grafo `cause`/`meta`/`driverAdapterError` en vez de fijar una sola forma: la
 // envoltura en lote o un `cause` intermedio no deben hacer que se escape sin traducir.
 
-const CLAVES_ANIDADAS = ["cause", "meta", "driverAdapterError"] as const;
+/**
+ * SLT-46 (design §2.2; R6): la copia nodo → geografía vieja rechaza cambiar la profundidad de un nodo
+ * que tiene o tendría profundidad 1–3 (cambiaría de tabla vieja). Lo lanza
+ * `geo_copiar_nodo_a_geografia_vieja` (20261106120100); la app nunca cambia profundidades.
+ */
+export const SQLSTATE_NODO_CAMBIA_DE_TABLA_VIEJA = "SLT46";
+
+const CLAVES_ANIDADAS =["cause", "meta", "driverAdapterError"] as const;
 const PROFUNDIDAD_MAXIMA = 6;
 
 function nodoLleva(o: Record<string, unknown>, codigo: string): boolean {

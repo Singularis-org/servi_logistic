@@ -122,8 +122,24 @@ async function abrirPais(page: Page, paisId: string): Promise<void> {
   await expect(page.getByRole("heading", { level: 2, name: "País", exact: true })).toBeVisible({ timeout: 60_000 });
 }
 
-/** Sube `filas` (sin cabecera) por «Cargar CSV» y espera el resumen de la carga. */
-async function cargarCsv(page: Page, filas: string[]): Promise<void> {
+/**
+ * SLT-46 (R58, P11): toda escritura de la pantalla pide confirmación en un modal titulado con la
+ * pregunta; se confirma con «Sí, <verbo>» y el modal se cierra al responder la action.
+ */
+async function confirmar(page: Page, titulo: string, boton: string): Promise<void> {
+  const dialogo = page.getByRole("dialog", { name: titulo, exact: true });
+  await expect(dialogo).toBeVisible({ timeout: 30_000 });
+  await dialogo.getByRole("button", { name: boton, exact: true }).click();
+  await expect(dialogo).toBeHidden({ timeout: 60_000 });
+}
+
+/** El interruptor «Disponible» solo se pinta para el país elegido: dice qué país enseña la pantalla. */
+function interruptorDe(page: Page, paisNombre: string) {
+  return page.getByRole("switch", { name: `Disponible: ${paisNombre}`, exact: true });
+}
+
+/** Sube `filas` (sin cabecera) por «Cargar CSV», confirma y espera el resumen de la carga. */
+async function cargarCsv(page: Page, paisNombre: string, filas: string[]): Promise<void> {
   const csv = [CABECERA, ...filas].join("\n");
   await page.getByLabel("Archivo CSV").setInputFiles({
     name: `division-${s}.csv`,
@@ -131,6 +147,7 @@ async function cargarCsv(page: Page, filas: string[]): Promise<void> {
     buffer: Buffer.from(csv, "utf8"),
   });
   await page.getByRole("button", { name: "Cargar", exact: true }).click();
+  await confirmar(page, `¿Cargar la división de ${paisNombre}?`, "Sí, cargar");
 }
 
 function resumenDeCarga(page: Page) {
@@ -142,20 +159,38 @@ async function filtrarArbol(page: Page, paisNombre: string): Promise<void> {
   await page.getByRole("searchbox", { name: `Buscar en la división de ${paisNombre}` }).fill(s);
 }
 
+/** SLT-46 (D1): «Desactivar» del árbol pasa a «Retirar», con su modal «¿Retirar «…»?». */
 async function desactivar(page: Page, nombre: string): Promise<void> {
-  await page.getByRole("button", { name: `Desactivar ${nombre}`, exact: true }).click();
-  const dialogo = page.getByRole("dialog", { name: "Desactivar" });
-  await expect(dialogo).toContainText(`Vas a desactivar «${nombre}»`);
+  await page.getByRole("button", { name: `Retirar ${nombre}`, exact: true }).click();
+  const dialogo = page.getByRole("dialog", { name: `¿Retirar «${nombre}»?`, exact: true });
+  await expect(dialogo).toBeVisible();
   // R31: el conteo de órdenes sin entregar se resuelve antes de dejar confirmar.
   await expect(dialogo).toContainText("Órdenes sin entregar en este nodo, de todas las empresas:", { timeout: 30_000 });
-  await dialogo.getByRole("button", { name: "Desactivar", exact: true }).click();
+  await dialogo.getByRole("button", { name: "Sí, retirar", exact: true }).click();
   await expect(dialogo).toBeHidden({ timeout: 30_000 });
-  await expect(page.getByRole("button", { name: `Activar ${nombre}`, exact: true })).toBeEnabled({ timeout: 30_000 });
+  await expect(page.getByRole("button", { name: `Reactivar ${nombre}`, exact: true })).toBeEnabled({ timeout: 30_000 });
 }
 
+/**
+ * La fila del árbol de un lugar: el `data-nodo` envuelve SOLO esa fila (sus hijos van en la lista
+ * hermana), así que lo que se busque dentro no puede venir de otro lugar.
+ */
+function filaDelArbol(page: Page, nombre: string) {
+  return page.locator("[data-nodo]").filter({ has: page.getByText(nombre, { exact: true }) });
+}
+
+/** SLT-46 (decisión del 2026-11-23): un lugar activo apagado por arriba dice cuál lo apaga. */
+async function esperarInactivoPor(page: Page, nombre: string, nivel: string): Promise<void> {
+  await expect(filaDelArbol(page, nombre).getByText(`Inactivo: su ${nivel} está retirado`, { exact: true })).toBeVisible({
+    timeout: 30_000,
+  });
+}
+
+/** SLT-46 (D1): «Activar» del árbol pasa a «Reactivar», confirmado en el modal. */
 async function activar(page: Page, nombre: string): Promise<void> {
-  await page.getByRole("button", { name: `Activar ${nombre}`, exact: true }).click();
-  await expect(page.getByRole("button", { name: `Desactivar ${nombre}`, exact: true })).toBeVisible({ timeout: 30_000 });
+  await page.getByRole("button", { name: `Reactivar ${nombre}`, exact: true }).click();
+  await confirmar(page, `¿Reactivar «${nombre}»?`, "Sí, reactivar");
+  await expect(page.getByRole("button", { name: `Retirar ${nombre}`, exact: true })).toBeVisible({ timeout: 30_000 });
 }
 
 async function renombrar(page: Page, nivel: string, de: string, a: string): Promise<void> {
@@ -164,6 +199,7 @@ async function renombrar(page: Page, nivel: string, de: string, a: string): Prom
   await expect(form).toBeVisible();
   await form.getByRole("textbox", { name: "Nombre" }).fill(a);
   await form.getByRole("button", { name: "Guardar", exact: true }).click();
+  await confirmar(page, `¿Renombrar «${de}»?`, "Sí, renombrar");
   await expect(form).toBeHidden({ timeout: 30_000 });
   await expect(page.getByRole("button", { name: `Renombrar ${a}`, exact: true })).toBeVisible({ timeout: 30_000 });
   await expect(page.getByRole("button", { name: `Renombrar ${de}`, exact: true })).toHaveCount(0);
@@ -258,16 +294,24 @@ test("el superadmin da de alta un país, carga su división por CSV, crea una lo
 
   // «Nuevo país», o el que ya dejó una corrida anterior sobre esta base.
   await abrirPais(page, PAIS.id);
-  const division = page.getByRole("heading", { level: 2, name: `División de ${PAIS.nombre}` });
+  // SLT-46: ya no hay encabezado «División de <país>»; el interruptor «Disponible: <país>» solo sale
+  // si la pantalla enseña ese país (sin darlo de alta, `?pais=IS` cae en el primero por nombre).
+  const division = interruptorDe(page, PAIS.nombre);
   if ((await division.count()) === 0) {
     await page.getByRole("button", { name: "Nuevo país" }).click();
     const alta = page.getByRole("dialog", { name: "Nuevo país" });
     await alta.getByRole("combobox", { name: "País" }).fill(PAIS.nombre);
     await page.getByRole("option", { name: `${PAIS.nombre} (${PAIS.id})`, exact: true }).click();
+    // SLT-46 (R53, R54): el alta arranca con tres filas de nivel, en orden; Islandia usa las tres.
     for (const [etiqueta, valor] of Object.entries(NIVELES_IS)) {
-      await alta.getByLabel(etiqueta).fill(valor);
+      // Por rol y nombre accesible: el texto del `<label>` lleva el «*» de obligatorio (aria-hidden),
+      // así que `getByLabel(…, { exact: true })` no casa; el nombre accesible del textbox sí.
+      await alta.getByRole("textbox", { name: etiqueta, exact: true }).fill(valor);
     }
+    // R63: «Disponible para crear empresas» nace desmarcada y se deja así; el caso siguiente la enciende.
+    await expect(alta.getByRole("checkbox", { name: "Disponible para crear empresas" })).not.toBeChecked();
     await alta.getByRole("button", { name: "Dar de alta" }).click();
+    await confirmar(page, `¿Crear ${PAIS.nombre} con estos niveles?`, "Sí, crear");
     await expect(alta).toBeHidden({ timeout: 30_000 });
     await page.waitForURL((u) => u.searchParams.get("pais") === PAIS.id, { timeout: 60_000 });
   }
@@ -276,16 +320,15 @@ test("el superadmin da de alta un país, carga su división por CSV, crea una lo
   await expect(page.getByRole("cell", { name: "Código de municipio (opcional)" })).toBeVisible();
 
   // R24: la carga crea región, municipio y dos localidades.
-  await cargarCsv(page, IS.localidades.map((l) => `${IS.region},,${IS.municipio},,${l},`));
+  await cargarCsv(page, PAIS.nombre, IS.localidades.map((l) => `${IS.region},,${IS.municipio},,${l},`));
   const resumen = resumenDeCarga(page);
   await expect(resumen).toBeVisible({ timeout: 60_000 });
   await expect(resumen).toContainText("Regiones: 1");
   await expect(resumen).toContainText("Municipios: 1");
   await expect(resumen).toContainText("Localidades: 2");
 
-  // El árbol enseña lo cargado. Se relee la página: hoy el árbol de la misma pantalla no se refresca
-  // tras la carga (sigue en «Este país aún no tiene división cargada.»; `GeografiaAdminModule` guarda
-  // `initialProvincias` en su estado y el `router.refresh()` no lo vuelve a sembrar). Bug abierto.
+  // El árbol enseña lo cargado. Se relee la página para leerlo de la base (desde SLT-46 el árbol llega
+  // por props y `ConfirmarCambio` refresca tras la carga, pero la relectura no depende de eso).
   await abrirPais(page, PAIS.id);
   await filtrarArbol(page, PAIS.nombre);
   for (const nombre of [IS.region, IS.municipio, ...IS.localidades]) {
@@ -295,9 +338,11 @@ test("el superadmin da de alta un país, carga su división por CSV, crea una lo
   // Una localidad nueva bajo el municipio, a mano.
   await page.getByRole("button", { name: `Añadir localidad a ${IS.municipio}`, exact: true }).click();
   const alta = page.getByRole("form", { name: "Alta: Localidad" });
-  await expect(alta).toContainText(`Dentro de ${IS.municipio}.`);
+  // SLT-46: el «Dentro de» enseña la cadena entera del padre, de la raíz a él.
+  await expect(alta).toContainText(`Dentro de ${IS.region} › ${IS.municipio}.`);
   await alta.getByRole("textbox", { name: "Nombre" }).fill(IS.nueva);
   await alta.getByRole("button", { name: "Guardar", exact: true }).click();
+  await confirmar(page, `¿Agregar «${IS.nueva}»?`, "Sí, agregar");
   await expect(alta).toBeHidden({ timeout: 30_000 });
   await expect(page.getByText(`Se dio de alta «${IS.nueva}» (Localidad).`)).toBeVisible({ timeout: 30_000 });
   await expect(page.getByRole("button", { name: `Renombrar ${IS.nueva}`, exact: true })).toBeVisible();
@@ -331,17 +376,19 @@ test("el superadmin da de alta un país, carga su división por CSV, crea una lo
 test("«Disponible» decide si el país se ofrece en el alta de empresas; queda apagado", async () => {
   test.setTimeout(240_000);
   const page = paginaSa();
-  const interruptor = page.getByRole("switch", { name: `Disponible: ${PAIS.nombre}` });
+  const interruptor = interruptorDe(page, PAIS.nombre);
 
   await abrirPais(page, PAIS.id);
   if ((await interruptor.getAttribute("aria-checked")) !== "true") {
     await interruptor.click();
+    await confirmar(page, `¿Cambiar la disponibilidad de ${PAIS.nombre}?`, "Sí, cambiar");
     await expect(interruptor).toHaveAttribute("aria-checked", "true", { timeout: 30_000 });
   }
   expect(await paisesDelAlta(page)).toContain(PAIS.nombre);
 
   await abrirPais(page, PAIS.id);
   await interruptor.click();
+  await confirmar(page, `¿Cambiar la disponibilidad de ${PAIS.nombre}?`, "Sí, cambiar");
   await expect(interruptor).toHaveAttribute("aria-checked", "false", { timeout: 30_000 });
   await expect(page.getByText(`${PAIS.nombre} ya no se ofrece en el alta de empresas nuevas.`)).toBeVisible();
   await abrirPais(page, PAIS.id);
@@ -362,8 +409,8 @@ test("una provincia cargada por CSV en Costa Rica llega a la empresa: su orden y
   test.setTimeout(420_000);
   const page = paginaSa();
   await abrirPais(page, "CR");
-  await expect(page.getByRole("heading", { level: 2, name: "División de Costa Rica" })).toBeVisible();
-  await cargarCsv(page, [
+  await expect(interruptorDe(page, "Costa Rica")).toBeVisible();
+  await cargarCsv(page, "Costa Rica", [
     `${CR.provincia},,${CR.canton1},,${CR.d1},`,
     `${CR.provincia},,${CR.canton1},,${CR.d2},`,
     `${CR.provincia},,${CR.canton2},,${CR.d3},`,
@@ -398,12 +445,9 @@ test("desactivar un cantón lo saca, con sus distritos, del selector de la empre
   await abrirPais(page, "CR");
   await filtrarArbol(page, "Costa Rica");
   await desactivar(page, CR.canton1);
-  // El árbol del superadmin marca la herencia: sus distritos no se pueden activar sueltos.
-  for (const d of [CR.d1, CR.d2]) {
-    await expect(
-      page.getByRole("button", { name: `Activar ${d}. Primero hay que activar su cantón.`, exact: true }),
-    ).toBeDisabled();
-  }
+  // El árbol del superadmin marca la herencia con texto visible: el filtro por el sufijo lo deja
+  // abierto entero, así que las filas de los distritos están pintadas.
+  for (const d of [CR.d1, CR.d2]) await esperarInactivoPor(page, d, "cantón");
 
   try {
     const m = await paginaMaestro(browser);
@@ -425,7 +469,7 @@ test("desactivar un cantón lo saca, con sus distritos, del selector de la empre
   expect(encendido.cantones).toEqual(expect.arrayContaining([CR.canton1, CR.canton2]));
   expect(encendido.distritos).toEqual(expect.arrayContaining([CR.d1, CR.d2]));
 
-  const canton = await base().canton.findFirstOrThrow({ where: { nombre: CR.canton1 }, select: { id: true } });
+  const canton = await base().canton.findFirstOrThrow({ where: { nombre: CR.canton1, provincia: { paisId: "CR" } }, select: { id: true } });
   const acciones = await base().historialPlataforma.findMany({
     where: { entidadId: canton.id, createdAt: { gte: inicio } },
     orderBy: { createdAt: "asc" },
@@ -440,16 +484,8 @@ test("desactivar una provincia cascada a sus cantones y distritos en el selector
   await abrirPais(page, "CR");
   await filtrarArbol(page, "Costa Rica");
   await desactivar(page, CR.provincia);
-  for (const c of [CR.canton1, CR.canton2]) {
-    await expect(
-      page.getByRole("button", { name: `Activar ${c}. Primero hay que activar su provincia.`, exact: true }),
-    ).toBeDisabled();
-  }
-  for (const d of [CR.d1, CR.d2, CR.d3]) {
-    await expect(
-      page.getByRole("button", { name: `Activar ${d}. Primero hay que activar su provincia.`, exact: true }),
-    ).toBeDisabled();
-  }
+  // Los cantones siguen activos: el ascendiente retirado más cercano de todos es la provincia.
+  for (const nombre of [CR.canton1, CR.canton2, CR.d1, CR.d2, CR.d3]) await esperarInactivoPor(page, nombre, "provincia");
 
   try {
     const m = await paginaMaestro(browser);

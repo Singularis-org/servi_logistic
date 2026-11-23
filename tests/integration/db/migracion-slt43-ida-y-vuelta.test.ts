@@ -50,6 +50,9 @@ import { revertida } from "./_fixtures/pais-20";
  * quedan puestas durante todo el ciclo: el Prisma de las fábricas espera el esquema completo (p. ej.
  * `organizacion.plan_tipo_cobro`), y ninguna de ellas toca lo que crean las seis. Los datos se siembran
  * con el fixture del feature (`sembrarEscenarioGeo43`) por un Prisma propio de esta base, sin SLT-43.
+ * EXCEPCIÓN: las migraciones que se APOYAN en lo que crean las seis (`SOBRE_SLT43`, hoy las tres de
+ * SLT-46: trigger sobre `nodo_geografico` y función sobre `tipo_nivel_geografico`) no pueden ir antes
+ * de la ida (42P01), así que no se aplican en esta base. Ninguna añade columnas: el Prisma no las pide.
  */
 
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
@@ -63,6 +66,12 @@ const M_SINCRONIA = "20261104120300_nodo_geografico_sincronia";
 const M_COLUMNAS = "20261104120400_columnas_nodo_geografico";
 const M_INDICES = "20261104120500_indices_nodo_geografico";
 const DE_SLT43 = [M_ENUMS, M_TIPOS, M_NODO, M_SINCRONIA, M_COLUMNAS, M_INDICES];
+/** Posteriores que dependen de objetos de las seis: fuera de esta base (ver la cabecera). */
+const SOBRE_SLT43 = [
+  "20261106120000_slt46_historial_tipos_de_nivel",
+  "20261106120100_slt46_nodo_copia_a_geografia_vieja",
+  "20261106120200_slt46_pais_tipos_de_nivel_opcional",
+];
 
 const BASE = `slt43_iv_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
 
@@ -199,8 +208,9 @@ describeSiHayBase("SLT-43 — geografía jerárquica de ida y vuelta, con el scr
     await admin.query(`CREATE DATABASE "${BASE}"`);
     db = await conectar(urlDe(BASE));
     await db.query(CREAR_TABLA_DE_CONTROL);
-    // Todas menos las seis: las de dev posteriores a SLT-43 quedan aplicadas (ver la cabecera).
-    await aplicarMigracionesHasta(db, "99999999999999", DE_SLT43);
+    // Todas menos las seis y las que se apoyan en ellas: las demás de dev posteriores a SLT-43 quedan
+    // aplicadas (ver la cabecera).
+    await aplicarMigracionesHasta(db, "99999999999999", [...DE_SLT43, ...SOBRE_SLT43]);
     prisma = new PrismaClient({
       adapter: new PrismaPg({ connectionString: urlDe(BASE), max: 1 }),
     }) as unknown as PrismaClient;

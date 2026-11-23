@@ -1,4 +1,4 @@
-import { estaDisponible } from "@/lib/repositories/_shared/geografia-activa";
+import { activoEnCascada, estaDisponible } from "@/lib/repositories/_shared/geografia-activa";
 import { normalizeName } from "@/lib/utils/normalize";
 
 // FICHA 374 (design §7.2 y §7.5) — EL FILTRO DEL ARBOL GEOGRAFICO, EN UN SOLO SITIO.
@@ -124,4 +124,43 @@ export function filtrarArbolGeografico<P extends ProvinciaFiltrable>(
   }
 
   return provincias;
+}
+
+// ── SLT-46 (design §6; R21): el mismo filtro sobre el árbol de N niveles del superadmin ──────────
+
+/** Lo mínimo que el filtro necesita de un nodo de N niveles. Devuelve el MISMO tipo que recibe. */
+export interface NodoFiltrableConHijos<N> extends NodoFiltrable {
+  hijos: readonly N[];
+}
+
+/**
+ * `filtrarArbolGeografico` a cualquier profundidad, con las MISMAS dos reglas de supervivencia (el
+ * texto de un ascendiente arrastra su rama; un padre sobrevive si él o un descendiente casa) y el
+ * estado sobre la disponibilidad efectiva: la conjunción de la cadena, con `activoEnCascada`, la
+ * regla única de `geografia-activa`.
+ */
+export function filtrarArbolDeNodos<N extends NodoFiltrableConHijos<N>>(
+  arbol: readonly N[],
+  filtros: FiltrosArbolGeografico,
+): N[] {
+  const consulta = normalizeName(filtros.texto);
+  const { estado } = filtros;
+  if (consulta === "" && estado === "todos") return [...arbol];
+
+  const casaTexto = (nombre: string): boolean =>
+    consulta === "" || normalizeName(nombre).includes(consulta);
+
+  const recorrer = (nodos: readonly N[], textoHeredado: boolean, cadena: readonly boolean[]): N[] => {
+    const salida: N[] = [];
+    for (const nodo of nodos) {
+      const flags = [...cadena, nodo.activo];
+      const texto = textoHeredado || casaTexto(nodo.nombre);
+      const hijos = recorrer(nodo.hijos, texto, flags);
+      const casa = texto && casaEstado(activoEnCascada(flags), estado);
+      if (casa || hijos.length > 0) salida.push({ ...nodo, hijos } as N);
+    }
+    return salida;
+  };
+
+  return recorrer(arbol, false, []);
 }

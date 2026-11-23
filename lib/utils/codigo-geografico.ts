@@ -44,29 +44,41 @@ export function tieneReglaDeCodigo(pais: ReglaDeCodigoDePais): boolean {
 }
 
 /**
- * Valida el codigo de un nodo. Devuelve `null` si es valido y el motivo si no.
+ * SLT-46 (R17, design §4.5) — la regla del codigo como DATO DEL TIPO de nivel
+ * (`tipo_nivel_geografico.digitos_codigo` y `codigo_hereda_prefijo`), no del pais: asi vale para
+ * cualquier profundidad, tambien la 4 y siguientes, que `pais.digitos_codigo_nivel_N` no cubre.
+ * Estructural para que lo cumplan la fila de Prisma y `TipoNivelDTO` sin importar ninguno.
+ */
+export interface ReglaDeCodigoDeTipo {
+  digitosCodigo: number | null;
+  codigoHeredaPrefijo: boolean;
+}
+
+/**
+ * Valida el codigo de un nodo con la regla de su tipo (R17). Devuelve `null` si es valido y el
+ * motivo si no.
  *
  * `codigo` llega ya recortado; un espacio dentro es un error, no algo que se arregle aqui.
- * `codigoPadre` es el codigo que tiene (o va a tener) el padre; `null` para una provincia o para un
- * padre sin codigo.
+ * `codigoPadre` es el codigo que tiene (o va a tener) el padre; `null` para una raiz o para un
+ * padre sin codigo. Un tipo sin digitos ignora `codigoHeredaPrefijo`: la herencia de prefijo solo
+ * tiene sentido sobre codigos numericos de longitud fija (asi la escribe `pais_tipos_de_nivel`).
  */
-export function validarCodigo(
-  pais: ReglaDeCodigoDePais,
-  nivel: NivelGeografico,
+export function validarCodigoDeTipo(
+  tipo: ReglaDeCodigoDeTipo,
   codigo: string,
   codigoPadre: string | null,
 ): string | null {
-  if (!tieneReglaDeCodigo(pais)) {
+  const digitos = tipo.digitosCodigo;
+  if (digitos === null) {
     return CODIGO_LIBRE.test(codigo)
       ? null
       : `El código debe tener de 1 a ${CODIGO_LIBRE_MAX} caracteres, sin espacios.`;
   }
 
-  const digitos = pais[DIGITOS_DEL_NIVEL[nivel]] as number;
   if (!new RegExp(`^[0-9]{${digitos}}$`).test(codigo)) {
     return `El código debe tener exactamente ${digitos} ${digitos === 1 ? "dígito" : "dígitos"}.`;
   }
-  if (nivel === "provincia") return null;
+  if (!tipo.codigoHeredaPrefijo) return null;
   if (codigoPadre === null) {
     return "El nodo padre no tiene código, así que este nodo no puede llevarlo.";
   }
@@ -74,4 +86,33 @@ export function validarCodigo(
     return `El código debe empezar por el código de su padre («${codigoPadre}»).`;
   }
   return null;
+}
+
+/**
+ * El tipo equivalente a un nivel de la regla del pais, con la misma traduccion que hace el trigger
+ * `pais_tipos_de_nivel` (SLT-43): el nivel 1 nunca hereda prefijo; los demas, si tienen digitos.
+ * Es el puente que garantiza que CR da lo mismo por los dos caminos (R17, R12).
+ */
+export function tipoDeNivelDePais(
+  pais: ReglaDeCodigoDePais,
+  nivel: NivelGeografico,
+): ReglaDeCodigoDeTipo {
+  if (!tieneReglaDeCodigo(pais)) return { digitosCodigo: null, codigoHeredaPrefijo: false };
+  return { digitosCodigo: pais[DIGITOS_DEL_NIVEL[nivel]], codigoHeredaPrefijo: nivel !== "provincia" };
+}
+
+/**
+ * Valida el codigo de un nodo con la regla del pais por nivel (SL-20). Devuelve `null` si es valido
+ * y el motivo si no.
+ *
+ * SLT-46: envoltorio de `validarCodigoDeTipo` para los llamadores que aun hablan de
+ * provincia/canton/distrito; una sola regla, dos formas de pedirla.
+ */
+export function validarCodigo(
+  pais: ReglaDeCodigoDePais,
+  nivel: NivelGeografico,
+  codigo: string,
+  codigoPadre: string | null,
+): string | null {
+  return validarCodigoDeTipo(tipoDeNivelDePais(pais, nivel), codigo, codigoPadre);
 }

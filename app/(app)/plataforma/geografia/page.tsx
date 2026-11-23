@@ -46,7 +46,8 @@ export default async function GeografiaPlataformaPage({
       <GeografiaPlataformaModule
         paises={paises}
         paisElegido={elegido}
-        provincias={arbol?.status === "ok" ? arbol.provincias : []}
+        tipos={arbol?.status === "ok" ? arbol.tipos : []}
+        raices={arbol?.status === "ok" ? arbol.raices : []}
         paisesError={listado.status !== "ok"}
         divisionError={arbol !== null && arbol.status !== "ok"}
       />
