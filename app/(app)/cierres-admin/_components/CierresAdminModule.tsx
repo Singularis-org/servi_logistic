@@ -13,7 +13,10 @@ import {
 } from "@/components/private/cierres/dialogos/VisorEvidencia";
 import { Pagination } from "@/components/shared/Pagination";
 import { filasDesdeResultado } from "@/components/shared/descarga-resultado";
+import { useImpuestoDelPais, useMonedaDelPais } from "@/hooks/use-moneda-del-pais";
+import { IMPUESTO_ROTULO } from "@/lib/constants/impuesto-rotulo";
 import { useToast } from "@/hooks/useToast";
+import { formatearTopeEn, SIN_MONTO_RAYA, type FormatoMoneda } from "@/lib/config/moneda";
 import { cierreConfig } from "@/lib/config/cierre";
 import {
   verCierreDetalle,
@@ -71,9 +74,6 @@ import {
   type FilaAConfirmar,
 } from "./cierre-confirmacion-fisica";
 import type { ResultadoLectura } from "@/components/shared/EscanerGuiaCard";
-// `moneyTope` lo usan los mensajes de la indemnizacion (feature 230 de `dev`); los tres
-// simbolos de tabla que `dev` importaba aqui se fueron con la tira de comprobantes.
-import { moneyTope } from "./cierre-detalle-shared";
 // SLT-100 «Detalle de cierre único en /cierres-admin (mensajeros)» (R38): el detalle del cierre es
 // el componente único de SLT-95 (S1). Sustituye al modal que montaba `CascadasCierreMensajero` +
 // `CierreFacturaDetalle`; de la hoja de hoy se reutilizan tal cual la lista de gestiones y la
@@ -129,6 +129,7 @@ import {
 } from "./cierres-admin-descarga-columnas";
 import type { AudienciaDescargaGestionesFundida } from "./cierres-gestiones-fundida-descarga-columnas";
 import { obtenerResumenCierres } from "./cierres-resumen-modelo-nuevo-descarga";
+import { conImpuestoEnResultado } from "./encabezados-con-impuesto";
 // Feature 172 (TANDA E): el pago al mensajero. Tres piezas, ninguna con lógica de dominio
 // propia — el pendiente lo deriva el servidor (T C.2) y el rol lo decide el servicio (R1/R6).
 import { hayPendienteDeLiquidar } from "./PendienteLiquidarBadge";
@@ -309,6 +310,8 @@ const PAGE_SIZE_OPTIONS = [10, 25, 50].filter((s) => s <= cierreConfig.MAX_PAGE_
 export function descargaColaCierres(
   filtros: FiltrosCierres,
   audiencia: AudienciaDescargaGestionesFundida,
+  // SLT-243 (R10): el impuesto del país, para los encabezados del libro. Sin él, el de la plataforma.
+  impuesto: string = IMPUESTO_ROTULO,
 ): DescargaResumenCierres {
   return {
     titulo: TITULO_DESCARGA_PENDIENTES,
@@ -324,12 +327,15 @@ export function descargaColaCierres(
       ),
     // SLT-140 (R377/R378): con cierres del modelo nuevo, el libro «Cierres» + «Por tienda» (+ la hoja
     // de hoy como «Cierres modelo anterior» si es mixto); sin ellos, el archivo de hoy tal cual.
-    obtenerFilasConColumnas: (columnasMarcadas) =>
-      obtenerResumenCierres(
-        () => descargarDatos("listarPendientesCierresAdminCompleto", { filtros }),
-        filaDescargaCierrePendiente,
-        columnasMarcadas,
-        audiencia,
+    obtenerFilasConColumnas: async (columnasMarcadas) =>
+      conImpuestoEnResultado(
+        await obtenerResumenCierres(
+          () => descargarDatos("listarPendientesCierresAdminCompleto", { filtros }),
+          filaDescargaCierrePendiente,
+          columnasMarcadas,
+          audiencia,
+        ),
+        impuesto,
       ),
   };
 }
@@ -372,6 +378,8 @@ export const VACIO_HISTORICO = "Aún no hay cierres resueltos.";
 export function descargaHistoricoCierres(
   filtros: FiltrosCierres,
   audiencia: AudienciaDescargaGestionesFundida,
+  // SLT-243 (R10): como en `descargaColaCierres`.
+  impuesto: string = IMPUESTO_ROTULO,
 ): DescargaResumenCierres {
   return {
     titulo: TITULO_DESCARGA,
@@ -385,12 +393,15 @@ export function descargaHistoricoCierres(
         filaDescargaCierreHistorico,
       ),
     // SLT-140 (R377/R378): con cierres del modelo nuevo, el libro; sin ellos, el archivo de hoy.
-    obtenerFilasConColumnas: (columnasMarcadas) =>
-      obtenerResumenCierres(
-        () => descargarDatos("listarHistoricoCierresAdminCompleto", { filtros }),
-        filaDescargaCierreHistorico,
-        columnasMarcadas,
-        audiencia,
+    obtenerFilasConColumnas: async (columnasMarcadas) =>
+      conImpuestoEnResultado(
+        await obtenerResumenCierres(
+          () => descargarDatos("listarHistoricoCierresAdminCompleto", { filtros }),
+          filaDescargaCierreHistorico,
+          columnasMarcadas,
+          audiencia,
+        ),
+        impuesto,
       ),
   };
 }
@@ -439,19 +450,28 @@ const INDEMNIZACION_MONTO_LABEL = "Monto de la indemnización";
 // que contarlo con el dedo. El EJEMPLO de entrada (`12500.00`) se queda crudo a propósito:
 // eso es lo que hay que teclear en el campo, que no admite separador de miles.
 //
-// Feature 230: el tope va por `moneyTope` y NO por `money`. Redondear un importe está bien;
-// redondear un LÍMITE al alza lo invalida: `money("9999999999.99")` da `₡10.000.000.000`, que
-// es lo que el validador de esta misma pantalla rechaza y un dígito más de los «10 dígitos»
-// que la frase promete. `moneyTope` descarta la cola y el mensaje queda más estricto que la
-// realidad, que es el lado seguro.
-const INDEMNIZACION_MONTO_EXCEDE = `El monto no puede superar ${moneyTope(INDEMNIZACION_MONTO_MAX)} (10 dígitos y 2 decimales). Revisa si sobra un dígito.`;
+// Feature 230: el tope va por un formateador de TOPE y NO por el de importes. Redondear un
+// importe está bien; redondear un LÍMITE al alza lo invalida: `money("9999999999.99")` da
+// `₡10.000.000.000`, que es lo que el validador de esta misma pantalla rechaza y un dígito más
+// de los «10 dígitos» que la frase promete. El de tope descarta la cola y el mensaje queda más
+// estricto que la realidad, que es el lado seguro.
+//
+// SLT-243 (R9): el tope sale en la moneda del país de la empresa (`formatearTopeEn`, patrón de
+// `IncidentesAdminModule`, SLT-240). Con la de la plataforma es byte a byte el `moneyTope` de
+// antes. El texto no cambia salvo el importe.
+function indemnizacionMontoExcede(moneda: FormatoMoneda): string {
+  return `El monto no puede superar ${formatearTopeEn(moneda, INDEMNIZACION_MONTO_MAX, SIN_MONTO_RAYA)} (10 dígitos y 2 decimales). Revisa si sobra un dígito.`;
+}
 const INDEMNIZACION_MONTO_FORMATO =
   "Escribe un monto mayor que 0, con punto decimal y sin separador de miles (por ejemplo 12500.00).";
 /** R34: rótulo de la causa en la fila del incidente (el dato que justifica el monto). */
 const INDEMNIZACION_CAUSA_LABEL = "Causa";
 /** Causa ausente: no debería pasar (el borde la exige, R9), pero no se inventa un valor. */
 const INDEMNIZACION_CAUSA_DESCONOCIDA = "Sin causa registrada";
-const INDEMNIZACION_MONTO_AYUDA = `Mayor que 0 y hasta ${moneyTope(INDEMNIZACION_MONTO_MAX)}, con hasta 2 decimales (por ejemplo 12500.00).`;
+/** SLT-243 (R9): la ayuda del monto, con el tope en la moneda del país. */
+function indemnizacionMontoAyuda(moneda: FormatoMoneda): string {
+  return `Mayor que 0 y hasta ${formatearTopeEn(moneda, INDEMNIZACION_MONTO_MAX, SIN_MONTO_RAYA)}, con hasta 2 decimales (por ejemplo 12500.00).`;
+}
 const INDEMNIZACION_FALTAN =
   "Falta el monto de al menos un incidente, o alguno no es válido. No se puede aprobar así.";
 
@@ -586,6 +606,10 @@ export function CierresAdminModule({
   // URL y no un estado propio, que es lo que hace la dirección compartible y recargable.
   const searchParams = useSearchParams();
   const toast = useToast();
+  // SLT-243 (R9): el tope de la indemnización se anuncia en la moneda del país.
+  const moneda = useMonedaDelPais();
+  // SLT-243 (R10): los encabezados con impuesto del libro de la descarga dicen el del país.
+  const impuesto = useImpuestoDelPais();
   const { mutate } = useSWRConfig();
 
   // Detalle del cierre abierto (null = modal cerrado).
@@ -786,7 +810,7 @@ export function CierresAdminModule({
     const limpio = valor.trim();
     if (limpio === "" || montoValido(limpio, INDEMNIZACION_MONTO_MAX)) return undefined;
     // Bien formado pero por encima del tope → el problema es el tamaño, no la sintaxis.
-    return montoValido(limpio) ? INDEMNIZACION_MONTO_EXCEDE : INDEMNIZACION_MONTO_FORMATO;
+    return montoValido(limpio) ? indemnizacionMontoExcede(moneda) : INDEMNIZACION_MONTO_FORMATO;
   }
 
   /** Abre el detalle de un cierre (pide las gestiones + evidencias firmadas). */
@@ -1332,8 +1356,8 @@ export function CierresAdminModule({
           <DescargarCierresButton
             resumen={
               tab === TAB_PENDIENTES
-                ? descargaColaCierres(filtros, audiencia)
-                : descargaHistoricoCierres(filtros, audiencia)
+                ? descargaColaCierres(filtros, audiencia, impuesto)
+                : descargaHistoricoCierres(filtros, audiencia, impuesto)
             }
             catalogo={catalogoFiltros}
             accion={(f) => descargarDatos("listarGestionesCierresAdminCompleto", f)}
@@ -1716,7 +1740,7 @@ export function CierresAdminModule({
                   </p>
                 ) : (
                   <p id={`${inputId}-ayuda`} className="text-xs text-muted-foreground">
-                    {INDEMNIZACION_MONTO_AYUDA}
+                    {indemnizacionMontoAyuda(moneda)}
                   </p>
                 )}
               </div>

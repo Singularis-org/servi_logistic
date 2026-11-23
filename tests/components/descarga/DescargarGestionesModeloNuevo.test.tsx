@@ -313,12 +313,12 @@ describe("SLT-113 — el «Detalle» de cierres con el libro del modelo nuevo (T
     expect(encabezadosSatelite).toHaveLength(21);
     for (const ausente of [
       "Fulfillment",
-      "IVA de fulfillment",
+      "Impuesto (IVA) de fulfillment",
       "Fulfillment cargado el",
       "Flete por entregado",
       "Comisión COD",
       "Se le cobra a la tienda",
-      "De eso, IVA",
+      "De eso, impuesto (IVA)",
     ]) {
       expect(encabezadosSatelite).not.toContain(ausente);
     }
@@ -329,7 +329,7 @@ describe("SLT-113 — el «Detalle» de cierres con el libro del modelo nuevo (T
     const central = await descargarDetalle(accion([NUEVA], []), "admin");
     const encabezadosCentral = central.columnas.map((c) => c.encabezado);
     expect(encabezadosCentral).toHaveLength(35);
-    expect(encabezadosCentral.slice(31, 34)).toEqual(["Fulfillment", "IVA de fulfillment", "Fulfillment cargado el"]);
+    expect(encabezadosCentral.slice(31, 34)).toEqual(["Fulfillment", "Impuesto (IVA) de fulfillment", "Fulfillment cargado el"]);
     expect([central.filas[0].fulfillment, central.filas[0].ivaFulfillment, central.filas[0].fulfillmentCargadoDia]).toEqual([
       "600.00", "78.00", "2026-11-06",
     ]);

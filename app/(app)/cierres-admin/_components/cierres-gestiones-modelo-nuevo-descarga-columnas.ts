@@ -24,6 +24,7 @@ import {
   motivoGestionLegible,
 } from "./cierre-labels";
 import type { AudienciaDescargaGestionesFundida } from "./cierres-gestiones-fundida-descarga-columnas";
+import { encabezadoBase } from "./encabezados-con-impuesto";
 import { CLAVE_MEDIO_PAGO, MEDIOS_PAGO, montoPorMetodo } from "./desglose-pago";
 
 // --- Textos (separados de la lógica, i18n-ready) ---------------------------------------------
@@ -78,15 +79,15 @@ const COLUMNAS_GESTIONES: DescargaColumna[] = [
   ...COLUMNAS_MEDIOS_PAGO,
   { clave: "flete", encabezado: "Flete por entregado", formato: "monto" },
   { clave: "tarifaFlete", encabezado: "Tarifa del flete" },
-  { clave: "ivaFlete", encabezado: "IVA del flete", formato: "monto" },
+  { clave: "ivaFlete", encabezado: encabezadoBase("ivaFlete"), formato: "monto" },
   { clave: "comisionCod", encabezado: "Comisión COD", formato: "monto" },
   { clave: "tarifaComision", encabezado: "Tarifa de la comisión" },
-  { clave: "ivaComisionCod", encabezado: "IVA de la comisión", formato: "monto" },
+  { clave: "ivaComisionCod", encabezado: encabezadoBase("ivaComisionCod"), formato: "monto" },
   { clave: "fleteDevolucion", encabezado: FLETE_NO_ENTREGADAS_LABEL, formato: "monto" },
   { clave: "tarifaFleteDevolucion", encabezado: `Tarifa del ${FLETE_NO_ENTREGADAS_LABEL.toLowerCase()}` },
-  { clave: "ivaFleteDevolucion", encabezado: `IVA del ${FLETE_NO_ENTREGADAS_LABEL.toLowerCase()}`, formato: "monto" },
+  { clave: "ivaFleteDevolucion", encabezado: encabezadoBase("ivaFleteDevolucion"), formato: "monto" },
   { clave: "cobroTienda", encabezado: "Se le cobra a la tienda", formato: "monto" },
-  { clave: "ivaIncluido", encabezado: "De eso, IVA", formato: "monto" },
+  { clave: "ivaIncluido", encabezado: encabezadoBase("ivaIncluido"), formato: "monto" },
   { clave: "pagoPorTarifa", encabezado: "Pago por tarifa", formato: "monto" },
   { clave: "tarifaPago", encabezado: "Tarifa del pago" },
   { clave: "ajuste", encabezado: "Ajuste", formato: "monto" },
@@ -95,7 +96,7 @@ const COLUMNAS_GESTIONES: DescargaColumna[] = [
   { clave: "ajusto", encabezado: "Ajustó" },
   { clave: "gananciaBodega", encabezado: "Gana la bodega satélite", formato: "monto" },
   { clave: "fulfillment", encabezado: "Fulfillment", formato: "monto" },
-  { clave: "ivaFulfillment", encabezado: "IVA de fulfillment", formato: "monto" },
+  { clave: "ivaFulfillment", encabezado: encabezadoBase("ivaFulfillment"), formato: "monto" },
   { clave: "fulfillmentCargadoDia", encabezado: "Fulfillment cargado el" },
   { clave: "senales", encabezado: "Señales" },
 ];

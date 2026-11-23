@@ -17,7 +17,7 @@ import {
   montoExacto,
 } from "@/components/shared/DesglosePagoField";
 import { gestionar } from "@/lib/actions/mis-asignaciones";
-import { formatMonto, monedaConfig, SIN_MONTO_RAYA } from "@/lib/config/moneda";
+import { formatMonto, MONEDA_PLATAFORMA, monedaConfig, SIN_MONTO_RAYA } from "@/lib/config/moneda";
 import type { MiAsignacionDTO } from "@/lib/interfaces/services/IMisAsignacionesService";
 
 /**
@@ -251,7 +251,7 @@ describe("feature 300 · el aviso del cuadre distingue «falta teclear» de «no
   });
 
   it("con céntimos, el aviso NO es el de siempre y lleva los dos números reales", () => {
-    const aviso = mensajeDeCuadre([linea("efectivo", "11898")], CON_CENTIMOS);
+    const aviso = mensajeDeCuadre([linea("efectivo", "11898")], CON_CENTIMOS, MONEDA_PLATAFORMA);
 
     expect(aviso).not.toBe(DESGLOSE_TEXTOS.noCuadra);
     expect(aviso).toContain(montoExacto(CON_CENTIMOS)); // el monto de verdad
@@ -259,8 +259,8 @@ describe("feature 300 · el aviso del cuadre distingue «falta teclear» de «no
   });
 
   it("con un monto entero, el aviso es EXACTAMENTE el de siempre —o ninguno—", () => {
-    expect(mensajeDeCuadre(lineasIniciales(SANO), SANO)).toBeUndefined();
-    expect(mensajeDeCuadre([linea("efectivo", "5000")], SANO)).toBe(DESGLOSE_TEXTOS.noCuadra);
+    expect(mensajeDeCuadre(lineasIniciales(SANO), SANO, MONEDA_PLATAFORMA)).toBeUndefined();
+    expect(mensajeDeCuadre([linea("efectivo", "5000")], SANO, MONEDA_PLATAFORMA)).toBe(DESGLOSE_TEXTOS.noCuadra);
     expect(cuadreInalcanzable(SANO)).toBe(false);
     expect(centimosNoCapturables(SANO)).toBe(0);
   });

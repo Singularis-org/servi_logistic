@@ -5,8 +5,9 @@ import { useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Modal } from "@/components/shared/Modal";
+import { useMonedaDelPais } from "@/hooks/use-moneda-del-pais";
 import { useToast } from "@/hooks/useToast";
-import { money } from "@/lib/config/moneda";
+import { formatearMontoEn, SIN_MONTO_RAYA } from "@/lib/config/moneda";
 import { ajustarPagoMensajeroGestion } from "@/lib/actions/cierres-admin";
 import type {
   AjustePagoGestionDTO,
@@ -64,6 +65,8 @@ export function AjustarPagoMensajeroDialog({
   onAjustado,
 }: Readonly<AjustarPagoMensajeroDialogProps>) {
   const toast = useToast();
+  // SLT-243 (R2): el pago vigente, el nuevo y el total del cierre, en la moneda del país.
+  const moneda = useMonedaDelPais();
   const [pagoNuevo, setPagoNuevo] = useState("");
   const [motivo, setMotivo] = useState("");
   const [errores, setErrores] = useState<Errores>({});
@@ -162,12 +165,12 @@ export function AjustarPagoMensajeroDialog({
           <dl className="flex flex-col gap-2 text-sm">
             <div className="flex flex-wrap items-baseline justify-between gap-2">
               <dt className="text-muted-foreground">{T.hechoPagoGestion}</dt>
-              <dd className="font-semibold tabular-nums">{money(hecho.pagoMensajero)}</dd>
+              <dd className="font-semibold tabular-nums">{formatearMontoEn(moneda, hecho.pagoMensajero, SIN_MONTO_RAYA)}</dd>
             </div>
             <div className="flex flex-wrap items-baseline justify-between gap-2">
               <dt className="text-muted-foreground">{T.hechoTotalCierre}</dt>
               <dd className="font-semibold tabular-nums">
-                {money(hecho.totalPagoMensajero)}
+                {formatearMontoEn(moneda, hecho.totalPagoMensajero, SIN_MONTO_RAYA)}
               </dd>
             </div>
           </dl>
@@ -176,7 +179,7 @@ export function AjustarPagoMensajeroDialog({
         <div className="flex flex-col gap-4">
           <p className="flex flex-wrap items-baseline justify-between gap-2 text-sm">
             <span className="text-muted-foreground">{T.pagoVigente}</span>
-            <span className="font-semibold tabular-nums">{money(gestion.pagoMensajero)}</span>
+            <span className="font-semibold tabular-nums">{formatearMontoEn(moneda, gestion.pagoMensajero, SIN_MONTO_RAYA)}</span>
           </p>
 
           <div className="flex flex-col gap-2">

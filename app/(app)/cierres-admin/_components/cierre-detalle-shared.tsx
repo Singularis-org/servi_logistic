@@ -5,7 +5,7 @@ import type { ReactNode } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import type { Column } from "@/components/shared/DataTable";
-import { money, moneyTope } from "@/lib/config/moneda";
+import { formatearMontoEn, money, moneyTope, SIN_MONTO_RAYA } from "@/lib/config/moneda";
 import { EMPRESA } from "@/lib/config/marca";
 import { cn } from "@/lib/utils";
 import type {
@@ -19,6 +19,7 @@ import type { CierreEstado } from "@/lib/types/cierre";
 import type { OrigenFlete } from "@/lib/utils/ingreso-empresa";
 import type { EtiquetasGeograficas } from "@/lib/types/pais";
 import { useEtiquetasGeograficas } from "@/hooks/use-etiquetas-geograficas";
+import { useMonedaDelPais } from "@/hooks/use-moneda-del-pais";
 // SLT-56 (R19/R20) — la marca «Ajustado» con su historial. Vive en su propio archivo: lleva un
 // popover, y este archivo pinta nombres de estado (guardia `estado-con-info`, brazo d).
 import { MarcaAjustado } from "./MarcaAjustado";
@@ -596,6 +597,10 @@ export function TotalItem({
  * Panel de totales snapshot por método (R13): efectivo / SINPE / transferencia +
  * general. Los montos llegan como STRING y se renderizan tal cual (money-safe). Es
  * una `region` accesible con nombre `ariaLabel` para que el E2E la localice.
+ *
+ * SLT-243 (R5): es el único componente de dinero de este archivo que monta una pantalla
+ * (`CorregirResultadoDialog`), así que es el único que pinta en la moneda del país. El resto del
+ * archivo no lo monta nadie y lo poda SLT-146 (P1).
  */
 export function TotalesPanel({
   totales,
@@ -615,6 +620,8 @@ export function TotalesPanel({
    */
   neto?: string;
 }) {
+  const moneda = useMonedaDelPais();
+  const monto = (valor: string): string => formatearMontoEn(moneda, valor, SIN_MONTO_RAYA);
   return (
     <section aria-label={ariaLabel} className="flex flex-col gap-3">
       <h3 className="text-base font-semibold">{title}</h3>
@@ -622,15 +629,15 @@ export function TotalesPanel({
         <CardContent
           className={`grid grid-cols-2 gap-4 pt-6 ${neto === undefined ? "sm:grid-cols-4" : "sm:grid-cols-5"}`}
         >
-          <TotalItem label="Efectivo" value={money(totales.efectivo)} />
-          <TotalItem label="SINPE" value={money(totales.simpe)} />
+          <TotalItem label="Efectivo" value={monto(totales.efectivo)} />
+          <TotalItem label="SINPE" value={monto(totales.simpe)} />
           <TotalItem
             label="Transferencia"
-            value={money(totales.transferencia)}
+            value={monto(totales.transferencia)}
           />
-          <TotalItem label={labelGeneral} value={money(totales.general)} emphasis />
+          <TotalItem label={labelGeneral} value={monto(totales.general)} emphasis />
           {neto === undefined ? null : (
-            <TotalItem label={NETO_LABEL} value={money(neto)} emphasis />
+            <TotalItem label={NETO_LABEL} value={monto(neto)} emphasis />
           )}
         </CardContent>
       </Card>
