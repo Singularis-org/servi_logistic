@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import type { ReactElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
@@ -84,6 +86,7 @@ import type { DescargaConfig } from "@/lib/types/descarga";
 import type { IngresoEmpresaDTO } from "@/lib/interfaces/services/ICierreDiaService";
 import type { CierreGestionDescargaDTO } from "@/lib/interfaces/services/ICierresAdminService";
 import type { CatalogoFiltrosCierresDTO } from "@/lib/types/filtros-cierres";
+import { quitarComentarios } from "@/tests/fixtures/sin-comentarios";
 
 // SLT-244 — Moneda e impuesto del pais en pantallas: componentes de cierres.
 //
@@ -1188,4 +1191,126 @@ describe("SLT-244 R7 — DescargarGestionesDialog arma el libro con la moneda de
       comision: "2 % de ₡25.000 · valor base de la zona Centro",
     });
   }, 60_000);
+});
+
+// --- Bloque 4 (T4.3): censo de la carpeta y excepciones de `pais-sin-literales` ---
+
+const CARPETA_CIERRES = "components/private/cierres";
+
+/** Cada `.ts`/`.tsx` de la carpeta, leído del disco: un archivo nuevo entra solo (design §8). */
+function archivosDeCierres(): string[] {
+  return readdirSync(join(process.cwd(), CARPETA_CIERRES), { recursive: true, encoding: "utf8" })
+    .map((rel) => `${CARPETA_CIERRES}/${rel.replace(/\\/g, "/")}`)
+    .filter((rel) => /\.tsx?$/.test(rel))
+    .sort();
+}
+
+/** Los formateadores que usan la moneda de la plataforma sin nombrarla (R12). */
+const FORMATEADORES_IMPLICITOS_CIERRES = ["money", "moneyTope", "formatMontoString", "formatMontoTope"];
+/** Los rótulos de `cierres-admin` con «IVA» de la tabla de design §5 que se quedan (R13). */
+const ROTULOS_CON_IVA = [
+  "FLETE_DEV_CON_IVA_LABEL",
+  "FLETE_NO_ENTREGADAS_CON_IVA_LABEL",
+  "fleteDevConIvaDeGestion",
+  "ivaFleteNoEntregaLabel",
+  "IVA_FLETE_LABEL",
+  "IVA_COMISION_LABEL",
+  "IVA_FLETE_RECHAZO_LABEL",
+];
+
+/** Lo que un archivo de `components/private/cierres/**` hace mal (R12, R13); vacío si nada. */
+function infraccionesDeCierres(fuente: string): string[] {
+  const codigo = quitarComentarios(fuente);
+  const infracciones: string[] = [];
+  for (const nombre of FORMATEADORES_IMPLICITOS_CIERRES) {
+    if (new RegExp(`(?<![\\w.$])${nombre}\\s*\\(`).test(codigo)) infracciones.push(`llama a ${nombre}(`);
+  }
+  if (/\bIVA\b/.test(codigo)) infracciones.push("escribe «IVA»");
+  if (/import\s+(?:type\s+)?\{[^}]*\bIMPUESTO_ROTULO\b[^}]*\}\s*from/.test(codigo)) {
+    infracciones.push("importa IMPUESTO_ROTULO");
+  }
+  if (/(?<![\w.$])porcentajeParaVerEnLaPlataforma\s*\(/.test(codigo)) {
+    infracciones.push("llama a porcentajeParaVerEnLaPlataforma(");
+  }
+  for (const m of codigo.matchAll(/import\s+(?:type\s+)?\{([^}]*)\}\s*from/g)) {
+    for (const rotulo of ROTULOS_CON_IVA) {
+      if (new RegExp(`\\b${rotulo}\\b`).test(m[1])) infracciones.push(`importa ${rotulo}`);
+    }
+  }
+  return infracciones;
+}
+
+describe("SLT-244 R12, R13 — censo de components/private/cierres/** leído del disco", () => {
+  const archivos = archivosDeCierres();
+
+  it("la carpeta tiene archivos que censar (no-vacuidad)", () => {
+    expect(archivos.length).toBeGreaterThanOrEqual(20);
+    expect(archivos).toContain(`${CARPETA_CIERRES}/detalle/detalle-cierre-vista.ts`);
+    expect(archivos).toContain(`${CARPETA_CIERRES}/fila/fila-gestion-labels.ts`);
+  });
+
+  it.each(archivos)("R12, R13: %s no llama a formateadores implícitos ni escribe «IVA»", (archivo) => {
+    const fuente = readFileSync(join(process.cwd(), archivo), "utf8");
+    expect(fuente.length).toBeGreaterThan(0);
+    expect(infraccionesDeCierres(fuente)).toEqual([]);
+  });
+
+  describe("contraprueba sobre fuentes inventadas", () => {
+    const ROJOS: [string, string, string][] = [
+      ["money(", `import { money } from "@/lib/config/moneda";\nconst t = money(1);`, "llama a money("],
+      ["moneyTope(", `const t = moneyTope(1);`, "llama a moneyTope("],
+      ["formatMontoString(", `const t = formatMontoString("1");`, "llama a formatMontoString("],
+      ["formatMontoTope(", `const t = formatMontoTope(1);`, "llama a formatMontoTope("],
+      ["«IVA» en un texto", `const r = "Flete + IVA";`, "escribe «IVA»"],
+      ["«IVA» en una plantilla", "const r = `IVA ${pct} %`;", "escribe «IVA»"],
+      [
+        "IMPUESTO_ROTULO importado",
+        `import { IMPUESTO_ROTULO } from "@/lib/constants/impuesto-rotulo";`,
+        "importa IMPUESTO_ROTULO",
+      ],
+      [
+        "porcentajeParaVerEnLaPlataforma(",
+        `const p = porcentajeParaVerEnLaPlataforma(3.5);`,
+        "llama a porcentajeParaVerEnLaPlataforma(",
+      ],
+      ...ROTULOS_CON_IVA.map((rotulo): [string, string, string] => [
+        `${rotulo} importado`,
+        `import {\n  otra,\n  ${rotulo},\n} from "@/app/(app)/cierres-admin/_components/cierre-labels";`,
+        `importa ${rotulo}`,
+      ]),
+    ];
+    it.each(ROJOS)("rojo con %s", (_caso, fuente, infraccion) => {
+      expect(infraccionesDeCierres(fuente)).toContain(infraccion);
+    });
+
+    const VERDES: [string, string][] = [
+      ["money( en un comentario de línea", `// antes: money(1)\nconst x = 1;`],
+      ["formateadores en un comentario de bloque", `/* moneyTope(1), formatMontoString("1"), formatMontoTope(1) */\nconst x = 1;`],
+      ["«IVA» en un comentario", `// «Flete + IVA» era el texto viejo\n/** De eso, IVA */\nconst x = 1;`],
+      ["IMPUESTO_ROTULO en un comentario", `// import { IMPUESTO_ROTULO } from "@/lib/constants/impuesto-rotulo";\nconst x = 1;`],
+      ["porcentajeParaVerEnLaPlataforma en un comentario", `// porcentajeParaVerEnLaPlataforma(3.5)\nconst x = 1;`],
+      ["los rótulos con «IVA» en un comentario", `/*\nimport { ${ROTULOS_CON_IVA.join(", ")} } from "./x";\n*/\nconst x = 1;`],
+      ["la moneda explícita", `import { formatearMontoEn } from "@/lib/config/moneda";\nformatearMontoEn(moneda, 1, SIN_MONTO_RAYA);`],
+      ["un nombre interno con «iva»", `const v = fila.fleteConIva + fila.ivaFlete;`],
+    ];
+    it.each(VERDES)("verde con %s", (_caso, fuente) => {
+      expect(infraccionesDeCierres(fuente)).toEqual([]);
+    });
+  });
+});
+
+describe("SLT-244 R14 — la lista de excepciones de `pais-sin-literales` no tiene nada a nombre de SLT-244", () => {
+  it("ninguna excepción está a nombre de SLT-244", async () => {
+    const { EXCEPCIONES_PAIS_SIN_LITERALES } = await import("@/tests/unit/guards/_pais-sin-literales-excepciones");
+    expect(EXCEPCIONES_PAIS_SIN_LITERALES.filter((e) => e.ficha === "SLT-244")).toEqual([]);
+  });
+
+  it("el tope queda en 12 o menos y la lista no lo supera", async () => {
+    const { EXCEPCIONES_PAIS_SIN_LITERALES, TOPE_EXCEPCIONES } = await import(
+      "@/tests/unit/guards/_pais-sin-literales-excepciones"
+    );
+    // Rebanadas posteriores de SLT-235 bajan el tope: se fija como máximo, no exacto.
+    expect(TOPE_EXCEPCIONES).toBeLessThanOrEqual(12);
+    expect(EXCEPCIONES_PAIS_SIN_LITERALES.length).toBeLessThanOrEqual(TOPE_EXCEPCIONES);
+  });
 });

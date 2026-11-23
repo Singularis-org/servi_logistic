@@ -107,3 +107,47 @@ Tests (3):
 
 ### Veredicto
 Tanda C en verde: la tarifa de la descarga «Gestiones» sale en la moneda del país, `moneda` obligatoria en `libroGestiones` y `porcentajeParaVerEnLaPlataforma` borrada; sin bloqueos.
+
+## Tanda D (frontend_dev, 2026-11-23): T4.2, T4.3 (T4.4 queda para CI)
+
+### Archivos
+Tests (2); ningún archivo de producción en esta tanda:
+- `tests/components/moneda-del-pais-pantallas.test.tsx` (T4.2): `CENSO_MONEDA_DEL_PAIS` gana el bloque «SLT-244» con los 14 archivos de design §8 (12 de `components/private/cierres/**`, `cierres-gestiones-modelo-nuevo-descarga-columnas.ts` y `DescargarGestionesDialog.tsx`); sale la línea del comentario de SLT-243 que dejaba fuera la descarga «por P3». El caso «SLT-243 R15: los 10 de SLT-243» no cambia: su `slice(i, i + 10)` sigue cortando sus 10 (lo afirma su `toEqual` de nombres, verde). Caso nuevo «SLT-244 R12: los 14 de SLT-244 dan rojo con money( o formatMontoString(» (verde hoy, rojo con cada inyección, y la lista exacta de los 14 nombres).
+- `tests/components/moneda-del-pais-cierres-componentes.test.tsx` (T4.3): describe «SLT-244 R12, R13 — censo de components/private/cierres/** leído del disco» (`readdirSync(..., { recursive: true })`, filtro `.ts`/`.tsx`; hoy 24 archivos; caso de no-vacuidad; `infraccionesDeCierres` sobre `quitarComentarios`): `money(`, `moneyTope(`, `formatMontoString(`, `formatMontoTope(`, `\bIVA\b`, import de `IMPUESTO_ROTULO`, llamada a `porcentajeParaVerEnLaPlataforma(`, import de los 7 rótulos con «IVA» de design §5. Contraprueba: 15 rojos (uno por patrón, cada rótulo en un import multilínea) y 8 verdes (cada patrón solo en un comentario; `formatearMontoEn`; nombres internos `fleteConIva`/`ivaFlete`). Describe «SLT-244 R14 — …» (2 casos). `tests/unit/guards/_pais-sin-literales-excepciones.ts` no se toca.
+- Finales de línea: LF en los 2 archivos (0 `\r`).
+
+### Prueba de rojo
+- Se añadió temporalmente `export const _rojo = money("1.00");` al final de `components/private/cierres/detalle/Cuenta.tsx`. `moneda-del-pais-pantallas` dio 2 rojos (`it.each` R18 de `Cuenta.tsx` y «SLT-244 R12», ambos `[ 'llama a money(' ]`). `moneda-del-pais-cierres-componentes` no llegó a cargar: el componente se importa y `money` no existe al evaluar el módulo.
+- Repetido con `export const _rojo = () => money("1.00");` (llamada perezosa): **3 rojos** (`Tests 3 failed | 235 passed (238)`): el censo de la carpeta en `Cuenta.tsx`, el `it.each` R18 y «SLT-244 R12».
+- Las dos veces se restauró desde una copia en el scratchpad y `git diff --stat HEAD -- components/private/cierres/detalle/Cuenta.tsx` quedó vacío.
+
+### Verificación (NODE_OPTIONS=--max-old-space-size=8192)
+- `pnpm run typecheck`: `tsc --noEmit`, exit 0.
+- `pnpm exec eslint` de los 2 archivos: sin salida, exit 0.
+- `pnpm exec vitest run` de los 2 archivos: `Test Files 2 passed (2) · Tests 238 passed (238)` (pantallas 142, cierres-componentes 96).
+- `pnpm run test:guardias`: exit 0, `Test Files 358 passed | 3 skipped (361) · Tests 5436 passed | 28 skipped (5464)`.
+
+### Mapa R → test completo (R1–R14)
+Salvo que se diga otro, en `tests/components/moneda-del-pais-cierres-componentes.test.tsx`.
+| R | Test |
+|---|---|
+| R1 | «SLT-244 R1» (mensajeros Pendientes/Resueltos, bodega central, A consolidar, Solicitados, cola propia escritorio y teléfono; «—» sin importe), tanda A |
+| R2 | «SLT-244 R2» (`CifrasCierre`, `Cuenta`, `DineroCierre`, `MensajerosCierreBodega`), tanda A |
+| R3 | «SLT-244 R3» (pie de mensajero y de bodega, `disponibles` tras `pais`, nota de bodega del modelo viejo, pie montado), tanda B |
+| R4 | «SLT-244 R4» (fila desplegada: columnas, tarjetas, ganancia, «—», fulfillment), tanda B |
+| R5 | «SLT-244 R5» («2 % de €25 000», separador «3,5»/«3.5», modelo viejo, «Ver cómo se calculó» montado), tandas A–B |
+| R6 | «SLT-244 R6» (las 14 funciones de design §5 con «IGV» e «IVA») y «R6 — el detalle montado…» / «R6 — la fila montada…», tandas A–B |
+| R7 | «SLT-244 R7 — la descarga «Gestiones»…» y «SLT-244 R7 — DescargarGestionesDialog arma el libro…»; `cierres-gestiones-modelo-nuevo-descarga.test.ts` verde, tanda C |
+| R8 | `llamadasSinPais`: `@ts-expect-error` en `cifrasDe`, `lineasDinero`, `tarjetasDe`, `calculoDe`, `porcentajeDe` y `libroGestiones` sin `moneda`; los comprueba `pnpm run typecheck` (tandas B–C) |
+| R9 | Cada caso montado de R1–R7 pasa por `compruebaCostaRicaYCaida` (CR = sin proveedor); funciones de §5 con «IVA» = texto de hoy; `detalle-cierre-vista.test.ts`, `fila-gestion-vista.test.ts` y `cierres-gestiones-modelo-nuevo-descarga.test.ts` verdes sin cambiar valores |
+| R10 | Montaje «sin proveedor» de cada caso = `formatearMontoEn(MONEDA_PLATAFORMA, v, SIN_MONTO_RAYA)` y rótulos con «IVA» |
+| R11 | Lo comprueba el reviewer en el diff (design §9): sin sumas/restas nuevas, sin claves «iva» renombradas, sin pantallas de plataforma ni `monto-cliente.ts`, código sin montar de `cierre-factura.tsx`/`cierre-detalle-shared.tsx` sin migrar |
+| R12 | `moneda-del-pais-pantallas.test.tsx` > «R18: $archivo …» (it.each con los 14) y «SLT-244 R12: los 14 de SLT-244 dan rojo con money( o formatMontoString(»; aquí, «SLT-244 R12, R13 — censo de components/private/cierres/**» (formateadores implícitos) con su contraprueba |
+| R13 | «SLT-244 R12, R13 — censo de components/private/cierres/**» («IVA», `IMPUESTO_ROTULO`, `porcentajeParaVerEnLaPlataforma`, los 7 rótulos con «IVA») con su contraprueba |
+| R14 | «SLT-244 R14 — …» (2 casos: ninguna excepción con `ficha === "SLT-244"`; `TOPE_EXCEPCIONES` ≤ 12 y la lista ≤ tope); `pais-sin-literales.guardia` verde sin tocar el archivo de excepciones |
+
+### Pendiente (T4.4)
+- `./init.sh` y E2E (grupo `dinero`, `cierres-rediseno`, `cierre-modelo-nuevo-plan-porcentual`, `cierres-admin`, `cierre-dia`, `cierre-bodega-satelite`): en CI, **no corridos aquí**.
+
+### Veredicto
+Tanda D (T4.2, T4.3) hecha: censo R18 con los 14, censo de la carpeta y R14 en verde; typecheck, lint, los 2 tests y las guardias en verde; sin bloqueos.

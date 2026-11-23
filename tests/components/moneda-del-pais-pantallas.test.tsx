@@ -736,8 +736,6 @@ const CENSO_MONEDA_DEL_PAIS: readonly { archivo: string; servidor?: true }[] = [
   //  - `cierres-admin/_components/cierre-detalle-shared.tsx` y `cierre-factura.tsx` (P1): conservan
   //    `money(` en el código que no monta ninguna pantalla; de `cierre-detalle-shared` solo se migró
   //    `TotalesPanel`. Los poda SLT-146.
-  //  - `cierres-admin/_components/cierres-gestiones-modelo-nuevo-descarga-columnas.ts` (P3): el texto
-  //    de la tarifa de la descarga «Gestiones» es de SLT-244.
   { archivo: "app/(app)/cierre-dia/_components/CierreDiaModule.tsx" },
   { archivo: "app/(app)/cierres-admin/_components/AjustarPagoMensajeroDialog.tsx" },
   { archivo: "app/(app)/cierres-admin/_components/MarcaAjustado.tsx" },
@@ -748,6 +746,21 @@ const CENSO_MONEDA_DEL_PAIS: readonly { archivo: string; servidor?: true }[] = [
   { archivo: "app/(app)/cierres-admin/_components/CierresAdminModule.tsx" },
   { archivo: "app/(app)/cierres-admin/_components/RegistrarPagoMensajeroDialog.tsx" },
   { archivo: "app/(app)/cierres-admin/_components/PagoMensajeroSeccion.tsx" },
+  // SLT-244 (componentes de cierres, design §8, R12).
+  { archivo: "components/private/cierres/cola/ColaCierres.tsx" },
+  { archivo: "components/private/cierres/cola/TablaColaPropia.tsx" },
+  { archivo: "components/private/cierres/detalle/CifrasCierre.tsx" },
+  { archivo: "components/private/cierres/detalle/Cuenta.tsx" },
+  { archivo: "components/private/cierres/detalle/DineroCierre.tsx" },
+  { archivo: "components/private/cierres/detalle/MensajerosCierreBodega.tsx" },
+  { archivo: "components/private/cierres/detalle/DetalleCierre.tsx" },
+  { archivo: "components/private/cierres/detalle/detalle-cierre-vista.ts" },
+  { archivo: "components/private/cierres/detalle/detalle-cierre-labels.ts" },
+  { archivo: "components/private/cierres/fila/FilaGestion.tsx" },
+  { archivo: "components/private/cierres/fila/fila-gestion-vista.ts" },
+  { archivo: "components/private/cierres/fila/fila-gestion-labels.ts" },
+  { archivo: "app/(app)/cierres-admin/_components/cierres-gestiones-modelo-nuevo-descarga-columnas.ts" },
+  { archivo: "app/(app)/cierres-admin/_components/DescargarGestionesDialog.tsx" },
 ];
 
 /** Los formateadores que usan la moneda de la plataforma sin nombrarla (R18). */
@@ -912,6 +925,35 @@ describe("SLT-235/T4.1 — censo de R18: las pantallas en la moneda del país no
       "PagoMensajeroSeccion.tsx",
     ]);
     for (const { archivo, servidor } of deSlt243) {
+      expect(infraccionesDeMoneda(leer(archivo), { servidor }), archivo).toEqual([]);
+      const conMoney = `${leer(archivo)}\nexport const _m = money(1);\n`;
+      expect(infraccionesDeMoneda(conMoney, { servidor }), archivo).toContain("llama a money(");
+      const conString = `${leer(archivo)}\nexport const _s = formatMontoString("1");\n`;
+      expect(infraccionesDeMoneda(conString, { servidor }), archivo).toContain("llama a formatMontoString(");
+    }
+  });
+
+  it("SLT-244 R12: los 14 de SLT-244 dan rojo con money( o formatMontoString(", () => {
+    const i = CENSO_MONEDA_DEL_PAIS.findIndex((e) => e.archivo === "components/private/cierres/cola/ColaCierres.tsx");
+    const deSlt244 = CENSO_MONEDA_DEL_PAIS.slice(i, i + 14);
+    expect(deSlt244).toHaveLength(14);
+    expect(deSlt244.map((e) => e.archivo.split("/").pop())).toEqual([
+      "ColaCierres.tsx",
+      "TablaColaPropia.tsx",
+      "CifrasCierre.tsx",
+      "Cuenta.tsx",
+      "DineroCierre.tsx",
+      "MensajerosCierreBodega.tsx",
+      "DetalleCierre.tsx",
+      "detalle-cierre-vista.ts",
+      "detalle-cierre-labels.ts",
+      "FilaGestion.tsx",
+      "fila-gestion-vista.ts",
+      "fila-gestion-labels.ts",
+      "cierres-gestiones-modelo-nuevo-descarga-columnas.ts",
+      "DescargarGestionesDialog.tsx",
+    ]);
+    for (const { archivo, servidor } of deSlt244) {
       expect(infraccionesDeMoneda(leer(archivo), { servidor }), archivo).toEqual([]);
       const conMoney = `${leer(archivo)}\nexport const _m = money(1);\n`;
       expect(infraccionesDeMoneda(conMoney, { servidor }), archivo).toContain("llama a money(");

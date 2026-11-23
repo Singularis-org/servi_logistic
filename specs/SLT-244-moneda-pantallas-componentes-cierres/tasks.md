@@ -79,12 +79,12 @@
 - [x] **T4.1** `porcentajeParaVerEnLaPlataforma` sale de `tarifas-textos.ts`, con su caso y su import
   en `moneda-del-pais-tarifas.test.tsx` (P4).
   - *Hecho:* typecheck en verde (ningún llamador más) y `moneda-del-pais-tarifas.test.tsx` en verde.
-- [ ] **T4.2** Censo de R18 de SLT-235 (design §8).
+- [x] **T4.2** Censo de R18 de SLT-235 (design §8).
   - `CENSO_MONEDA_DEL_PAIS` gana el bloque «SLT-244» con los 14 archivos; sale la línea del
     comentario de SLT-243 que dejaba fuera la descarga «por P3».
   - Caso nuevo: «los 14 de SLT-244 dan rojo con `money(` o `formatMontoString(`» (R12).
   - *Hecho:* en verde, y rojo si se reescribe un `money(` en uno de ellos.
-- [ ] **T4.3** En el test nuevo:
+- [x] **T4.3** En el test nuevo:
   - el censo de la carpeta `components/private/cierres/**`, leída del disco: sin formateadores
     implícitos (R12) y «sin IVA» (R13), con su contraprueba;
   - el caso de R14: ninguna excepción con `ficha === "SLT-244"` y `TOPE_EXCEPCIONES` ≤ 12
