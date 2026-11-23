@@ -11,9 +11,10 @@
 > - Cada caso de pantalla se prueba tres veces: con `MONEDA_DE_PRUEBA` + «IGV», con `MONEDA_CR` +
 >   «IVA» y sin proveedor. Con CR, el texto debe ser el mismo que sin proveedor (R12, R13).
 > - Los tests que ya existían y solo cambian la forma de llamar **no cambian ningún valor esperado**.
+>   Excepción, por P2: los literales de **encabezado** con impuesto de las suites de descarga y del
+>   E2E de cierres (T4.2), a la columna «Costa Rica» de `design.md §6.0`.
 >
-> Escrito con las recomendaciones de P1, P2 y P3 (`requirements.md > Preguntas abiertas`). Si el
-> humano cierra alguna distinto, se ajusta según `design.md §11` antes de empezar.
+> P1–P3 cerradas el 2026-11-23 (`requirements.md > Decisiones cerradas`).
 
 ## Bloque 1 — Aviso de cuadre con la moneda obligatoria (R7, R8)
 
@@ -61,30 +62,37 @@
 
 ## Bloque 4 — Encabezados de las descargas (R10, R11) (depende de T2.3 y T3.2: comparte archivos)
 
-- [ ] **T4.1** Módulo `encabezados-con-impuesto.ts` y su base en `cierre-labels.ts` (design §6.1).
-  - En el módulo: `ENCABEZADO_CON_IMPUESTO`, `encabezadoBase`, `conImpuestoEnColumnas`,
-    `conImpuestoEnHojas` y `conImpuestoEnResultado`.
-  - En `cierre-labels.ts`: `rotuloFleteDevConImpuesto` y `rotuloImpuestoFacturado`, y las cuatro
-    constantes calculadas con `IMPUESTO_ROTULO`.
-  - Casos de R10 (a)–(c).
+- [ ] **T4.1** Módulo `encabezados-con-impuesto.ts` con la forma «impuesto (<nombre>)» (design
+  §6.0 y §6.1).
+  - `impuestoEntreParentesis`, `ENCABEZADO_CON_IMPUESTO` (9 claves), `encabezadoBase`,
+    `conImpuestoEnColumnas`, `conImpuestoEnHojas` y `conImpuestoEnResultado`.
+  - `cierre-labels.ts` **no se toca**.
+  - Casos de R10 (a)–(c), con los 9 encabezados de Perú y los 9 de Costa Rica escritos a mano en el
+    test (R12).
   - *Hecho:* en verde; `cierre-resultado-fila-label.test.ts`, `rechazo-nombre-466-app.test.ts`,
+    `flete-por-rechazo-censo.guardia.test.ts`, `rechazo-nombre-466.guardia.test.ts`,
     `cierre-bodega-vocabulario.guardia.test.ts` y `CierreDesgloseModeloNuevo.test.tsx` pasan sin
     tocarlos.
-- [ ] **T4.2** Las declaraciones de columnas toman sus encabezados con impuesto de
-  `encabezadoBase(clave)` (R11).
-  - Son `cierres-gestiones-modelo-nuevo-descarga-columnas.ts`,
-    `cierres-resumen-modelo-nuevo-descarga-columnas.ts` y
-    `cierres-bodega-modelo-nuevo-descarga-columnas.ts`. Depende de T4.1.
+- [ ] **T4.2** Las cuatro declaraciones de columnas toman sus encabezados con impuesto de
+  `encabezadoBase(clave)` (R11), y se actualizan los encabezados esperados. Depende de T4.1.
+  - Declaraciones: `cierres-gestiones-modelo-nuevo-descarga-columnas.ts` (5),
+    `cierres-resumen-modelo-nuevo-descarga-columnas.ts` (1),
+    `cierres-bodega-modelo-nuevo-descarga-columnas.ts` (1) y
+    `cierres-gestiones-fundida-descarga-columnas.ts` (3; deja de importar los `*_CON_IVA_LABEL`).
+  - Tests: solo los literales de encabezado con impuesto, a la columna «Costa Rica» de design §6.0,
+    en las 8 suites de design §7 y en `e2e/cierres-rediseno.spec.ts` (listas de encabezados y
+    `celda("IVA facturado")`; no las líneas de pantalla).
   - Censo «sin IVA» de R11 con su contraprueba.
-  - *Hecho:* en verde; todas las suites de `tests/unit/descarga/cierres-*` y
-    `tests/components/descarga/*` pasan sin tocarlas.
+  - *Hecho:* en verde; en el diff de los tests solo cambian literales de encabezado (ninguna celda,
+    clave ni cuenta de columnas).
 - [ ] **T4.3** Aplicación en los componentes (design §6.2). Depende de T4.1.
   - `CierresAdminModule.tsx` (2 sitios), `CierresBodegaAdminModule.tsx` (2),
     `ConsolidacionBodegaModule.tsx` (1), `DescargarGestionesDialog.tsx` y
     `DescargarCierresButton.tsx` (con `useMemo`).
   - Caso R10 (d).
-  - *Hecho:* en verde; `DescargarGestionesDialog.test.tsx`, `CierresDescargaColumnas.test.tsx`,
-    `CierresDescargaNiveles.test.tsx` y `paginacion-transversal.test.tsx` pasan sin tocarlos.
+  - *Hecho:* en verde; `DescargarGestionesDialog.test.tsx`, `CierresDescargaColumnas.test.tsx` y
+    `paginacion-transversal.test.tsx` pasan sin tocarlos (`CierresDescargaNiveles.test.tsx` ya se
+    actualizó en T4.2).
 
 ## Bloque 5 — Guardias y cierre (depende de los bloques 1–4)
 
@@ -126,11 +134,11 @@ Producción:
 - `app/(app)/cierres-admin/_components/RegistrarPagoMensajeroDialog.tsx`
 - `app/(app)/cierres-admin/_components/pago-mensajero-labels.ts`
 - `app/(app)/cierres-admin/_components/cierre-detalle-shared.tsx` (solo `TotalesPanel`)
-- `app/(app)/cierres-admin/_components/cierre-labels.ts`
 - `app/(app)/cierres-admin/_components/encabezados-con-impuesto.ts` (nuevo)
 - `app/(app)/cierres-admin/_components/cierres-gestiones-modelo-nuevo-descarga-columnas.ts`
 - `app/(app)/cierres-admin/_components/cierres-resumen-modelo-nuevo-descarga-columnas.ts`
 - `app/(app)/cierres-admin/_components/cierres-bodega-modelo-nuevo-descarga-columnas.ts`
+- `app/(app)/cierres-admin/_components/cierres-gestiones-fundida-descarga-columnas.ts`
 - `app/(app)/cierres-admin/_components/DescargarGestionesDialog.tsx`
 - `app/(app)/cierres-admin/_components/DescargarCierresButton.tsx`
 
@@ -139,20 +147,39 @@ Tests:
 - `tests/components/moneda-del-pais-pantallas.test.tsx`
 - `tests/components/GestionarOrdenPanelCentimos.test.tsx`
 - `tests/components/CierresAdminPagoMensajero.test.tsx`
+- `tests/unit/descarga/cierres-gestiones-modelo-nuevo-descarga.test.ts` (solo encabezados)
+- `tests/unit/descarga/cierres-resumen-modelo-nuevo-descarga.test.ts` (solo encabezados)
+- `tests/unit/descarga/cierres-bodega-modelo-nuevo-descarga.test.ts` (solo encabezados)
+- `tests/unit/descarga/cierres-gestiones-fundida-descarga-columnas.test.ts` (solo encabezados)
+- `tests/components/descarga/CierresBodegaResumenModeloNuevo.test.tsx` (solo encabezados)
+- `tests/components/descarga/CierresDescargaNiveles.test.tsx` (solo encabezados)
+- `tests/components/descarga/DescargarGestionesModeloNuevo.test.tsx` (solo encabezados)
+- `tests/components/descarga/DescargarResumenModeloNuevo.test.tsx` (solo encabezados)
+- `e2e/cierres-rediseno.spec.ts` (solo encabezados de descarga)
 
 Grep del 2026-11-23. Si el typecheck o un test señalan otro llamante de `mensajeDeCuadre` o de
-`PAGO_MENSAJERO_TEXTO.registrado` / `.anulado`, se añade aquí antes del PR (design §9).
+`PAGO_MENSAJERO_TEXTO.registrado` / `.anulado`, u otro test que espere un encabezado de descarga con
+«IVA», se añade aquí antes del PR (design §9) **y se avisa al leader**: con un archivo más el PR pasa
+del 80%.
 
 ## Tamaño
 
 | | Archivos | Líneas (añadidas + borradas) |
 |---|---|---|
-| Producción | 20 | unas 350 |
-| Tests | 4 | unas 650 (unas 600 del archivo nuevo) |
-| **Total** | **24** | |
+| Producción | 20 | unas 340 |
+| Tests | 13 (uno E2E) | unas 720 (unas 620 del archivo nuevo, unas 70 de literales de encabezado) |
+| **Total** | **33** | |
 
-Son el 60% de `gate.tamano_pr` (40 archivos): quedan 16 de margen, por debajo del umbral del 80%.
-Las líneas quedan muy por debajo de sus dos topes (1 000 de producción y 3 000 de tests).
+**Son el 82,5% de `gate.tamano_pr` (40 archivos): pasan del umbral del 80%.** Las líneas quedan muy
+por debajo de sus dos topes (1 000 de producción y 3 000 de tests), pero el número de archivos no
+cabe. La forma de P2 cambia también Costa Rica, y eso suma 9 archivos de tests que la primera
+versión no tocaba. Propuesta de corte en `requirements.md > Preguntas abiertas > P4`:
 
-- Con P1 = sí: +2 archivos y unas +300 líneas de producción. Seguiría por debajo del 80%.
-- Con P2 = no: −8 archivos.
+| Rebanada | Qué lleva | Producción | Tests | Total |
+|---|---|---|---|---|
+| SLT-243 (esta) | Bloques 1, 2, 3 y 5: R1–R9, R12–R16 sin la parte de descargas | 13 | 4 | 17 |
+| Nueva ficha: encabezados de descarga de cierres | Bloque 4: R10, R11 y la parte de descargas de R12–R14 | 7 | 9 | 16 |
+
+Las dos se mergean solas: no comparten ningún archivo salvo `CierresAdminModule.tsx`,
+`CierresBodegaAdminModule.tsx` y `ConsolidacionBodegaModule.tsx`, que la segunda toca en otro sitio
+(design §6.2) después de que la primera esté en `dev`.

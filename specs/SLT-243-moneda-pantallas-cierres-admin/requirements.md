@@ -19,10 +19,11 @@
 > - `mensajeDeCuadre` (`components/shared/DesglosePagoField.tsx`) pasa a pedir la moneda siempre: lo
 >   dejó escrito SLT-235 (design §7 y §12, alternativa 4) para esta rebanada;
 > - los encabezados con «IVA» de las descargas de cierres del admin (resumen de cierres de mensajero,
->   resumen de cierres de bodega, gestiones del modelo nuevo y hoja fundida de gestiones), si P2 se
->   cierra como se recomienda.
+>   resumen de cierres de bodega, gestiones del modelo nuevo y hoja fundida de gestiones). Pasan a
+>   decir «impuesto (<nombre del impuesto del país>)» (P2, cerrada el 2026-11-23).
 >
-> Para Costa Rica nada cambia a la vista.
+> Para Costa Rica nada cambia a la vista, **salvo esos encabezados de descarga**: por P2 pasan de
+> «IVA del flete» a «Impuesto (IVA) del flete», también en Costa Rica (design §6.1).
 >
 > **La lista de excepciones de `pais-sin-literales` no tiene ninguna entrada a nombre de SLT-243**
 > (`tests/unit/guards/_pais-sin-literales-excepciones.ts`, tope 12, comprobado el 2026-11-23): esta
@@ -96,30 +97,37 @@ Vocabulario:
   al alza. El tope anunciado, tecleado sin separadores de miles, DEBE ser aceptado por el validador
   del monto.
 
-### Descargas de cierres del admin (sujeto a P2)
+### Descargas de cierres del admin (P2)
 
 - **R10.** CUANDO el usuario genera una descarga de cierres del admin o abre su selector de columnas,
-  los encabezados que nombran el impuesto DEBEN llevar el nombre del impuesto del país. Son «… +
-  IVA», «IVA del flete», «IVA de la comisión», «IVA del …», «De eso, IVA», «IVA de fulfillment» e
-  «IVA facturado». Las claves de columna, su orden, la preferencia de columnas guardada y las celdas
-  NO DEBEN cambiar.
+  cada encabezado que hoy nombra el impuesto DEBE decir, donde hoy dice «IVA», la palabra
+  «impuesto» seguida del nombre del impuesto del país entre paréntesis: «Impuesto (IGV) del flete»,
+  «Flete + impuesto (IGV)», «De eso, impuesto (IGV)». «Impuesto» va con mayúscula solo cuando abre el
+  encabezado. Son los nueve encabezados de la tabla de `design.md §6.1`. Las claves de columna, su
+  orden, la preferencia de columnas guardada y las celdas NO DEBEN cambiar.
 - **R11.** Los archivos que declaran las columnas de las descargas de cierres del admin NO DEBEN
   escribir «IVA» a mano fuera de los comentarios. Sus encabezados con impuesto DEBEN salir de una
-  sola fuente, la misma que usa R10.
+  sola fuente, la misma que usa R10, y NO DEBEN depender de los rótulos de pantalla de
+  `cierre-labels.ts`.
 
 ### Costa Rica, caídas y lo que no cambia
 
-- **R12.** MIENTRAS la empresa sea de Costa Rica, lo que pintan R1–R9 y los encabezados de R10 DEBEN
-  ser idénticos, carácter a carácter, a lo de antes de esta ficha.
+- **R12.** MIENTRAS la empresa sea de Costa Rica, lo que pintan R1–R9 DEBE ser idéntico, carácter a
+  carácter, a lo de antes de esta ficha. Los encabezados de R10 DEBEN ser, en Costa Rica, los de R10
+  con «IVA» entre paréntesis («Impuesto (IVA) del flete»), y todo encabezado de las descargas sin
+  impuesto DEBE quedar idéntico al de antes.
 - **R13.** MIENTRAS una pantalla o una descarga de esta ficha se arme sin los datos del país (montada
   sola en un test, o fuera del portal), el sistema DEBE usar la moneda y el rótulo de la plataforma
-  (SLT-235 R15).
+  (SLT-235 R15): los encabezados de R10 dicen «impuesto (IVA)».
 - **R14.** El sistema NO DEBE cambiar en esta ficha:
   - las cifras, las sumas, las restas ni la validación de los montos;
   - las claves y nombres internos con «iva» (`fleteConIva`, `ivaFacturado`…);
   - las celdas de las descargas ni el texto de la tarifa de la descarga «Gestiones» (P3);
   - el código que no monta ninguna pantalla (P1);
+  - los rótulos de pantalla con «IVA» de `cierre-labels.ts` y `cierre-detalle-shared.tsx`, que pinta
+    `components/private/cierres/**` (P3);
   - los archivos de `components/private/cierres/**`, de la wallet y de plataforma;
+  - los encabezados de la descarga de órdenes (SLT-240 R16);
   - el texto de los mensajes del tope, salvo el importe.
 
 ### Guardias
@@ -144,10 +152,30 @@ Vocabulario:
 | Heredadas de SL-21: nombres internos con «iva» sin renombrar; OpenAPI sin cambios | R10, R14 |
 | `FichaQueLoRetira` y `FICHAS_ADMITIDAS` no se tocan (SLT-240 P2) | R16 |
 | `mensajeDeCuadre` con la moneda obligatoria en SLT-243 (SLT-235 design §12, alternativa 4) | R7, R8 |
+| P1: el código sin montar no se migra; solo `TotalesPanel` | R5, R14 |
+| P2: los encabezados de las descargas entran, con la forma «impuesto (<nombre>)» | R10, R11, R12, R13 |
+| P3: rótulos que solo pinta `components/private/cierres` y texto de la tarifa → SLT-244 | R14 |
 
 ## Preguntas abiertas
 
-- **P1. ¿Se migra el código de cierres que ya no monta ninguna pantalla?**
+P1–P3 se cerraron el 2026-11-23 (tabla de decisiones); se dejan abajo como registro. Queda abierta P4.
+
+- **P4 (abierta). La ficha ya no cabe en un PR: ¿se corta en dos?**
+  - Con la forma de P2, los encabezados de descarga cambian también en Costa Rica. Eso obliga a
+    actualizar los encabezados esperados de 8 suites de descarga y de `e2e/cierres-rediseno.spec.ts`.
+  - Total: 33 archivos (20 de producción, 13 de tests), el 82,5% de `gate.tamano_pr` (40). El
+    umbral es el 80% (32).
+  - **Propuesta (`docs/specs.md > Partir una feature`), dos rebanadas verticales que se mergean solas:**
+    - **SLT-243 (esta):** importes en pantalla, aviso de cuadre, pago al mensajero, tope de la
+      indemnización y guardias. R1–R9, R13–R16, y R12 sin la parte de encabezados. 17 archivos (13 de
+      producción, 4 de tests).
+    - **Ficha nueva «Encabezados con impuesto en las descargas de cierres del admin»:** R10, R11 y la
+      parte de descargas de R12–R14, con design §6.0–§6.2 tal cual. 16 archivos (7 de producción,
+      9 de tests). Depende de SLT-243 (toca `CierresAdminModule.tsx`, `CierresBodegaAdminModule.tsx`
+      y `ConsolidacionBodegaModule.tsx` en otro sitio).
+  - Alternativa sin cortar: que el humano acepte 33 archivos de forma explícita.
+
+- **P1 (cerrada el 2026-11-23: no). ¿Se migra el código de cierres que ya no monta ninguna pantalla?**
   - Qué es: la mayor parte de `cierre-factura.tsx` (unas 45 llamadas a `money(` y los textos con
     «IVA» de la liquidación) y los componentes sin montar de `cierre-detalle-shared.tsx`, más
     `desglose-pago.ts` y las notas con «IVA» que solo usa ese código.
@@ -159,17 +187,21 @@ Vocabulario:
   - El precio: `cierre-factura.tsx` y `cierre-detalle-shared.tsx` no entran en el censo de R15
     hasta SLT-146. Este spec está escrito con la recomendación. Si el humano dice «sí», se suman
     `cierre-factura.tsx` y `desglose-pago.ts` (unos 27 archivos en total, todavía por debajo del 80%).
-- **P2. ¿Entran los encabezados con «IVA» de las descargas de cierres del admin?**
+- **P2 (cerrada el 2026-11-23: sí, con la forma «impuesto (<nombre>)»). ¿Entran los encabezados con
+  «IVA» de las descargas de cierres del admin?**
+  - Respuesta literal del humano: «impuesto(nombredel impuesto)». Interpretación escrita en
+    design §6.1, con el antes/después de cada encabezado, para confirmarla al aprobar el spec.
   - Hay cuatro archivos de columnas en `cierres-admin/_components/` que escriben «IVA» en
     encabezados (`IVA del flete`, `De eso, IVA`, `IVA facturado`…). La hoja fundida los toma de
     `cierre-labels.ts`.
   - **Recomendación: sí.** SLT-240 hizo lo mismo con la descarga de órdenes (su R16), y la
     description de la ficha dice «rótulos «IVA» … en cierres-admin/**».
-  - Se aplica al final, sobre el libro ya armado, así que las ocho suites de tests de descarga no
-    cambian (design §6).
-  - Si el humano dice «no», salen R10, R11, el bloque 4 de `tasks.md` y 8 archivos. Quedarían para
-    una ficha nueva.
-- **P3. Frontera con SLT-244 «Moneda e impuesto del país en pantallas: componentes de cierres».**
+  - (Propuesta original, ya superada: «Flete + IGV», «IGV del flete», sin cambio en Costa Rica.)
+  - Consecuencia de la forma elegida: el encabezado cambia también en Costa Rica, así que las ocho
+    suites de tests de descarga y `e2e/cierres-rediseno.spec.ts` actualizan los encabezados que
+    esperan (no las celdas). Ver design §6 y `tasks.md > Tamaño`.
+- **P3 (cerrada el 2026-11-23: los hace SLT-244). Frontera con SLT-244 «Moneda e impuesto del país
+  en pantallas: componentes de cierres».**
   - Qué entra en la pregunta:
     - los rótulos `IVA_FLETE_LABEL`, `IVA_COMISION_LABEL`, `IVA_FLETE_RECHAZO_LABEL`,
       `ivaFleteNoEntregaLabel`, `fleteDevConIvaDeGestion` y `FLETE_NO_ENTREGADAS_CON_IVA_LABEL`.
@@ -198,3 +230,6 @@ de las rebanadas SLT-240 a SLT-242. Esta ficha no las reabre.
 | 2026-11-20 | Heredadas de SL-21 | Los nombres internos con «iva» no se renombran; la OpenAPI no cambia. |
 | 2026-11-20 | `mensajeDeCuadre` (SLT-235 design §7 y §12, alternativa 4) | Opcional y transitorio hasta SLT-243, que lo vuelve obligatorio. |
 | 2026-11-20 | `FichaQueLoRetira` y `FICHAS_ADMITIDAS` (SLT-240 P2) | No se tocan: se limpian cuando cierre la última rebanada del corte de SLT-235. |
+| 2026-11-23 | P1: ¿se migra el código de `cierre-factura.tsx` / `cierre-detalle-shared.tsx` que no monta ninguna pantalla? | No. Solo se migra `TotalesPanel`; el resto lo borra SLT-146. |
+| 2026-11-23 | P2: ¿entran los encabezados con «IVA» de las descargas de cierres del admin? | Sí, con la forma «impuesto (<nombre del impuesto del país>)»: «Impuesto (IGV) del flete», «Flete + impuesto (IGV)». En Costa Rica, «Impuesto (IVA) del flete». |
+| 2026-11-23 | P3: rótulos de `cierres-admin` que solo pinta `components/private/cierres` y texto de la tarifa de la descarga «Gestiones» | Van a SLT-244. |
