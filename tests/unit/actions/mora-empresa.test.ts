@@ -12,6 +12,9 @@ import { MoraEmpresaService } from "@/lib/services/MoraEmpresaService";
 // (primer argumento), no la que traiga el `input`; sin el rol que toca nada llega a la base (el servicio real con
 // un repositorio que lanza si se le llama), y el banner no tumba la página si su lectura falla. Las reglas las mide
 // `tests/unit/services/mora-empresa-service.test.ts`.
+//
+// SLT-255 (design §3.3; R7): `descongelarEmpresaAction` pasa a `darPlazoEmpresaAction`, y se suma
+// `quitarPlazoEmpresaAction`. Las dos mandan la empresa ligada y, sin superadmin, no leen la base.
 
 const MAESTRO: Actor = { usuarioId: "u-maestro", rol: "maestro" };
 const ADMIN: Actor = { usuarioId: "u-admin", rol: "admin" };
@@ -25,7 +28,8 @@ function servicioEspia() {
     avisoDeMiEmpresa: vi.fn<IMoraEmpresaService["avisoDeMiEmpresa"]>(async () => ({ estado: "al_dia" })),
     moraDeEmpresa: vi.fn<IMoraEmpresaService["moraDeEmpresa"]>(async () => ({ estado: "not_found" })),
     fijarGracia: vi.fn<IMoraEmpresaService["fijarGracia"]>(async () => ({ estado: "ok" })),
-    descongelar: vi.fn<IMoraEmpresaService["descongelar"]>(async () => ({ estado: "ok" })),
+    darPlazo: vi.fn<IMoraEmpresaService["darPlazo"]>(async () => ({ estado: "prorroga" })),
+    quitarPlazo: vi.fn<IMoraEmpresaService["quitarPlazo"]>(async () => ({ estado: "ok" })),
   } satisfies IMoraEmpresaService;
 }
 
@@ -40,7 +44,8 @@ function servicioSinBase(): IMoraEmpresaService {
     estaCongelada: lanza,
     moraParaPlataforma: lanza,
     fijarGracia: lanza,
-    descongelarAMano: lanza,
+    darPlazo: lanza,
+    quitarPlazo: lanza,
     existeEmpresa: lanza,
     empresasConMora: lanza,
     congelarSiVencida: lanza,
@@ -61,18 +66,30 @@ describe("lib/actions/mora-empresa — la empresa ligada manda (R32)", () => {
     expect(service.fijarGracia).toHaveBeenCalledWith(SUPERADMIN, { organizacionId: LIGADA, dias: 15 });
   });
 
-  it("descongelarEmpresaAction pasa la empresa ligada, no la del input", async () => {
+  it("SLT-255 R7: darPlazoEmpresaAction pasa la empresa ligada, no la del input", async () => {
     const service = servicioEspia();
-    await acciones.descongelarEmpresaAction(
+    const r = await acciones.darPlazoEmpresaAction(
       LIGADA,
       { organizacionId: OTRA, motivo: "Acuerdo", hasta: "2026-11-30" },
       { service, getActor: async () => SUPERADMIN },
     );
-    expect(service.descongelar).toHaveBeenCalledWith(SUPERADMIN, {
+    expect(r).toEqual({ estado: "prorroga" });
+    expect(service.darPlazo).toHaveBeenCalledWith(SUPERADMIN, {
       organizacionId: LIGADA,
       motivo: "Acuerdo",
       hasta: "2026-11-30",
     });
+  });
+
+  it("SLT-255 R7: quitarPlazoEmpresaAction pasa la empresa ligada, no la del input", async () => {
+    const service = servicioEspia();
+    const r = await acciones.quitarPlazoEmpresaAction(
+      LIGADA,
+      { organizacionId: OTRA, motivo: "Pagó por fuera" },
+      { service, getActor: async () => SUPERADMIN },
+    );
+    expect(r).toEqual({ estado: "ok" });
+    expect(service.quitarPlazo).toHaveBeenCalledWith(SUPERADMIN, { organizacionId: LIGADA, motivo: "Pagó por fuera" });
   });
 
   it("un input que no es un objeto llega como solo la empresa ligada", async () => {
@@ -94,13 +111,14 @@ describe("lib/actions/mora-empresa — R4: un rol de empresa no llega a la base"
     ["admin", ADMIN],
     ["sin sesión", null],
   ] as const) {
-    it(`con ${nombre}, las tres actions del superadmin responden forbidden sin leer`, async () => {
+    it(`con ${nombre}, las cuatro actions del superadmin responden forbidden sin leer (R4; SLT-255 R7)`, async () => {
       const deps = { service: servicioSinBase(), getActor: async () => actor };
       expect(await acciones.verMoraDeEmpresaAction(LIGADA, deps)).toEqual({ estado: "forbidden" });
       expect(await acciones.fijarGraciaEmpresaAction(LIGADA, { dias: 15 }, deps)).toEqual({ estado: "forbidden" });
-      expect(await acciones.descongelarEmpresaAction(LIGADA, { motivo: "m", hasta: "2026-11-30" }, deps)).toEqual({
+      expect(await acciones.darPlazoEmpresaAction(LIGADA, { motivo: "m", hasta: "2026-11-30" }, deps)).toEqual({
         estado: "forbidden",
       });
+      expect(await acciones.quitarPlazoEmpresaAction(LIGADA, { motivo: "m" }, deps)).toEqual({ estado: "forbidden" });
     });
   }
 });

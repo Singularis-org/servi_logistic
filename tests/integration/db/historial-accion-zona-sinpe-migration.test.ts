@@ -421,6 +421,9 @@ describe.skipIf(!HAY_BASE_DE_DATOS)("429/T3 (b) — el down recrea la lista PREV
       "empresa_descongelada_a_mano",
       "empresa_descongelada_por_gracia",
       "factura_dias_gracia_cambiada",
+      // SLT-255: los dos tipos de `20261127120000_prorroga_enums`.
+      "empresa_prorroga_fijada",
+      "empresa_prorroga_quitada",
     ];
     const catalogoPrevio = HISTORIAL_ACCION_TIPOS.filter(
       (t) => t !== VALOR_NUEVO && !POSTERIORES.includes(t),

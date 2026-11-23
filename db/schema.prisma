@@ -5168,6 +5168,12 @@ enum HistorialAccionTipo {
   empresa_descongelada_a_mano
   empresa_descongelada_por_gracia
   factura_dias_gracia_cambiada
+  /// SLT-255 (R15, design §1.2): la prórroga del pago, dada por el superadmin. Entidad `organizacion`.
+  /// `empresa_prorroga_fijada` (dada, alargada o acortada) lleva «hasta AAAA-MM-DD» de antes (o NULL) y
+  /// «hasta AAAA-MM-DD — <motivo>»; `empresa_prorroga_quitada` lleva «hasta AAAA-MM-DD» y «sin prórroga —
+  /// <motivo>». Migración `20261127120000_prorroga_enums`.
+  empresa_prorroga_fijada
+  empresa_prorroga_quitada
 
   @@map("historial_accion_tipo")
 }
@@ -6066,7 +6072,8 @@ model Organizacion {
   // `MoraEmpresaRepository` en `comoPlataforma`): `servi_app` no tiene UPDATE sobre ellas, así la empresa no se
   // descongela sola. `facturaDiasGracia` NULL = rige `FACTURA_DIAS_GRACIA`; el CHECK 1-60 vive solo en el SQL de
   // 20261126120100. `congeladaAt` no nula = congelada desde ese instante UTC, y el trigger `bloqueo_por_mora`
-  // rechaza sus escrituras (SL121). `descongeladaHasta` = último día de la plataforma de un descongelamiento manual.
+  // rechaza sus escrituras (SL121). `descongeladaHasta` = último día de un plazo dado por el superadmin:
+  // descongelamiento a mano o prórroga (SLT-255, design §1.1); vigente mientras sea >= hoy de la plataforma.
   facturaDiasGracia Int?      @map("factura_dias_gracia")
   congeladaAt       DateTime? @map("congelada_at") @db.Timestamp(3)
   descongeladaHasta DateTime? @map("descongelada_hasta") @db.Date

@@ -7,7 +7,8 @@ import { MORA_TEXTOS, type EstadoMora } from "@/lib/planes/mora";
 // SLT-121 (design §7.1; R24) — el banner de la mora, en todas las pantallas autenticadas del maestro y el admin.
 // El estado lo resuelve `app/(app)/layout.tsx` en el servidor y baja por props; aquí no se lee nada. Sin
 // "use client": es solo texto y un enlace. El enlace a «Mi plan» lo lleva solo quien está en `ROLES_MI_PLAN`
-// (SLT-91): el admin ve el aviso, pero no la vía hasta las facturas.
+// (SLT-91): el admin ve el aviso, pero no la vía hasta las facturas. SLT-255 (design §5.1; R11): con un plazo
+// vigente (prórroga o descongelamiento a mano), `con_plazo` reemplaza a «vencida»; tono aviso y sin enlace.
 
 interface AvisoMoraProps {
   readonly estado: EstadoMora | null;
@@ -26,8 +27,8 @@ function contenido(estado: EstadoMora): { texto: string; tono: Tono } | null {
       return { texto: MORA_TEXTOS.banner.vencida, tono: "alerta" };
     case "congelada":
       return { texto: MORA_TEXTOS.banner.congelada, tono: "alerta" };
-    case "descongelada_a_mano":
-      return { texto: MORA_TEXTOS.banner.descongeladaAMano(estado.hasta), tono: "aviso" };
+    case "con_plazo":
+      return { texto: MORA_TEXTOS.banner.conPlazo(estado.hasta), tono: "aviso" };
   }
 }
 

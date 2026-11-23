@@ -5,7 +5,7 @@ import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
 import type { IMoraEmpresaService } from "@/lib/interfaces/services/IMoraEmpresaService";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { EstadoMora } from "@/lib/planes/mora";
-import type { DescongelarResult, FijarGraciaResult, MoraDeEmpresaResult } from "@/lib/types/mora";
+import type { DarPlazoResult, FijarGraciaResult, MoraDeEmpresaResult, QuitarPlazoResult } from "@/lib/types/mora";
 
 // SLT-121 (design §5.4) — el borde de la mora. El actor sale de la sesión y la autorización la decide el servicio
 // antes de tocar la base (R4, R24). La empresa del superadmin llega ligada en el servidor
@@ -67,12 +67,24 @@ export async function fijarGraciaEmpresaAction(
 }
 
 /**
- * R22: `{ motivo, hasta }` (`AAAA-MM-DD`) para descongelar a mano la empresa ligada.
+ * SLT-255 R2-R4, R7: `{ motivo, hasta }` (`AAAA-MM-DD`) para dar plazo a la empresa ligada: la descongela si está
+ * congelada; si no, le da prórroga.
  */
-export async function descongelarEmpresaAction(
+export async function darPlazoEmpresaAction(
   organizacionId: string,
   input: unknown,
   deps: MoraEmpresaDeps = {},
-): Promise<DescongelarResult> {
-  return conServicio(deps, (s, actor) => s.descongelar(actor, conEmpresaLigada(organizacionId, input)));
+): Promise<DarPlazoResult> {
+  return conServicio(deps, (s, actor) => s.darPlazo(actor, conEmpresaLigada(organizacionId, input)));
+}
+
+/**
+ * SLT-255 R5, R7: `{ motivo }` para quitar la prórroga vigente de la empresa ligada.
+ */
+export async function quitarPlazoEmpresaAction(
+  organizacionId: string,
+  input: unknown,
+  deps: MoraEmpresaDeps = {},
+): Promise<QuitarPlazoResult> {
+  return conServicio(deps, (s, actor) => s.quitarPlazo(actor, conEmpresaLigada(organizacionId, input)));
 }

@@ -6,7 +6,7 @@ import { describe, expect, it, vi } from "vitest";
 import { AvisoMora } from "@/app/(app)/_components/AvisoMora";
 import type { EstadoMora } from "@/lib/planes/mora";
 
-// SLT-121 (design §7.1; R24) — el banner de la mora. Los textos esperados van escritos a mano: si `MORA_TEXTOS`
+// SLT-121 (design §7.1; R24) y SLT-255 (design §5.1; R11) — el banner de la mora. Los textos esperados van escritos a mano: si `MORA_TEXTOS`
 // cambia sin querer, el caso se pone rojo.
 
 vi.mock("next/link", () => ({
@@ -28,7 +28,7 @@ const CONGELADA: EstadoMora = {
   facturas: [FACTURA],
   saldoVencido: "120000.00",
 };
-const DESCONGELADA: EstadoMora = { estado: "descongelada_a_mano", hasta: "2026-11-30" };
+const CON_PLAZO: EstadoMora = { estado: "con_plazo", hasta: "2026-11-30" };
 
 describe("SLT-121 R24 — AvisoMora", () => {
   it("R24: en plazo, la fecha límite como aviso (`status`) y el enlace «Ver facturas» a /mi-plan para el maestro", () => {
@@ -67,11 +67,22 @@ describe("SLT-121 R24 — AvisoMora", () => {
     expect(screen.queryByRole("link")).toBeNull();
   });
 
-  it("R24: descongelada a mano, el aviso (`status`) con la fecha hasta", () => {
-    render(<AvisoMora estado={DESCONGELADA} rol="admin" />);
-    expect(screen.getByRole("status")).toHaveTextContent("La operación está habilitada hasta el 30/11/2026.");
-    expect(screen.queryByRole("link")).toBeNull();
-  });
+  it.each(["maestro", "admin"] as const)(
+    "SLT-255 R11: con plazo, el aviso (`status`) con la fecha hasta y que se congela la madrugada siguiente (%s)",
+    (rol) => {
+      render(<AvisoMora estado={CON_PLAZO} rol={rol} />);
+      expect(screen.getByRole("status")).toHaveTextContent(
+        "Tienes prórroga de pago hasta el 30/11/2026. Si no pagas, la operación se congela la madrugada siguiente.",
+      );
+      expect(screen.getByRole("status")).toHaveAttribute("data-tono", "aviso");
+      // Reemplaza al «se congela esta madrugada» de las vencidas y al «habilitada hasta» de SLT-121 R24.
+      expect(screen.queryByRole("alert")).toBeNull();
+      expect(screen.queryByText(/esta madrugada/)).toBeNull();
+      expect(screen.queryByText(/habilitada hasta/i)).toBeNull();
+      // El enlace «Ver facturas» queda solo para `en_plazo` (design §5.1).
+      expect(screen.queryByRole("link")).toBeNull();
+    },
+  );
 
   it("R24: al día, sin banner", () => {
     const { container } = render(<AvisoMora estado={{ estado: "al_dia" }} rol="maestro" />);

@@ -145,14 +145,17 @@ describeSiHayBase("459/B.5 — las migraciones de la 459 contra Postgres", () =>
     // SLT-221: DOS tipos mas detras (20261120130000), ninguna entidad; se afirman y se quitan igual.
     // SLT-225: DOS tipos mas detras (20261123120000), ninguna entidad; se afirman y se quitan igual.
     // SLT-121: CINCO tipos mas detras (20261126120000, la mora), ninguna entidad; se afirman y se quitan igual.
-    expect(tiposHoy.slice(-5)).toEqual([
+    // SLT-255: DOS tipos mas detras (20261127120000, la prórroga), ninguna entidad; se afirman y se quitan igual.
+    expect(tiposHoy.slice(-2)).toEqual(["empresa_prorroga_fijada", "empresa_prorroga_quitada"]);
+    const hastaSlt121 = tiposHoy.slice(0, -2);
+    expect(hastaSlt121.slice(-5)).toEqual([
       "empresa_congelada",
       "empresa_descongelada_por_pago",
       "empresa_descongelada_a_mano",
       "empresa_descongelada_por_gracia",
       "factura_dias_gracia_cambiada",
     ]);
-    const hastaSlt225 = tiposHoy.slice(0, -5);
+    const hastaSlt225 = hastaSlt121.slice(0, -5);
     expect(hastaSlt225.slice(-2)).toEqual(["zona_desactivada", "zona_reactivada"]);
     expect(hastaSlt225.slice(-4, -2)).toEqual(["usuario_cedula_cambiada", "usuario_email_cambiado"]);
     expect(hastaSlt225.at(-5)).toBe("ordenes_retiradas_a_central");

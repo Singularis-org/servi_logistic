@@ -36,7 +36,8 @@ const repoCableado: IMoraEmpresaRepository = {
   estaCongelada: async () => Promise.reject(new Error("no se usa")),
   moraParaPlataforma: async () => Promise.reject(new Error("no se usa")),
   fijarGracia: async () => Promise.reject(new Error("no se usa")),
-  descongelarAMano: async () => Promise.reject(new Error("no se usa")),
+  darPlazo: async () => Promise.reject(new Error("no se usa")),
+  quitarPlazo: async () => Promise.reject(new Error("no se usa")),
   existeEmpresa: async () => Promise.reject(new Error("no se usa")),
 };
 let usarRepoDoble = false;
@@ -501,5 +502,178 @@ describe("SLT-121 — recurrencia y siembra de `mora_diaria`", () => {
       },
     ]);
     expect(DEDUPE_PREFIX_MORA_DIARIA).toBe("mora_diaria");
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* SLT-255 — los avisos de la prórroga (design §4.1, §4.2)                      */
+/* -------------------------------------------------------------------------- */
+
+// Hoy es el 22/11 de la plataforma (`OCHO_DEL_22`): mañana es el 23.
+const VENCIDA = fila({ facturaId: "f-vieja", numero: 1, saldo: "500.00", fechaLimite: "2026-11-10", vencida: true });
+const prorroga = (cambio: "dada" | "alargada" | "acortada", hasta: string) =>
+  job({ payload: { tipo: "prorroga", cambio, hasta } });
+
+describe("SLT-255/R16, R19, R20 — el correo de la prórroga relee el plazo", () => {
+  it.each([
+    { cambio: "dada", asunto: "Tienes prórroga de pago hasta el 27/11/2026" },
+    { cambio: "alargada", asunto: "Tu prórroga de pago cambió: ahora vence el 27/11/2026" },
+    { cambio: "acortada", asunto: "Tu prórroga de pago cambió: ahora vence el 27/11/2026" },
+  ] as const)("⭑ $cambio: el plazo vigente sigue siendo `hasta` y sale a cada maestro", async ({ cambio, asunto }) => {
+    const d = dobles({ mora: { descongeladaHasta: "2026-11-27", facturas: [VENCIDA] } });
+    await crearMoraAvisoHandler(() => d.deps, () => OCHO_DEL_22)(prorroga(cambio, "2026-11-27"));
+    expect(d.pasos).toEqual(ENVIA_A_LOS_DOS);
+    expect(d.enviados[0]!.subject).toBe(asunto);
+    expect(d.enviados[0]!.text).toContain("La plataforma dio a Tienda Uno plazo para pagar");
+    expect(d.enviados[0]!.text).toContain("la operación se congela la madrugada siguiente.");
+  });
+
+  it("⭑ R19: si la fecha hasta cambió antes de enviar, no sale (el cambio trae su correo)", async () => {
+    const d = dobles({ mora: { descongeladaHasta: "2026-11-30" } });
+    await crearMoraAvisoHandler(() => d.deps, () => OCHO_DEL_22)(prorroga("dada", "2026-11-27"));
+    expect(d.pasos).toEqual(["leer mora"]);
+  });
+
+  it("⭑ R19: si se quitó (o ya pasó), no sale", async () => {
+    for (const descongeladaHasta of [null, "2026-11-21"]) {
+      const d = dobles({ mora: { descongeladaHasta } });
+      await crearMoraAvisoHandler(() => d.deps, () => OCHO_DEL_22)(prorroga("dada", "2026-11-21"));
+      expect(d.enviados, String(descongeladaHasta)).toEqual([]);
+    }
+  });
+
+  it("⭑ R19: si la empresa se congeló, no sale aunque la columna conserve la fecha", async () => {
+    const d = dobles({ mora: { congeladaAt: MADRUGADA, descongeladaHasta: "2026-11-27" } });
+    await crearMoraAvisoHandler(() => d.deps, () => OCHO_DEL_22)(prorroga("dada", "2026-11-27"));
+    expect(d.enviados).toEqual([]);
+  });
+});
+
+describe("SLT-255/R17, R19 — el correo de la prórroga quitada", () => {
+  const quitada = job({ payload: { tipo: "prorroga_quitada", hasta: "2026-11-27" } });
+
+  it("⭑ con vencidas en el momento del envío: dice que se congela la madrugada siguiente", async () => {
+    const d = dobles({ mora: { facturas: [VENCIDA, fila()] } });
+    await crearMoraAvisoHandler(() => d.deps, () => OCHO_DEL_22)(quitada);
+    expect(d.pasos).toEqual(ENVIA_A_LOS_DOS);
+    expect(d.enviados[0]!.subject).toBe("Tu prórroga de pago se quitó");
+    expect(d.enviados[0]!.text).toContain("La plataforma quitó la prórroga de pago de Tienda Uno.");
+    expect(d.enviados[0]!.text).toContain("Como hay facturas vencidas sin pagar, la operación se congela");
+  });
+
+  it("⭑ sin vencidas: sale sin decir que se congela", async () => {
+    const d = dobles({ mora: { facturas: [fila()] } });
+    await crearMoraAvisoHandler(() => d.deps, () => OCHO_DEL_22)(quitada);
+    expect(d.enviados).toHaveLength(2);
+    expect(d.enviados[0]!.text).not.toContain("se congela");
+  });
+
+  it("⭑ R19: si se volvió a dar un plazo antes de enviar, no sale", async () => {
+    const d = dobles({ mora: { descongeladaHasta: "2026-11-29" } });
+    await crearMoraAvisoHandler(() => d.deps, () => OCHO_DEL_22)(quitada);
+    expect(d.pasos).toEqual(["leer mora"]);
+  });
+
+  it("R19: si la empresa se congeló, no sale", async () => {
+    const d = dobles({ mora: { congeladaAt: MADRUGADA, facturas: [VENCIDA] } });
+    await crearMoraAvisoHandler(() => d.deps, () => OCHO_DEL_22)(quitada);
+    expect(d.enviados).toEqual([]);
+  });
+});
+
+describe("SLT-255/R18, R19 — la víspera del plazo", () => {
+  const vence = (hasta: string) => job({ payload: { tipo: "prorroga_vence", hasta } });
+
+  it("⭑ el plazo vence mañana, sin congelar y con vencidas: sale a cada maestro", async () => {
+    const d = dobles({ mora: { descongeladaHasta: "2026-11-23", facturas: [VENCIDA] } });
+    await crearMoraAvisoHandler(() => d.deps, () => OCHO_DEL_22)(vence("2026-11-23"));
+    expect(d.pasos).toEqual(ENVIA_A_LOS_DOS);
+    expect(d.enviados[0]!.subject).toBe("Tu prórroga de pago vence mañana");
+    expect(d.enviados[0]!.text).toContain("La prórroga de pago de Tienda Uno vence mañana, 23/11/2026.");
+  });
+
+  it("⭑ R19: si ya no hay vencidas, no sale", async () => {
+    const d = dobles({ mora: { descongeladaHasta: "2026-11-23", facturas: [fila()] } });
+    await crearMoraAvisoHandler(() => d.deps, () => OCHO_DEL_22)(vence("2026-11-23"));
+    expect(d.pasos).toEqual(["leer mora"]);
+  });
+
+  it("⭑ R19: si la fecha hasta cambió o se quitó, no sale", async () => {
+    for (const descongeladaHasta of ["2026-11-25", null]) {
+      const d = dobles({ mora: { descongeladaHasta, facturas: [VENCIDA] } });
+      await crearMoraAvisoHandler(() => d.deps, () => OCHO_DEL_22)(vence("2026-11-23"));
+      expect(d.enviados, String(descongeladaHasta)).toEqual([]);
+    }
+  });
+
+  it("R19: si la empresa se congeló, no sale", async () => {
+    const d = dobles({ mora: { congeladaAt: MADRUGADA, descongeladaHasta: "2026-11-23", facturas: [VENCIDA] } });
+    await crearMoraAvisoHandler(() => d.deps, () => OCHO_DEL_22)(vence("2026-11-23"));
+    expect(d.enviados).toEqual([]);
+  });
+
+  it("un trabajo que llega otro día (`hasta` ya no es mañana) no sale", async () => {
+    const d = dobles({ mora: { descongeladaHasta: "2026-11-23", facturas: [VENCIDA] } });
+    await crearMoraAvisoHandler(() => d.deps, () => new Date("2026-11-23T14:00:00.000Z"))(vence("2026-11-23"));
+    expect(d.enviados).toEqual([]);
+  });
+});
+
+describe("SLT-255/R22 — el recordatorio de la víspera durante el plazo", () => {
+  it.each([
+    { descongeladaHasta: "2026-11-23", legible: "23/11/2026" },
+    { descongeladaHasta: "2026-11-27", legible: "27/11/2026" },
+  ])("⭑ plazo hasta $descongeladaHasta cubre la fecha límite: sale sin «se congela»", async ({ descongeladaHasta, legible }) => {
+    const d = dobles({ mora: { descongeladaHasta } });
+    await crearMoraAvisoHandler(() => d.deps, () => OCHO_DEL_22)(job());
+    expect(d.pasos).toEqual(ENVIA_A_LOS_DOS);
+    expect(d.enviados[0]!.subject).toBe("Tu factura N.º 3 vence mañana");
+    expect(d.enviados[0]!.text).toContain(`Tienes prórroga de pago hasta el ${legible}.`);
+    expect(d.enviados[0]!.text).not.toContain("se congela");
+  });
+
+  it("⭑ plazo vigente anterior a la fecha límite: sale el recordatorio de siempre", async () => {
+    const d = dobles({ mora: { descongeladaHasta: "2026-11-22" } });
+    await crearMoraAvisoHandler(() => d.deps, () => OCHO_DEL_22)(job());
+    expect(d.enviados[0]!.text).not.toContain("prórroga");
+    expect(d.enviados[0]!.text).toContain("se congela la madrugada siguiente a la fecha límite.");
+  });
+});
+
+describe("SLT-255/R20 — un envío de la prórroga que falla", () => {
+  it("⭑ sigue con los demás maestros y después falla el trabajo para que la cola lo reintente", async () => {
+    const d = dobles({ mora: { descongeladaHasta: "2026-11-27" }, fallanA: ["a@uno.test"] });
+    await expect(crearMoraAvisoHandler(() => d.deps, () => OCHO_DEL_22)(prorroga("dada", "2026-11-27"))).rejects.toThrow(
+      "mora_aviso_correo: fallaron 1 de 2 envío(s) a la empresa org-a",
+    );
+    expect(d.enviados.map((m) => m.to)).toEqual(["b@uno.test"]);
+  });
+});
+
+describe("SLT-255 §4.1 — las tres formas nuevas del payload", () => {
+  it("⭑ se aceptan tal cual", () => {
+    for (const payload of [
+      { tipo: "prorroga", cambio: "dada", hasta: "2026-11-27" },
+      { tipo: "prorroga", cambio: "alargada", hasta: "2026-11-27" },
+      { tipo: "prorroga", cambio: "acortada", hasta: "2026-11-27" },
+      { tipo: "prorroga_quitada", hasta: "2026-11-27" },
+      { tipo: "prorroga_vence", hasta: "2026-11-27" },
+    ]) {
+      expect(avisoDelPayload({ payload })).toEqual(payload);
+    }
+  });
+
+  it.each([
+    { tipo: "prorroga", cambio: "dada" },
+    { tipo: "prorroga", cambio: "otro", hasta: "2026-11-27" },
+    { tipo: "prorroga", cambio: "dada", hasta: "27/11/2026" },
+    { tipo: "prorroga_quitada" },
+    { tipo: "prorroga_vence", hasta: 20261127 },
+  ])("un payload malformado falla sin leer nada: %o", async (payload) => {
+    const d = dobles();
+    await expect(crearMoraAvisoHandler(() => d.deps, () => OCHO_DEL_22)(job({ payload }))).rejects.toThrow(
+      "mora_aviso_correo: el payload no es un aviso de mora válido",
+    );
+    expect(d.pasos).toEqual([]);
   });
 });

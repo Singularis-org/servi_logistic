@@ -44,6 +44,10 @@ import { HISTORIAL_ACCION_TIPOS } from "@/lib/types/historial-accion";
 // tipo y solo en `MoraEmpresaRepository.ts`. CONDICION: Carlos Restrepo la acepta en la review del PR de
 // SLT-121; si no la acepta, se quita de aqui y el motivo no entra en la fila.
 //
+// SLT-255 (decision «Motivo», 2026-11-23) — LA MISMA EXCEPCION P5, EXTENDIDA a los dos tipos de la prorroga:
+// `empresa_prorroga_fijada` («hasta AAAA-MM-DD — <motivo>») y `empresa_prorroga_quitada` («sin prórroga —
+// <motivo>»), recortado a 200. Solo esos dos tipos y solo en `MoraEmpresaRepository.ts`.
+//
 // La selecciona `pnpm exec vitest run guard` por el nombre del archivo.
 
 const RAIZ = path.resolve(__dirname, "../../..");
@@ -111,8 +115,9 @@ const PUNTOS_DE_ESCRITURA = [
   // SL-36 (R33). Sus cinco bloques llevan el NOMBRE del servicio y, en la prueba, el codigo del
   // catalogo: ni la credencial, ni su cifrado, ni el numero de WhatsApp, ni el texto del proveedor.
   "lib/repositories/IntegracionRepository.ts",
-  // SLT-121 (R30). `MoraEmpresaRepository` lleva la excepcion P5 (el motivo del descongelamiento a mano); sus
-  // otras dos filas y las de `mora-recalcular` no llevan texto libre, y se barren como las demas.
+  // SLT-121 (R30). `MoraEmpresaRepository` lleva la excepcion P5 (el motivo del descongelamiento a mano) y, desde
+  // SLT-255, la de la prorroga dada y quitada; sus otras dos filas y las de `mora-recalcular` no llevan texto
+  // libre, y se barren como las demas.
   "lib/repositories/MoraEmpresaRepository.ts",
   "lib/planes/mora-recalcular.ts",
 ] as const;
@@ -134,7 +139,7 @@ interface ExcepcionDeclarada {
   escritorPendiente?: string;
 }
 
-/** SLT-221 (D10) y SLT-121 (P5): las unicas entradas que pueden llevar un dato de persona o texto libre. Ver la cabecera. */
+/** SLT-221 (D10), SLT-121 (P5) y SLT-255 (P5 extendida): las unicas entradas con un dato de persona o texto libre. Ver la cabecera. */
 const EXCEPCIONES_DECLARADAS: readonly ExcepcionDeclarada[] = [
   {
     archivo: "lib/repositories/UserRepository.ts",
@@ -151,6 +156,16 @@ const EXCEPCIONES_DECLARADAS: readonly ExcepcionDeclarada[] = [
     accion: "empresa_descongelada_a_mano",
     motivo:
       "SLT-121 P5: el motivo del descongelamiento a mano, recortado a 200; Carlos Restrepo la acepta en la review del PR",
+  },
+  {
+    archivo: "lib/repositories/MoraEmpresaRepository.ts",
+    accion: "empresa_prorroga_fijada",
+    motivo: "SLT-255: la excepcion P5 extendida (decision «Motivo»): el motivo de la prorroga dada o cambiada, recortado a 200",
+  },
+  {
+    archivo: "lib/repositories/MoraEmpresaRepository.ts",
+    accion: "empresa_prorroga_quitada",
+    motivo: "SLT-255: la excepcion P5 extendida (decision «Motivo»): el motivo de la prorroga quitada, recortado a 200",
   },
 ];
 
@@ -414,11 +429,28 @@ describe("SLT-221/D10 — solo las entradas declaradas pueden llevar la cedula o
     }
   });
 
-  it("SLT-121 P5: la excepcion del motivo es la unica de texto libre, y solo para `empresa_descongelada_a_mano`", () => {
+  it("SLT-121 P5 (y SLT-255): las excepciones del motivo son las unicas de texto libre, y solo para sus tres tipos", () => {
     const deMora = EXCEPCIONES_DECLARADAS.filter((e) => e.motivo.startsWith("SLT-121"));
     expect(deMora.map((e) => [e.archivo, e.accion])).toEqual([
       ["lib/repositories/MoraEmpresaRepository.ts", "empresa_descongelada_a_mano"],
     ]);
+    // SLT-255: la P5 extendida, solo para los dos tipos de la prorroga y solo en el mismo archivo.
+    const deProrroga = EXCEPCIONES_DECLARADAS.filter((e) => e.motivo.startsWith("SLT-255"));
+    expect(deProrroga.map((e) => [e.archivo, e.accion])).toEqual([
+      ["lib/repositories/MoraEmpresaRepository.ts", "empresa_prorroga_fijada"],
+      ["lib/repositories/MoraEmpresaRepository.ts", "empresa_prorroga_quitada"],
+    ]);
+    // Control positivo: las dos entradas SI llevan el motivo, y sin la excepcion el archivo sale en rojo.
+    const MORA_REPO = "lib/repositories/MoraEmpresaRepository.ts";
+    const codigo = fuente(MORA_REPO);
+    for (const accion of ["empresa_prorroga_fijada", "empresa_prorroga_quitada"]) {
+      const entrada = bloquesDeEntrada(codigo).find((b) => b.accion === accion);
+      expect(prohibidosEn(entrada?.texto ?? ""), accion).toContain("motivo");
+      expect(hallazgosDe(MORA_REPO, codigo, exceptuadasDe(MORA_REPO).filter((a) => a !== accion))).toContain(
+        `${MORA_REPO} (entrada ${accion}): motivo`,
+      );
+    }
+    expect(hallazgosDe(MORA_REPO, codigo, exceptuadasDe(MORA_REPO))).toEqual([]);
     // Las otras cuatro filas de la mora no llevan texto libre: si una entra aqui, rojo.
     const otrasDeMora = [
       "empresa_congelada",

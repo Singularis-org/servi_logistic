@@ -10,9 +10,13 @@ import type {
   ResultadoCongelar,
 } from "@/lib/interfaces/repositories/IMoraEmpresaRepository";
 import { inicioDelDiaPlataforma, fechaCalendarioPlataforma, mananaCalendarioPlataforma } from "@/lib/planes/ciclo";
-import { MOTIVO_MAX } from "@/lib/planes/mora";
+import { MOTIVO_MAX, plazoVigente } from "@/lib/planes/mora";
 import { recalcularCongelamiento } from "@/lib/planes/mora-recalcular";
-import { dedupeAvisoMora, encolarAvisosDeMora } from "@/lib/repositories/_shared/encolar-aviso-mora";
+import {
+  dedupeAvisoMora,
+  encolarAvisosDeMora,
+  type AvisoMoraAEncolar,
+} from "@/lib/repositories/_shared/encolar-aviso-mora";
 import { ACTOR_SISTEMA, appendAccion, resolverActorCongelado } from "@/lib/repositories/registrar-accion";
 import { CATEGORIA_POR_ACCION, HISTORIAL_ACCION_TIPOS } from "@/lib/types/historial-accion";
 import { etiquetaDeEntidad } from "@/lib/types/historial-accion-etiquetas";
@@ -34,7 +38,7 @@ type MoraEmpresaPrismaClient = Pick<PrismaClient, "$transaction" | "$queryRaw" |
 
 const FICHA = "SL-24";
 
-/** Los cinco tipos de la mora (design §1.2): la categoría `mora` del catálogo. */
+/** Los tipos de la mora (SLT-121 design §1.2 y los dos de la prórroga de SLT-255): la categoría `mora`. */
 const TIPOS_MORA: HistorialAccionTipo[] = HISTORIAL_ACCION_TIPOS.filter((t) => CATEGORIA_POR_ACCION[t] === "mora");
 
 /** Las 50 filas más recientes del historial de la mora en la sección del superadmin (R31). */
@@ -92,6 +96,24 @@ const comoJson = (v: unknown): unknown => (typeof v === "string" ? (JSON.parse(v
 
 /** Los instantes en texto ISO con `Z`: un `TIMESTAMP` sin zona guarda números UTC. */
 const ISO = `'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'`;
+
+/**
+ * SLT-255 (design §3.1; R10): toma la fila de la empresa con el mismo candado que `organizacion_mora_*`, así la
+ * corrida y la acción del superadmin se aplican una detrás de otra. `NO KEY` para no frenar las FK a
+ * `organizacion` de las escrituras de la empresa, que toman `FOR KEY SHARE`. Sin la empresa, lanza: el servicio ya
+ * respondió `not_found` antes de llegar aquí.
+ */
+async function filaDelPlazo(
+  tx: Pick<Prisma.TransactionClient, "$queryRaw">,
+  organizacionId: string,
+  operacion: string,
+): Promise<{ congelada: boolean; hasta: string | null }> {
+  const filas = await tx.$queryRaw<{ congelada: boolean; hasta: string | null }[]>`
+    SELECT ("congelada_at" IS NOT NULL) AS "congelada", "descongelada_hasta"::text AS "hasta"
+      FROM "organizacion" WHERE "id" = ${organizacionId} FOR NO KEY UPDATE`;
+  if (filas.length === 0) throw new Error(`MoraEmpresaRepository.${operacion}: no existe la empresa ${organizacionId}`);
+  return filas[0];
+}
 
 export class MoraEmpresaRepository implements IMoraEmpresaRepository {
   constructor(private readonly prisma: MoraEmpresaPrismaClient) {}
@@ -230,39 +252,112 @@ export class MoraEmpresaRepository implements IMoraEmpresaRepository {
     );
   }
 
-  async descongelarAMano(
+  async darPlazo(
     organizacionId: string,
     hasta: string,
     motivo: string,
     actorUsuarioId: string,
     ahora: Date,
-  ): Promise<"ok" | "no_congelada"> {
-    return comoPlataforma(FICHA, "SLT-121: el superadmin descongela a mano una empresa congelada por mora (R22)", () =>
+  ): Promise<"descongelada" | "prorroga" | "sin_cambio"> {
+    return comoPlataforma(FICHA, "SLT-255: el superadmin da plazo de pago a una empresa: la descongela o le da prórroga (R2-R4)", () =>
       this.prisma.$transaction(async (tx) => {
-        const [fila] = await tx.$queryRaw<{ r: string }[]>`
-          SELECT organizacion_mora_descongelar_a_mano(${organizacionId}, ${hasta}::date, ${comoTimestamp(ahora)}::timestamp) AS "r"`;
-        if (fila?.r === "no_congelada") return "no_congelada";
-        if (fila?.r !== "ok") {
-          throw new Error(`organizacion_mora_descongelar_a_mano devolvió un resultado inesperado: ${String(fila?.r)}`);
-        }
+        const fila = await filaDelPlazo(tx, organizacionId, "darPlazo");
         const actor = await resolverActorCongelado(tx, actorUsuarioId);
-        // Decisión P5: el motivo entra en la fila, recortado a 200 (excepción declarada en
-        // `historial-accion-sin-datos-cliente.guardia`). La base no lo guarda en otro sitio.
+        const etiqueta = etiquetaDeEntidad("organizacion", { asunto: "mora" });
+
+        if (fila.congelada) {
+          // R2, R10: con la fila ya tomada, la función ve la misma empresa congelada y no puede responder otra cosa.
+          const [r] = await tx.$queryRaw<{ r: string }[]>`
+            SELECT organizacion_mora_descongelar_a_mano(${organizacionId}, ${hasta}::date, ${comoTimestamp(ahora)}::timestamp) AS "r"`;
+          if (r?.r !== "ok") {
+            throw new Error(`organizacion_mora_descongelar_a_mano devolvió un resultado inesperado: ${String(r?.r)}`);
+          }
+          // SLT-121 P5: el motivo entra en la fila, recortado a 200 (excepción declarada en
+          // `historial-accion-sin-datos-cliente.guardia`). La base no lo guarda en otro sitio.
+          await appendAccion(tx, [
+            {
+              accion: "empresa_descongelada_a_mano",
+              entidadTipo: "organizacion",
+              entidadId: organizacionId,
+              entidadEtiqueta: etiqueta,
+              ...actor,
+              valorNuevo: `hasta ${hasta} — ${motivo.trim().slice(0, MOTIVO_MAX)}`,
+              organizacionId,
+            },
+          ]);
+          // R21: el correo de operación activa de nuevo, no el de la prórroga.
+          await encolarAvisosDeMora(tx, organizacionId, [
+            {
+              payload: { tipo: "descongelada", motivo: "a_mano", hasta },
+              dedupeKey: dedupeAvisoMora.descongelada(organizacionId, ahora),
+            },
+          ]);
+          return "descongelada";
+        }
+
+        // R1: un plazo ya vencido no cuenta como anterior; darlo otra vez es una prórroga nueva.
+        const anterior = plazoVigente({ congeladaAt: null, descongeladaHasta: fila.hasta }, ahora);
+        if (anterior === hasta) return "sin_cambio";
+
+        await tx.$executeRaw`
+          UPDATE "organizacion" SET "descongelada_hasta" = ${hasta}::date, "updated_at" = now()
+           WHERE "id" = ${organizacionId}`;
+        // SLT-255 (decisión «Motivo»): la excepción P5 extendida a la prórroga.
         await appendAccion(tx, [
           {
-            accion: "empresa_descongelada_a_mano",
+            accion: "empresa_prorroga_fijada",
+            entidadTipo: "organizacion",
+            entidadId: organizacionId,
+            entidadEtiqueta: etiqueta,
+            ...actor,
+            valorAnterior: anterior === null ? null : `hasta ${anterior}`,
+            valorNuevo: `hasta ${hasta} — ${motivo.trim().slice(0, MOTIVO_MAX)}`,
+            organizacionId,
+          },
+        ]);
+        const cambio = anterior === null ? "dada" : hasta > anterior ? "alargada" : "acortada";
+        await encolarAvisosDeMora(tx, organizacionId, [
+          { payload: { tipo: "prorroga", cambio, hasta }, dedupeKey: dedupeAvisoMora.prorroga(organizacionId, ahora) },
+        ]);
+        return "prorroga";
+      }),
+    );
+  }
+
+  async quitarPlazo(
+    organizacionId: string,
+    motivo: string,
+    actorUsuarioId: string,
+    ahora: Date,
+  ): Promise<"ok" | "sin_plazo"> {
+    return comoPlataforma(FICHA, "SLT-255: el superadmin quita la prórroga de pago de una empresa no congelada (R5)", () =>
+      this.prisma.$transaction(async (tx) => {
+        const fila = await filaDelPlazo(tx, organizacionId, "quitarPlazo");
+        // Una congelada nunca tiene plazo vigente (design §1.1): las dos salen por aquí.
+        const tenia = fila.congelada ? null : plazoVigente({ congeladaAt: null, descongeladaHasta: fila.hasta }, ahora);
+        if (tenia === null) return "sin_plazo";
+
+        await tx.$executeRaw`
+          UPDATE "organizacion" SET "descongelada_hasta" = NULL, "updated_at" = now()
+           WHERE "id" = ${organizacionId}`;
+        const actor = await resolverActorCongelado(tx, actorUsuarioId);
+        // SLT-255 (decisión «Motivo»): la excepción P5 extendida a la prórroga.
+        await appendAccion(tx, [
+          {
+            accion: "empresa_prorroga_quitada",
             entidadTipo: "organizacion",
             entidadId: organizacionId,
             entidadEtiqueta: etiquetaDeEntidad("organizacion", { asunto: "mora" }),
             ...actor,
-            valorNuevo: `hasta ${hasta} — ${motivo.trim().slice(0, MOTIVO_MAX)}`,
+            valorAnterior: `hasta ${tenia}`,
+            valorNuevo: `sin prórroga — ${motivo.trim().slice(0, MOTIVO_MAX)}`,
             organizacionId,
           },
         ]);
         await encolarAvisosDeMora(tx, organizacionId, [
           {
-            payload: { tipo: "descongelada", motivo: "a_mano", hasta },
-            dedupeKey: dedupeAvisoMora.descongelada(organizacionId, ahora),
+            payload: { tipo: "prorroga_quitada", hasta: tenia },
+            dedupeKey: dedupeAvisoMora.prorrogaQuitada(organizacionId, ahora),
           },
         ]);
         return "ok";
@@ -343,15 +438,28 @@ export class MoraEmpresaRepository implements IMoraEmpresaRepository {
            WHERE m."fecha_limite" = ${manana}::date
            ORDER BY m."numero"`;
         // La dedupe lleva la fecha límite: si la gracia cambia, el recordatorio vuelve a salir con la nueva.
-        return encolarAvisosDeMora(
-          tx,
-          organizacionId,
-          facturas.map((f) => ({
-            payload: { tipo: "recordatorio", facturaId: f.id },
-            dedupeKey: dedupeAvisoMora.recordatorio(f.id, manana),
+        const avisos: AvisoMoraAEncolar[] = facturas.map((f) => ({
+          payload: { tipo: "recordatorio", facturaId: f.id },
+          dedupeKey: dedupeAvisoMora.recordatorio(f.id, manana),
+          runAfter: aLasOcho,
+        }));
+
+        // SLT-255 R18: la víspera del plazo, si la empresa sigue sin congelar y con alguna vencida. La dedupe lleva
+        // la fecha hasta: sale una vez por empresa y fecha aunque la corrida se repita.
+        const [vispera] = await tx.$queryRaw<{ toca: boolean }[]>`
+          SELECT (o."congelada_at" IS NULL AND o."descongelada_hasta" = ${manana}::date
+                  AND EXISTS (SELECT 1
+                                FROM factura_plataforma_mora(o."id", ${comoTimestamp(ahora)}::timestamp, ${gracia}::int) m
+                               WHERE m."vencida")) AS "toca"
+            FROM "organizacion" o WHERE o."id" = ${organizacionId}`;
+        if (vispera?.toca === true) {
+          avisos.push({
+            payload: { tipo: "prorroga_vence", hasta: manana },
+            dedupeKey: dedupeAvisoMora.prorrogaVence(organizacionId, manana),
             runAfter: aLasOcho,
-          })),
-        );
+          });
+        }
+        return encolarAvisosDeMora(tx, organizacionId, avisos);
       }),
     );
   }

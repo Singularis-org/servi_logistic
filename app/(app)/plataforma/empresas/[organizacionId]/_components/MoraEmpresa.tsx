@@ -15,11 +15,12 @@ import { money } from "@/lib/config/moneda";
 import { GRACIA_MAX, GRACIA_MIN, MORA_TEXTOS, MOTIVO_MAX, fechaLegible } from "@/lib/planes/mora";
 import { ACCION_LABELS } from "@/lib/types/historial-accion";
 import type {
-  DescongelarResult,
+  DarPlazoResult,
   EstadoMora,
   FijarGraciaResult,
   FilaHistorialMora,
   MoraEmpresaVista,
+  QuitarPlazoResult,
 } from "@/lib/types/mora";
 import { fechaCortaEnZona } from "@/lib/utils/fecha-corta";
 import { ZONA_CR } from "@/lib/utils/fecha-cr";
@@ -29,6 +30,9 @@ import { ZONA_CR } from "@/lib/utils/fecha-cr";
 // con las facturas vencidas, «Descongelar» (solo si está congelada) y el historial de la mora. Los datos llegan
 // por props desde `page.tsx` (Server Component); las dos actions, ya ligadas a la empresa de la URL. El servidor
 // vuelve a decidir todo: lo que se comprueba aquí solo evita mandar lo que ya se sabe que caerá.
+// SLT-255 (design §5.2; R13) — «Descongelar…» pasa a «Dar plazo hasta…» (siempre): con la empresa congelada la
+// descongela; sin congelar le da o le cambia la prórroga de pago. «Quitar prórroga…» solo con un plazo vigente y la
+// empresa sin congelar. El estado `con_plazo` se lee «Con prórroga hasta el dd/mm/aaaa».
 
 const T = MORA_TEXTOS.plataforma;
 
@@ -43,7 +47,7 @@ const TEXTOS = {
   estado: "Estado",
   enPlazo: (fecha: string) => `En plazo · fecha límite ${fecha}`,
   congeladaDesde: (fecha: string) => `Congelada desde el ${fecha}`,
-  descongeladaHasta: (fecha: string) => `Descongelada a mano hasta el ${fecha}`,
+  conProrrogaHasta: (fecha: string) => `Con prórroga hasta el ${fecha}`,
   saldoVencido: (monto: string) => `Saldo vencido: ${monto}`,
   facturasVencidas: "Facturas vencidas",
   sinVencidas: "No hay facturas vencidas",
@@ -54,12 +58,33 @@ const TEXTOS = {
   columnasHistorial: { fecha: "Fecha", accion: "Acción", quien: "Quién", detalle: "Detalle" },
   sistema: "Sistema",
   cambio: (antes: string, despues: string) => `${antes} → ${despues}`,
-  descongelar: "Descongelar…",
-  tituloDescongelar: "Descongelar la operación",
-  avisoDescongelar: "La empresa vuelve a operar hasta la fecha indicada. Si sigue con facturas vencidas, se congela la madrugada siguiente.",
+  darPlazo: "Dar plazo hasta…",
+  quitarPlazo: "Quitar prórroga…",
+  // El diálogo «dar plazo», según el caso (design §5.2; textos de la T4.2 fijados por el humano).
+  dialogoPlazo: {
+    congelada: {
+      titulo: "Descongelar la operación",
+      aviso: "La empresa vuelve a operar hasta la fecha indicada. Si sigue con facturas vencidas, se congela la madrugada siguiente.",
+      confirmar: "Descongelar",
+    },
+    conProrroga: {
+      titulo: "Cambiar la prórroga",
+      aviso: (fecha: string) => `La empresa ya tiene plazo hasta el ${fecha}. La nueva fecha reemplaza a la actual.`,
+      confirmar: "Cambiar plazo",
+    },
+    sinProrroga: {
+      titulo: "Dar prórroga de pago",
+      aviso: "La empresa no se congelará por facturas vencidas hasta la fecha indicada. Si al terminar ese día sigue con saldo vencido, se congela la madrugada siguiente.",
+      confirmar: "Dar plazo",
+    },
+  },
+  sinCambio: "La fecha es la misma de la prórroga vigente.",
+  tituloQuitar: "Quitar plazo de pago",
+  avisoQuitar: (fecha: string) =>
+    `La empresa pierde el plazo hasta el ${fecha}. Si sigue con saldo vencido, se congela la madrugada siguiente.`,
+  confirmarQuitar: "Quitar plazo",
   motivo: "Motivo",
-  hasta: "Habilitada hasta",
-  confirmarDescongelar: "Descongelar",
+  hasta: "Hasta",
   fallo: "No se pudo guardar ahora",
 } as const;
 
@@ -78,8 +103,8 @@ function textoDelEstado(estado: EstadoMora): string {
       return TEXTOS.enPlazo(fechaLegible(estado.fechaLimite));
     case "congelada":
       return TEXTOS.congeladaDesde(fecha(estado.desde));
-    case "descongelada_a_mano":
-      return TEXTOS.descongeladaHasta(fechaLegible(estado.hasta));
+    case "con_plazo":
+      return TEXTOS.conProrrogaHasta(fechaLegible(estado.hasta));
     case "al_dia":
     case "vencida":
       return T.estado[estado.estado];
@@ -87,10 +112,8 @@ function textoDelEstado(estado: EstadoMora): string {
 }
 
 /** El mensaje de un rechazo que no es de un campo. */
-function mensajeDeRechazo(estado: "forbidden" | "not_found" | "no_congelada"): string {
-  if (estado === "forbidden") return T.errores.sinPermiso;
-  if (estado === "not_found") return T.errores.noEncontrada;
-  return T.errores.noCongelada;
+function mensajeDeRechazo(estado: "forbidden" | "not_found"): string {
+  return estado === "forbidden" ? T.errores.sinPermiso : T.errores.noEncontrada;
 }
 
 /** El error de un campo; un texto vacío (campo ya corregido) no es error. */
@@ -104,11 +127,13 @@ export interface MoraEmpresaProps {
   datos: MoraEmpresaVista | null;
   /** `fijarGraciaEmpresaAction` ligada a la empresa de la URL (R3). */
   fijarGracia: (input: { dias: number | null }) => Promise<FijarGraciaResult>;
-  /** `descongelarEmpresaAction` ligada a la empresa de la URL (R22). */
-  descongelar: (input: { motivo: string; hasta: string }) => Promise<DescongelarResult>;
+  /** `darPlazoEmpresaAction` ligada a la empresa de la URL (SLT-255 R2, R3, R4, R13). */
+  darPlazo: (input: { motivo: string; hasta: string }) => Promise<DarPlazoResult>;
+  /** `quitarPlazoEmpresaAction` ligada a la empresa de la URL (SLT-255 R5, R13). */
+  quitarPlazo: (input: { motivo: string }) => Promise<QuitarPlazoResult>;
 }
 
-export function MoraEmpresa({ datos, fijarGracia, descongelar }: Readonly<MoraEmpresaProps>) {
+export function MoraEmpresa({ datos, fijarGracia, darPlazo, quitarPlazo }: Readonly<MoraEmpresaProps>) {
   const tituloId = useId();
   const ayudaId = useId();
 
@@ -128,7 +153,7 @@ export function MoraEmpresa({ datos, fijarGracia, descongelar }: Readonly<MoraEm
           <AlertDescription>{T.sinCargar}</AlertDescription>
         </Alert>
       ) : (
-        <ContenidoMora datos={datos} fijarGracia={fijarGracia} descongelar={descongelar} />
+        <ContenidoMora datos={datos} fijarGracia={fijarGracia} darPlazo={darPlazo} quitarPlazo={quitarPlazo} />
       )}
     </section>
   );
@@ -137,14 +162,19 @@ export function MoraEmpresa({ datos, fijarGracia, descongelar }: Readonly<MoraEm
 function ContenidoMora({
   datos,
   fijarGracia,
-  descongelar,
+  darPlazo,
+  quitarPlazo,
 }: {
   datos: MoraEmpresaVista;
   fijarGracia: MoraEmpresaProps["fijarGracia"];
-  descongelar: MoraEmpresaProps["descongelar"];
+  darPlazo: MoraEmpresaProps["darPlazo"];
+  quitarPlazo: MoraEmpresaProps["quitarPlazo"];
 }) {
-  const [descongelando, setDescongelando] = useState(false);
-  const { gracia, estado } = datos;
+  const [dialogo, setDialogo] = useState<"dar" | "quitar" | null>(null);
+  const { gracia, estado, plazo } = datos;
+  const congelada = estado.estado === "congelada";
+  // R13: «Quitar prórroga…» solo con un plazo vigente y la empresa sin congelar.
+  const puedeQuitar = plazo.vigente !== null && !congelada;
   const saldoVencido = estado.estado === "vencida" || estado.estado === "congelada" ? estado.saldoVencido : null;
 
   return (
@@ -162,24 +192,36 @@ function ContenidoMora({
 
       <FormularioGracia key={String(gracia.propia)} propia={gracia.propia} fijarGracia={fijarGracia} />
 
-      {estado.estado === "congelada" ? (
-        <div>
-          <Button type="button" size="sm" variant="destructive" onClick={() => setDescongelando(true)}>
-            {TEXTOS.descongelar}
+      <div className="flex flex-wrap gap-2">
+        <Button
+          type="button"
+          size="sm"
+          variant={congelada ? "destructive" : "outline"}
+          onClick={() => setDialogo("dar")}
+        >
+          {TEXTOS.darPlazo}
+        </Button>
+        {puedeQuitar ? (
+          <Button type="button" size="sm" variant="outline" onClick={() => setDialogo("quitar")}>
+            {TEXTOS.quitarPlazo}
           </Button>
-        </div>
-      ) : null}
+        ) : null}
+      </div>
 
       <FacturasVencidas facturas={datos.facturasVencidas} saldoVencido={saldoVencido} />
 
       <HistorialMora filas={datos.historial} />
 
-      {descongelando ? (
-        <DialogoDescongelar
-          rango={datos.descongelar}
-          descongelar={descongelar}
-          onCerrar={() => setDescongelando(false)}
+      {dialogo === "dar" ? (
+        <DialogoDarPlazo
+          congelada={congelada}
+          plazo={plazo}
+          darPlazo={darPlazo}
+          onCerrar={() => setDialogo(null)}
         />
+      ) : null}
+      {dialogo === "quitar" && plazo.vigente !== null ? (
+        <DialogoQuitarPlazo vigente={plazo.vigente} quitarPlazo={quitarPlazo} onCerrar={() => setDialogo(null)} />
       ) : null}
     </div>
   );
@@ -381,28 +423,44 @@ function HistorialMora({ filas }: { filas: readonly FilaHistorialMora[] }) {
   );
 }
 
-/** R22: el diálogo con el motivo (máximo 200) y la fecha hasta (hoy … hoy + 60; por defecto hoy + 7). */
-function DialogoDescongelar({
-  rango,
-  descongelar,
+/** Los textos del diálogo «dar plazo» según el caso (R13: dice si descongela o si da o cambia la prórroga). */
+function textosDelDialogo(congelada: boolean, vigente: string | null): { titulo: string; aviso: string; confirmar: string } {
+  if (congelada) return TEXTOS.dialogoPlazo.congelada;
+  if (vigente !== null) {
+    const { titulo, aviso, confirmar } = TEXTOS.dialogoPlazo.conProrroga;
+    return { titulo, aviso: aviso(fechaLegible(vigente)), confirmar };
+  }
+  return TEXTOS.dialogoPlazo.sinProrroga;
+}
+
+/**
+ * SLT-255 R13 (antes SLT-121 R22): el diálogo «dar plazo», con el motivo (máximo 200) y la fecha «Hasta»
+ * (hoy … hoy + 60; por defecto la fecha vigente o hoy + 7, que ya trae `plazo.porDefecto`).
+ */
+function DialogoDarPlazo({
+  congelada,
+  plazo,
+  darPlazo,
   onCerrar,
 }: {
-  rango: MoraEmpresaVista["descongelar"];
-  descongelar: MoraEmpresaProps["descongelar"];
+  congelada: boolean;
+  plazo: MoraEmpresaVista["plazo"];
+  darPlazo: MoraEmpresaProps["darPlazo"];
   onCerrar: () => void;
 }) {
   const router = useRouter();
   const [motivo, setMotivo] = useState("");
-  const [hasta, setHasta] = useState(rango.porDefecto);
+  const [hasta, setHasta] = useState(plazo.porDefecto);
   const [errores, setErrores] = useState<Record<string, string>>({});
   const [fallo, setFallo] = useState<string | null>(null);
+  const textos = textosDelDialogo(congelada, plazo.vigente);
 
   function erroresDelCliente(): Record<string, string> {
     const nuevos: Record<string, string> = {};
     const recortado = motivo.trim();
     if (recortado === "" || recortado.length > MOTIVO_MAX) nuevos.motivo = T.errores.motivo;
     // `AAAA-MM-DD` se compara como texto.
-    if (hasta === "" || hasta < rango.desde || hasta > rango.hasta) nuevos.hasta = T.errores.hasta;
+    if (hasta === "" || hasta < plazo.desde || hasta > plazo.hasta) nuevos.hasta = T.errores.hasta;
     return nuevos;
   }
 
@@ -413,18 +471,23 @@ function DialogoDescongelar({
       setErrores(delCliente);
       return;
     }
-    let r: DescongelarResult;
+    let r: DarPlazoResult;
     try {
-      r = await descongelar({ motivo: motivo.trim(), hasta });
+      r = await darPlazo({ motivo: motivo.trim(), hasta });
     } catch (e) {
-      console.error("[MoraEmpresa] descongelar lanzó", e);
+      console.error("[MoraEmpresa] darPlazo lanzó", e);
       setFallo(TEXTOS.fallo);
       return;
     }
     switch (r.estado) {
-      case "ok":
+      case "descongelada":
+      case "prorroga":
         onCerrar();
         router.refresh();
+        return;
+      case "sin_cambio":
+        // design §5.2: la misma fecha vigente no cambia nada; se dice y el diálogo sigue abierto.
+        setFallo(TEXTOS.sinCambio);
         return;
       case "validation_error":
         setErrores(r.errores);
@@ -432,7 +495,6 @@ function DialogoDescongelar({
           setFallo(Object.values(r.errores)[0] ?? TEXTOS.fallo);
         }
         return;
-      case "no_congelada":
       case "forbidden":
       case "not_found":
         setFallo(mensajeDeRechazo(r.estado));
@@ -446,14 +508,14 @@ function DialogoDescongelar({
       onOpenChange={(abierto) => {
         if (!abierto) onCerrar();
       }}
-      title={TEXTOS.tituloDescongelar}
-      confirmLabel={TEXTOS.confirmarDescongelar}
+      title={textos.titulo}
+      confirmLabel={textos.confirmar}
       closeOnConfirm={false}
       onConfirm={enviar}
     >
       <div className="flex flex-col gap-4">
-        <p className="text-sm">{TEXTOS.avisoDescongelar}</p>
-        <FormField id="mora-descongelar-motivo" label={TEXTOS.motivo} error={errorDe(errores, "motivo")} required>
+        <p className="text-sm">{textos.aviso}</p>
+        <FormField id="mora-plazo-motivo" label={TEXTOS.motivo} error={errorDe(errores, "motivo")} required>
           {(control) => (
             <Textarea
               {...control}
@@ -468,17 +530,107 @@ function DialogoDescongelar({
             />
           )}
         </FormField>
-        <FormField id="mora-descongelar-hasta" label={TEXTOS.hasta} error={errorDe(errores, "hasta")} required>
+        <FormField id="mora-plazo-hasta" label={TEXTOS.hasta} error={errorDe(errores, "hasta")} required>
           {(control) => (
             <Input
               {...control}
               type="date"
-              min={rango.desde}
-              max={rango.hasta}
+              min={plazo.desde}
+              max={plazo.hasta}
               value={hasta}
               onChange={(e) => {
                 setHasta(e.target.value);
                 setErrores((x) => ({ ...x, hasta: "" }));
+                setFallo(null);
+              }}
+            />
+          )}
+        </FormField>
+        {fallo === null ? null : (
+          <p role="alert" className="text-sm text-destructive">
+            {fallo}
+          </p>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+/** SLT-255 R5, R13: el diálogo «quitar plazo», con el motivo (máximo 200). */
+function DialogoQuitarPlazo({
+  vigente,
+  quitarPlazo,
+  onCerrar,
+}: {
+  vigente: string;
+  quitarPlazo: MoraEmpresaProps["quitarPlazo"];
+  onCerrar: () => void;
+}) {
+  const router = useRouter();
+  const [motivo, setMotivo] = useState("");
+  const [error, setError] = useState<string | undefined>(undefined);
+  const [fallo, setFallo] = useState<string | null>(null);
+
+  async function enviar() {
+    setFallo(null);
+    const recortado = motivo.trim();
+    if (recortado === "" || recortado.length > MOTIVO_MAX) {
+      setError(T.errores.motivo);
+      return;
+    }
+    let r: QuitarPlazoResult;
+    try {
+      r = await quitarPlazo({ motivo: recortado });
+    } catch (e) {
+      console.error("[MoraEmpresa] quitarPlazo lanzó", e);
+      setFallo(TEXTOS.fallo);
+      return;
+    }
+    switch (r.estado) {
+      case "ok":
+        onCerrar();
+        router.refresh();
+        return;
+      case "sin_plazo":
+        setFallo(T.errores.sinPlazo);
+        return;
+      case "validation_error": {
+        const delMotivo = errorDe(r.errores, "motivo");
+        if (delMotivo === undefined) setFallo(Object.values(r.errores)[0] ?? TEXTOS.fallo);
+        else setError(delMotivo);
+        return;
+      }
+      case "forbidden":
+      case "not_found":
+        setFallo(mensajeDeRechazo(r.estado));
+        return;
+    }
+  }
+
+  return (
+    <Modal
+      open
+      onOpenChange={(abierto) => {
+        if (!abierto) onCerrar();
+      }}
+      title={TEXTOS.tituloQuitar}
+      confirmLabel={TEXTOS.confirmarQuitar}
+      confirmVariant="destructive"
+      closeOnConfirm={false}
+      onConfirm={enviar}
+    >
+      <div className="flex flex-col gap-4">
+        <p className="text-sm">{TEXTOS.avisoQuitar(fechaLegible(vigente))}</p>
+        <FormField id="mora-quitar-motivo" label={TEXTOS.motivo} error={error} required>
+          {(control) => (
+            <Textarea
+              {...control}
+              rows={3}
+              maxLength={MOTIVO_MAX}
+              value={motivo}
+              onChange={(e) => {
+                setMotivo(e.target.value);
+                setError(undefined);
                 setFallo(null);
               }}
             />

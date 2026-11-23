@@ -11,6 +11,7 @@ import type { IPlanesRepository } from "@/lib/interfaces/repositories/IPlanesRep
 import type { JobHandler, RecurrenciaSpec } from "@/lib/interfaces/services/IJobQueueService";
 import { aCentimosConSigno, aTexto } from "@/lib/planes/centimos";
 import { mananaCalendarioPlataforma } from "@/lib/planes/ciclo";
+import { plazoVigente } from "@/lib/planes/mora";
 import { MoraEmpresaRepository } from "@/lib/repositories/MoraEmpresaRepository";
 import { PlanesRepository } from "@/lib/repositories/PlanesRepository";
 import type { AvisoMoraPayload } from "@/lib/repositories/_shared/encolar-aviso-mora";
@@ -149,6 +150,10 @@ const payloadSchema = z.discriminatedUnion("tipo", [
     motivo: z.enum(["pago", "a_mano", "gracia"]),
     hasta: fechaSchema.optional(),
   }),
+  // SLT-255 (design §4.1; R16-R18).
+  z.object({ tipo: z.literal("prorroga"), cambio: z.enum(["dada", "alargada", "acortada"]), hasta: fechaSchema }),
+  z.object({ tipo: z.literal("prorroga_quitada"), hasta: fechaSchema }),
+  z.object({ tipo: z.literal("prorroga_vence"), hasta: fechaSchema }),
 ]) satisfies z.ZodType<AvisoMoraPayload>;
 
 /** El payload de `mora_aviso_correo`. Uno malformado falla el trabajo con su motivo en `last_error`. */
@@ -166,6 +171,12 @@ export function avisoDelPayload(job: Pick<JobDTO, "payload">): AvisoMoraPayload 
  *   - congelada: la empresa sigue congelada desde ESE instante (si se descongeló, o se descongeló y se volvió a
  *     congelar, este correo ya no toca: el nuevo congelamiento trae el suyo);
  *   - descongelada: la empresa sigue sin congelar.
+ * SLT-255 (design §4.2; R19, R22). El plazo vigente lo da `plazoVigente`, que con la empresa congelada es `null`:
+ *   - recordatorio: si hay un plazo vigente que cubre la fecha límite, lleva `plazoHasta` y no dice «se congela»;
+ *   - prorroga: el plazo vigente sigue siendo `hasta` (si cambió, se quitó o se congeló, no sale; el cambio trae
+ *     el suyo);
+ *   - prorroga_quitada: no hay plazo vigente ni congelamiento. Dice «se congela» solo si hay vencidas ahora (R17);
+ *   - prorroga_vence: el plazo vigente sigue siendo `hasta`, `hasta` es mañana y hay alguna vencida (R18).
  */
 async function contenidoVigente(
   aviso: AvisoMoraPayload,
@@ -173,10 +184,29 @@ async function contenidoVigente(
   ahora: Date,
 ): Promise<ContenidoAvisoMora | null> {
   const mora = await deps.mora.moraDeLaEmpresa(ahora, deps.graciaGlobal);
+  const plazo = plazoVigente(mora, ahora);
+  const hayVencidas = mora.facturas.some((f) => f.vencida);
   if (aviso.tipo === "recordatorio") {
     const f = mora.facturas.find((x) => x.facturaId === aviso.facturaId);
     if (f === undefined || f.vencida || f.fechaLimite !== mananaCalendarioPlataforma(ahora)) return null;
-    return { tipo: "recordatorio", numero: f.numero, saldo: f.saldo, fechaLimite: f.fechaLimite };
+    return {
+      tipo: "recordatorio",
+      numero: f.numero,
+      saldo: f.saldo,
+      fechaLimite: f.fechaLimite,
+      ...(plazo !== null && plazo >= f.fechaLimite ? { plazoHasta: plazo } : {}),
+    };
+  }
+  if (aviso.tipo === "prorroga") {
+    return plazo === aviso.hasta ? { tipo: "prorroga", cambio: aviso.cambio, hasta: aviso.hasta } : null;
+  }
+  if (aviso.tipo === "prorroga_quitada") {
+    if (mora.congeladaAt !== null || plazo !== null) return null;
+    return { tipo: "prorroga_quitada", conVencidas: hayVencidas };
+  }
+  if (aviso.tipo === "prorroga_vence") {
+    const sigueEnVispera = plazo === aviso.hasta && aviso.hasta === mananaCalendarioPlataforma(ahora);
+    return sigueEnVispera && hayVencidas ? { tipo: "prorroga_vence", hasta: aviso.hasta } : null;
   }
   if (aviso.tipo === "congelada") {
     if (mora.congeladaAt === null || mora.congeladaAt.getTime() !== new Date(aviso.congeladaAt).getTime()) return null;

@@ -184,6 +184,9 @@ describe("366/T1 — el `migration.sql` y el `down.sql`, como texto", () => {
       "empresa_descongelada_a_mano",
       "empresa_descongelada_por_gracia",
       "factura_dias_gracia_cambiada",
+      // SLT-255: los dos tipos de `20261127120000_prorroga_enums`.
+      "empresa_prorroga_fijada",
+      "empresa_prorroga_quitada",
     ];
     expect([...HISTORIAL_ACCION_TIPOS].sort()).toEqual(
       [...previos, VALOR_NUEVO, ...POSTERIORES].sort(),

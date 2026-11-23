@@ -468,6 +468,9 @@ describe.skipIf(!HAY_BASE_DE_DATOS)("381/B.7 (b) — el down recrea 50 tipos y 2
       "empresa_descongelada_a_mano",
       "empresa_descongelada_por_gracia",
       "factura_dias_gracia_cambiada",
+      // SLT-255: los dos tipos de `20261127120000_prorroga_enums`.
+      "empresa_prorroga_fijada",
+      "empresa_prorroga_quitada",
     ];
     expect([...tiposAntes].sort()).toEqual(
       [...HISTORIAL_ACCION_TIPOS]

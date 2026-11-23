@@ -23,14 +23,23 @@ export const fijarGraciaSchema = z.object({
   dias: z.int().min(GRACIA_MIN).max(GRACIA_MAX).nullable(),
 });
 
+/** SLT-255 R6: el motivo recortado, de 1 a 200 caracteres. */
+const motivoSchema = z.string().trim().min(1).max(MOTIVO_MAX);
+
 /**
- * R22: el motivo recortado, de 1 a 200; `hasta` una fecha de calendario real. Su rango (hoy … hoy + 60, decisión
- * P4) depende del «ahora» de la plataforma y lo comprueba el servicio.
+ * SLT-255 R6 (el `descongelarSchema` de SLT-121 con otro nombre): el motivo y `hasta`, una fecha de calendario real.
+ * Su rango (hoy … hoy + 60) depende del «ahora» de la plataforma y lo comprueba el servicio.
  */
-export const descongelarSchema = z.object({
+export const darPlazoSchema = z.object({
   organizacionId: z.uuid(),
-  motivo: z.string().trim().min(1).max(MOTIVO_MAX),
+  motivo: motivoSchema,
   hasta: z.iso.date(),
+});
+
+/** SLT-255 R5, R6: quitar la prórroga solo pide el motivo. */
+export const quitarPlazoSchema = z.object({
+  organizacionId: z.uuid(),
+  motivo: motivoSchema,
 });
 
 /* -------------------------------------------------------------------------- */
@@ -61,10 +70,13 @@ export interface MoraEmpresaVista {
   estado: EstadoMora;
   /** Las cerradas con saldo, vencidas o no, por fecha límite. */
   facturas: FacturaConSaldoVista[];
-  /** Las vencidas con saldo, también durante un descongelamiento a mano (el `EstadoMora` entonces no las trae). */
+  /** Las vencidas con saldo, también durante un plazo (el `EstadoMora` `con_plazo` no las trae). */
   facturasVencidas: FacturaVencida[];
-  /** El rango que acepta «Descongelar» (decisión P4), y el valor por defecto del diálogo (hoy + 7). `AAAA-MM-DD`. */
-  descongelar: { desde: string; hasta: string; porDefecto: string };
+  /**
+   * SLT-255 R6, R13: el rango que acepta «Dar plazo hasta…» (hoy … hoy + 60), el valor por defecto del diálogo (el
+   * plazo vigente, o hoy + 7) y el plazo vigente, o `null`. Todo `AAAA-MM-DD`.
+   */
+  plazo: { desde: string; hasta: string; porDefecto: string; vigente: string | null };
   historial: FilaHistorialMora[];
 }
 
@@ -76,4 +88,14 @@ export type MoraDeEmpresaResult = { estado: "ok"; datos: MoraEmpresaVista } | Fo
 
 export type FijarGraciaResult = { estado: "ok" } | { estado: "sin_cambio" } | Forbidden | NotFound | ErrorDeValidacion;
 
-export type DescongelarResult = { estado: "ok" } | { estado: "no_congelada" } | Forbidden | NotFound | ErrorDeValidacion;
+/** SLT-255 R2-R4: la empresa se descongeló, quedó con prórroga, o ya tenía esa misma fecha. */
+export type DarPlazoResult =
+  | { estado: "descongelada" }
+  | { estado: "prorroga" }
+  | { estado: "sin_cambio" }
+  | Forbidden
+  | NotFound
+  | ErrorDeValidacion;
+
+/** SLT-255 R5: `sin_plazo` si no había prórroga vigente o la empresa está congelada. */
+export type QuitarPlazoResult = { estado: "ok" } | { estado: "sin_plazo" } | Forbidden | NotFound | ErrorDeValidacion;

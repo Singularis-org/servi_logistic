@@ -11,8 +11,9 @@ import { zonaDelBorde } from "@/lib/actions/_shared/zona-del-borde";
 import { descargarFacturaEmpresaAction, verDetalleFacturaEmpresaAction } from "@/lib/actions/facturas-plataforma";
 import { fijarModuloEmpresaAction } from "@/lib/actions/modulos-empresa";
 import {
-  descongelarEmpresaAction,
+  darPlazoEmpresaAction,
   fijarGraciaEmpresaAction,
+  quitarPlazoEmpresaAction,
   verMoraDeEmpresaAction,
 } from "@/lib/actions/mora-empresa";
 import {
@@ -277,7 +278,8 @@ export default async function EmpresaDetallePage({
             <MoraEmpresa
               datos={mora}
               fijarGracia={fijarGraciaEmpresaAction.bind(null, empresa.organizacionId)}
-              descongelar={descongelarEmpresaAction.bind(null, empresa.organizacionId)}
+              darPlazo={darPlazoEmpresaAction.bind(null, empresa.organizacionId)}
+              quitarPlazo={quitarPlazoEmpresaAction.bind(null, empresa.organizacionId)}
             />
 
             <PlanEmpresa

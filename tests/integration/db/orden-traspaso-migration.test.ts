@@ -335,6 +335,9 @@ describe("427/T2 — el UP y el DOWN, leidos del archivo", () => {
       // `orden_traspaso_mensajero` solo le suma el trigger por sentencia `…_bloqueo_por_mora`; no cambia su tabla.
       "20261126120000_mora_enums",
       "20261126120100_mora_congelamiento",
+      // SLT-255: los dos valores de `historial_accion_tipo` de la prórroga del pago (sola, por el 55P04); no toca
+      // `orden_traspaso_mensajero`.
+      "20261127120000_prorroga_enums",
     ]);
   });
 });
