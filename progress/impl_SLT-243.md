@@ -53,3 +53,38 @@ Pendiente para tandas siguientes: R10, R11 (bloque 4), R15, R16 (bloque 5), R14 
   pais-sin-literales, dinero-centimos-cuando-existen): **9 archivos, 263 tests, verdes**.
 
 Veredicto: bloques 1–3 hechos, typecheck/lint/tests tocados en verde, sin bloqueos.
+
+## Tanda 2 (frontend_dev, 2026-11-23): bloque 4 (T4.1, T4.2, T4.3)
+
+### Archivos
+- Nuevo: `app/(app)/cierres-admin/_components/encabezados-con-impuesto.ts` (T4.1).
+- Declaraciones (T4.2): `cierres-gestiones-modelo-nuevo-descarga-columnas.ts` (5),
+  `cierres-resumen-modelo-nuevo-descarga-columnas.ts` (1), `cierres-bodega-modelo-nuevo-descarga-columnas.ts` (1),
+  `cierres-gestiones-fundida-descarga-columnas.ts` (3; ya no importa los `*_CON_IVA_LABEL`).
+- Componentes (T4.3): `CierresAdminModule.tsx`, `CierresBodegaAdminModule.tsx`, `ConsolidacionBodegaModule.tsx`,
+  `DescargarGestionesDialog.tsx`, `DescargarCierresButton.tsx` (`useMemo`).
+- Tests: `tests/components/moneda-del-pais-cierres-admin.test.tsx` (describes R10 y R11); solo literales de
+  encabezado en las 8 suites de design §7 y en `e2e/cierres-rediseno.spec.ts` (7 líneas, 9 literales; las líneas
+  ~141 y ~599 de pantalla no se tocan).
+- `cierre-labels.ts` no se toca.
+
+### Mapa R → test (`tests/components/moneda-del-pais-cierres-admin.test.tsx`)
+| R | describe / caso |
+|---|---|
+| R10 | «SLT-243 R10 — …»: (a) 9 encabezados de Perú a mano; las 4 declaraciones con «IGV» (claves, orden y resto iguales); las 9 claves están entre las 4; clave conocida con otro rótulo intacta. (b) mismo arreglo / mismas hojas con `IMPUESTO_ROTULO`. (c) `conImpuestoEnResultado` con libro, sin libro y con error. (d) `DescargarCierresButton` lista «Flete + impuesto (IGV)» |
+| R11 | «SLT-243 R11 — censo «sin IVA» …»: 5 archivos sin «IVA» ni rótulos de pantalla; las 4 usan `encabezadoBase`; contraprueba |
+| R12 (descargas) | R10 (a) con «IVA» = columna «Costa Rica» a mano; R10 (d) CR = sin proveedor; las 8 suites de §7 pasan con solo los encabezados cambiados |
+| R13 (descargas) | R10 (a) `encabezadoBase` = Costa Rica; R10 (d) sin proveedor lista «Flete + impuesto (IVA)» |
+
+### Verificación (NODE_OPTIONS=--max-old-space-size=8192)
+- `pnpm run typecheck`: exit 0.
+- `pnpm exec eslint <20 archivos tocados>`: 0 errores, 1 warning previo (`_recorte` en
+  `DescargarGestionesModeloNuevo.test.tsx:166`, línea no tocada).
+- vitest, test nuevo + 8 suites de §7: **9 archivos, 216 tests, verdes**.
+- vitest, los «Hecho» de T4.1–T4.3 (cierre-resultado-fila-label, rechazo-nombre-466-app, flete-por-rechazo-censo,
+  rechazo-nombre-466, cierre-bodega-vocabulario, CierreDesgloseModeloNuevo, DescargarGestionesDialog,
+  CierresDescargaColumnas, paginacion-transversal) + cierres-descarga-detallada-frontera: **10 archivos, 138 tests, verdes**.
+- `pais-sin-literales.guardia`: 49 tests, verde.
+- E2E editado, no corrido (T5.3).
+
+Veredicto: bloque 4 hecho, typecheck/lint/tests tocados en verde, sin bloqueos.

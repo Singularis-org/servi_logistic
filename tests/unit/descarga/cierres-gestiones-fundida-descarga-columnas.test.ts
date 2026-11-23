@@ -195,9 +195,9 @@ describe("orden de las columnas de la hoja fundida (T3.2)", () => {
       "Origen",
       "Causa",
       "Motivo",
-      "Flete + IVA",
-      "Comisión + IVA",
-      "Flete por devolución a origen + IVA",
+      "Flete + impuesto (IVA)",
+      "Comisión + impuesto (IVA)",
+      "Flete por devolución a origen + impuesto (IVA)",
       "Total de la empresa",
       "Pago mensajero",
       "Ingreso bodega",
@@ -1107,9 +1107,9 @@ describe("SLT-161 — la hoja fundida de la satélite, sin el dinero de la empre
     const encabezados = columnasDescargaGestionesFundidaPara("admin").map((c) => c.encabezado);
     expect(encabezados).toHaveLength(31);
     expect(encabezados.slice(24, 28)).toEqual([
-      "Flete + IVA",
-      "Comisión + IVA",
-      "Flete por devolución a origen + IVA",
+      "Flete + impuesto (IVA)",
+      "Comisión + impuesto (IVA)",
+      "Flete por devolución a origen + impuesto (IVA)",
       "Total de la empresa",
     ]);
     expect(encabezados[15]).toBe("Fulfillment");

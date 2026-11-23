@@ -1279,11 +1279,11 @@ test.describe.serial("SLT-107 — la satélite lee su cierre de bodega del model
 const ENCABEZADOS_GESTIONES_CENTRAL = [
   "Folio del cierre", "Mensajero", "Fecha de gestión", "Nº Guía", "Nº Remisión", "Destinatario", "Tienda",
   "Resultado", "Motivo", "Recibido", "Efectivo", "SINPE", "Transferencia", "Flete por entregado",
-  "Tarifa del flete", "IVA del flete", "Comisión COD", "Tarifa de la comisión", "IVA de la comisión",
+  "Tarifa del flete", "Impuesto (IVA) del flete", "Comisión COD", "Tarifa de la comisión", "Impuesto (IVA) de la comisión",
   "Flete de gestiones no entregadas", "Tarifa del flete de gestiones no entregadas",
-  "IVA del flete de gestiones no entregadas", "Se le cobra a la tienda", "De eso, IVA", "Pago por tarifa",
+  "Impuesto (IVA) del flete de gestiones no entregadas", "Se le cobra a la tienda", "De eso, impuesto (IVA)", "Pago por tarifa",
   "Tarifa del pago", "Ajuste", "Pago al mensajero", "Motivo del ajuste", "Ajustó", "Gana la bodega satélite",
-  "Fulfillment", "IVA de fulfillment", "Fulfillment cargado el", "Señales",
+  "Fulfillment", "Impuesto (IVA) de fulfillment", "Fulfillment cargado el", "Señales",
 ];
 
 /** Las filas de una hoja como arrays de valores CRUDOS (número o texto), sin el hueco del índice 0 de ExcelJS. */
@@ -1371,7 +1371,7 @@ test.describe.serial("SLT-113 — el «Detalle» de /cierres-admin con un cierre
 const ENCABEZADOS_CIERRES_CENTRAL = [
   "Folio", "Mensajero", "Destino", "Estado", "Solicitado", "Resuelto", "Efectivo", "SINPE", "Transferencia",
   "Recaudado", "Se le paga a la tienda", "Pago al mensajero",
-  "Pago a la bodega satélite", "Total facturado", "IVA facturado", "Le queda a la empresa", "Gestiones",
+  "Pago a la bodega satélite", "Total facturado", "Impuesto (IVA) facturado", "Le queda a la empresa", "Gestiones",
   "Pagos ajustados", "Pago entregado",
 ];
 
@@ -1429,7 +1429,7 @@ test.describe.serial("SLT-140 — el «Resumen» de /cierres-admin con un cierre
     expect(celda("Se le paga a la tienda")).toBe(6497);
     expect(celda("Pago al mensajero")).toBe(2200);
     expect(celda("Total facturado")).toBe(3503);
-    expect(celda("IVA facturado")).toBe(403);
+    expect(celda("Impuesto (IVA) facturado")).toBe(403);
     expect(celda("Le queda a la empresa")).toBe(900);
     expect(celda("Gestiones")).toBe(1);
     expect(celda("Pago entregado")).toBe(1200);
@@ -1462,7 +1462,7 @@ test.describe.serial("SLT-140 — el «Resumen» de /cierres-admin con un cierre
 const ENCABEZADOS_CIERRES_BODEGA_CENTRAL = [
   "Folio", "Bodega", "Destino", "Estado", "Solicitado", "Resuelto", "Efectivo", "SINPE", "Transferencia",
   "Recaudado", "Debe llegar a la central", "Se le paga a la tienda", "Pago al mensajero",
-  "Pago a la bodega satélite", "Total facturado", "IVA facturado", "Le queda a la empresa", "Gestiones",
+  "Pago a la bodega satélite", "Total facturado", "Impuesto (IVA) facturado", "Le queda a la empresa", "Gestiones",
   "Pagos ajustados", "Pago entregado", "Cierres incluidos", "Recibido", "Falta por recibir",
   "Estado de conciliación", "Conciliado por", "Conciliado el",
 ];
@@ -1536,7 +1536,7 @@ test.describe.serial("SLT-141 — el «Resumen» de «Conciliados» (bodega) con
     expect(celda("Pago al mensajero")).toBe(2200);
     expect(celda("Pago a la bodega satélite")).toBe(120);
     expect(celda("Total facturado")).toBe(3503);
-    expect(celda("IVA facturado")).toBe(403);
+    expect(celda("Impuesto (IVA) facturado")).toBe(403);
     expect(celda("Le queda a la empresa")).toBe(780);
     expect(celda("Gestiones")).toBe(1);
     expect(celda("Cierres incluidos")).toBe(1);

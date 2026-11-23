@@ -25,6 +25,7 @@ import { ZONA_CR } from "@/lib/utils/fecha-cr";
 
 import { destinoCierre, ESTADO_LABEL } from "./cierre-labels";
 import type { AudienciaDescargaGestionesFundida } from "./cierres-gestiones-fundida-descarga-columnas";
+import { encabezadoBase } from "./encabezados-con-impuesto";
 
 // --- «Cierres» --------------------------------------------------------------------------------
 
@@ -63,7 +64,7 @@ const COLUMNAS_CIERRES: DescargaColumna[] = [
   { clave: "pagoMensajero", encabezado: "Pago al mensajero", formato: "monto" },
   { clave: "pagoBodega", encabezado: "Pago a la bodega satélite", formato: "monto" },
   { clave: "totalFacturado", encabezado: "Total facturado", formato: "monto" },
-  { clave: "ivaFacturado", encabezado: "IVA facturado", formato: "monto" },
+  { clave: "ivaFacturado", encabezado: encabezadoBase("ivaFacturado"), formato: "monto" },
   { clave: "netoEmpresa", encabezado: "Le queda a la empresa", formato: "monto" },
   { clave: "gestiones", encabezado: "Gestiones" },
   { clave: "pagosAjustados", encabezado: "Pagos ajustados" },

@@ -47,6 +47,33 @@ import { MonedaDelPaisProvider } from "@/providers/MonedaDelPaisProvider";
 import { MONEDA_CR, MONEDA_DE_PRUEBA } from "@/tests/fabricas/reglas-pais";
 import { gestion478, grupos478 } from "@/tests/fixtures/gestion-detalle-478";
 import { paginaInicial } from "@/tests/fixtures/pagina-inicial";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import {
+  DescargarCierresButton,
+  NIVEL_DETALLE_LABEL,
+  NIVEL_LEGEND,
+  SELECTOR_DISPARADOR,
+  type DescargaResumenCierres,
+} from "@/app/(app)/cierres-admin/_components/DescargarCierresButton";
+import { columnasCierresBodegaModeloNuevoPara } from "@/app/(app)/cierres-admin/_components/cierres-bodega-modelo-nuevo-descarga-columnas";
+import { COLUMNAS_DESCARGA_GESTIONES_FUNDIDA } from "@/app/(app)/cierres-admin/_components/cierres-gestiones-fundida-descarga-columnas";
+import { columnasGestionesModeloNuevoPara } from "@/app/(app)/cierres-admin/_components/cierres-gestiones-modelo-nuevo-descarga-columnas";
+import { columnasCierresModeloNuevoPara } from "@/app/(app)/cierres-admin/_components/cierres-resumen-modelo-nuevo-descarga-columnas";
+import {
+  ENCABEZADO_CON_IMPUESTO,
+  conImpuestoEnColumnas,
+  conImpuestoEnHojas,
+  conImpuestoEnResultado,
+  encabezadoBase,
+  impuestoEntreParentesis,
+  type ClaveConImpuesto,
+} from "@/app/(app)/cierres-admin/_components/encabezados-con-impuesto";
+import type { DescargaFilasResult } from "@/components/shared/DataTable";
+import { IMPUESTO_ROTULO } from "@/lib/constants/impuesto-rotulo";
+import type { DescargaColumna, DescargaHoja } from "@/lib/types/descarga";
+import { CATALOGO_FILTROS_CIERRES_VACIO } from "@/lib/types/filtros-cierres";
+import { quitarComentarios } from "@/tests/fixtures/sin-comentarios";
 
 // SLT-243 — Moneda e impuesto del pais en pantallas: cierres del admin.
 //
@@ -755,5 +782,236 @@ describe("SLT-243 R9 — el tope de la indemnizacion se anuncia en la moneda del
     expect(textos.prueba).toContain("€9 999 999 999");
     expect(textos.prueba).not.toContain("€10 000 000 000");
     expect(textos["sin proveedor"]).toContain("₡9.999.999.999");
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// Bloque 4 — encabezados con impuesto de las descargas (R10, R11; la parte de descargas de R12–R13)
+// ---------------------------------------------------------------------------------------------
+
+/** Columna «Perú» de design §6.0, escrita a mano: lo que leería quien abre el archivo. */
+const ENCABEZADOS_PERU: Record<ClaveConImpuesto, string> = {
+  fleteConIva: "Flete + impuesto (IGV)",
+  comisionConIva: "Comisión + impuesto (IGV)",
+  fleteDevolucionConIva: "Flete por devolución a origen + impuesto (IGV)",
+  ivaFlete: "Impuesto (IGV) del flete",
+  ivaComisionCod: "Impuesto (IGV) de la comisión",
+  ivaFleteDevolucion: "Impuesto (IGV) del flete de gestiones no entregadas",
+  ivaIncluido: "De eso, impuesto (IGV)",
+  ivaFulfillment: "Impuesto (IGV) de fulfillment",
+  ivaFacturado: "Impuesto (IGV) facturado",
+};
+
+/** Columna «Costa Rica» de design §6.0, escrita a mano (R12). Es también la caída sin país (R13). */
+const ENCABEZADOS_COSTA_RICA: Record<ClaveConImpuesto, string> = {
+  fleteConIva: "Flete + impuesto (IVA)",
+  comisionConIva: "Comisión + impuesto (IVA)",
+  fleteDevolucionConIva: "Flete por devolución a origen + impuesto (IVA)",
+  ivaFlete: "Impuesto (IVA) del flete",
+  ivaComisionCod: "Impuesto (IVA) de la comisión",
+  ivaFleteDevolucion: "Impuesto (IVA) del flete de gestiones no entregadas",
+  ivaIncluido: "De eso, impuesto (IVA)",
+  ivaFulfillment: "Impuesto (IVA) de fulfillment",
+  ivaFacturado: "Impuesto (IVA) facturado",
+};
+
+const CLAVES_CON_IMPUESTO = Object.keys(ENCABEZADOS_PERU) as ClaveConImpuesto[];
+
+/** Las cuatro declaraciones de columnas de design §6.1, en la audiencia que las trae todas. */
+const DECLARACIONES: Record<string, DescargaColumna[]> = {
+  "hoja fundida de gestiones": COLUMNAS_DESCARGA_GESTIONES_FUNDIDA,
+  "gestiones del modelo nuevo": columnasGestionesModeloNuevoPara("admin"),
+  "resumen de cierres de mensajero": columnasCierresModeloNuevoPara("admin"),
+  "resumen de cierres de bodega": columnasCierresBodegaModeloNuevoPara("admin"),
+};
+
+const esClaveConImpuesto = (clave: string): clave is ClaveConImpuesto =>
+  (CLAVES_CON_IMPUESTO as string[]).includes(clave);
+
+describe("SLT-243 R10 — los encabezados con impuesto de las descargas de cierres dicen «impuesto (<nombre del país>)»", () => {
+  it("(a) con «IGV», las 9 claves dan la columna «Perú» de la tabla, letra a letra", () => {
+    for (const clave of CLAVES_CON_IMPUESTO) {
+      expect(ENCABEZADO_CON_IMPUESTO[clave]("IGV"), clave).toBe(ENCABEZADOS_PERU[clave]);
+    }
+    expect(Object.keys(ENCABEZADO_CON_IMPUESTO).sort()).toEqual([...CLAVES_CON_IMPUESTO].sort());
+    expect(impuestoEntreParentesis("IGV")).toBe("impuesto (IGV)");
+  });
+
+  it("(a) R12: con «IVA», las 9 dan la columna «Costa Rica»; y es el encabezado base (R13)", () => {
+    for (const clave of CLAVES_CON_IMPUESTO) {
+      expect(ENCABEZADO_CON_IMPUESTO[clave]("IVA"), clave).toBe(ENCABEZADOS_COSTA_RICA[clave]);
+      expect(encabezadoBase(clave), clave).toBe(ENCABEZADOS_COSTA_RICA[clave]);
+    }
+  });
+
+  it.each(Object.entries(DECLARACIONES))(
+    "(a) %s: con «IGV» cambia solo el encabezado de las columnas con impuesto; claves, orden y lo demás, igual",
+    (_nombre, columnas) => {
+      const conIgv = conImpuestoEnColumnas(columnas, "IGV");
+      // Las claves y su orden no cambian: son el contrato de la preferencia de columnas guardada.
+      expect(conIgv.map((c) => c.clave)).toEqual(columnas.map((c) => c.clave));
+      const conImpuesto = columnas.filter((c) => esClaveConImpuesto(c.clave));
+      expect(conImpuesto.length).toBeGreaterThan(0); // no-vacuidad
+      columnas.forEach((original, i) => {
+        const nueva = conIgv[i]!;
+        if (esClaveConImpuesto(original.clave)) {
+          // La declaración trae el base (la forma de Costa Rica) y el país lo cambia.
+          expect(original.encabezado).toBe(ENCABEZADOS_COSTA_RICA[original.clave]);
+          expect(nueva).toEqual({ ...original, encabezado: ENCABEZADOS_PERU[original.clave] });
+        } else {
+          expect(nueva).toBe(original);
+        }
+      });
+    },
+  );
+
+  it("(a) entre las cuatro declaraciones están las 9 claves de la tabla", () => {
+    const claves = new Set(
+      Object.values(DECLARACIONES)
+        .flat()
+        .map((c) => c.clave)
+        .filter(esClaveConImpuesto),
+    );
+    expect([...claves].sort()).toEqual([...CLAVES_CON_IMPUESTO].sort());
+  });
+
+  it("(a) una columna con clave conocida y otro rótulo no se toca", () => {
+    const ajena: DescargaColumna = { clave: "ivaFlete", encabezado: "Otro rótulo", formato: "monto" };
+    const [resultado] = conImpuestoEnColumnas([ajena], "IGV");
+    expect(resultado).toBe(ajena);
+  });
+
+  it("(b) con el rótulo de la plataforma devuelve el MISMO arreglo y las MISMAS hojas", () => {
+    const columnas = DECLARACIONES["gestiones del modelo nuevo"]!;
+    expect(conImpuestoEnColumnas(columnas, IMPUESTO_ROTULO)).toBe(columnas);
+    const hojas: [DescargaHoja, ...DescargaHoja[]] = [{ titulo: "Gestiones", columnas, filas: [] }];
+    expect(conImpuestoEnHojas(hojas, IMPUESTO_ROTULO)).toBe(hojas);
+  });
+
+  it("(c) sobre un resultado con libro cambia solo los encabezados; sin libro o con error, el mismo objeto", () => {
+    const filasCierres = [{ folio: "C-1", ivaFacturado: "130.00" }];
+    const filasGestiones = [{ folio: "C-1", ivaFlete: "26.00" }];
+    const hojaCierres: DescargaHoja = {
+      titulo: "Cierres",
+      columnas: DECLARACIONES["resumen de cierres de mensajero"]!,
+      filas: filasCierres,
+      filasDestacadas: [0],
+    };
+    const hojaGestiones: DescargaHoja = {
+      titulo: "Gestiones",
+      columnas: DECLARACIONES["gestiones del modelo nuevo"]!,
+      filas: filasGestiones,
+    };
+    const conLibro: DescargaFilasResult = {
+      status: "ok",
+      filas: filasCierres,
+      libro: { hojas: [hojaCierres, hojaGestiones] },
+    };
+
+    const r = conImpuestoEnResultado(conLibro, "IGV");
+    if (r.status !== "ok" || r.libro === undefined) throw new Error("se esperaba el libro");
+    expect(r.filas).toBe(filasCierres);
+    const [cierres, gestiones] = r.libro.hojas;
+    expect(cierres.titulo).toBe("Cierres");
+    expect(cierres.filas).toBe(filasCierres);
+    expect(cierres.filasDestacadas).toEqual([0]);
+    expect(cierres.columnas.find((c) => c.clave === "ivaFacturado")?.encabezado).toBe("Impuesto (IGV) facturado");
+    expect(gestiones!.filas).toBe(filasGestiones);
+    expect(gestiones!.columnas.find((c) => c.clave === "ivaFlete")?.encabezado).toBe("Impuesto (IGV) del flete");
+    // Ningún encabezado del libro sigue diciendo el impuesto de la plataforma.
+    const encabezados = r.libro.hojas.flatMap((h) => h.columnas.map((c) => c.encabezado));
+    expect(encabezados.filter((e) => e.includes("(IVA)"))).toEqual([]);
+
+    const sinLibro: DescargaFilasResult = { status: "ok", filas: filasCierres };
+    expect(conImpuestoEnResultado(sinLibro, "IGV")).toBe(sinLibro);
+    const conError: DescargaFilasResult = { status: "error", mensaje: "No se pudo." };
+    expect(conImpuestoEnResultado(conError, "IGV")).toBe(conError);
+  });
+
+  /** El selector del botón de descarga en el nivel «Detalle»: las columnas que lista. */
+  async function columnasDelDetalle(montaje: Montaje): Promise<string> {
+    const resumen: DescargaResumenCierres = {
+      titulo: "Cierres de prueba",
+      columnas: [{ clave: "folio", encabezado: "Folio" }],
+      ambitoColumnas: "slt-243-prueba",
+      obtenerFilas: async () => ({ status: "ok", filas: [] }),
+    };
+    const user = userEvent.setup();
+    render(
+      montar(
+        montaje,
+        <DescargarCierresButton
+          resumen={resumen}
+          catalogo={CATALOGO_FILTROS_CIERRES_VACIO}
+          accion={vi.fn()}
+          audiencia="admin"
+        />,
+      ),
+    );
+    await user.click(screen.getByRole("button", { name: SELECTOR_DISPARADOR }));
+    await screen.findByRole("radiogroup", { name: NIVEL_LEGEND });
+    await user.click(screen.getByRole("radio", { name: NIVEL_DETALLE_LABEL }));
+    const etiquetas = screen.getAllByRole("checkbox").map((casilla) => {
+      const id = casilla.getAttribute("aria-labelledby");
+      return (id && document.getElementById(id)?.textContent) || "";
+    });
+    return etiquetas.join(" | ");
+  }
+
+  it("(d) R12, R13: el selector del «Detalle» lista «Flete + impuesto (IGV)» con el país; «(IVA)» con CR y sin proveedor", async () => {
+    const textos = await enLosTresMontajes(columnasDelDetalle);
+    expect(textos.prueba).toContain("Flete + impuesto (IGV)");
+    expect(textos.prueba).toContain("Comisión + impuesto (IGV)");
+    expect(textos.prueba).toContain("Flete por devolución a origen + impuesto (IGV)");
+    expect(textos.prueba).not.toContain("(IVA)");
+    expect(textos["sin proveedor"]).toContain("Flete + impuesto (IVA)");
+    expect(textos.cr).toBe(textos["sin proveedor"]);
+  });
+});
+
+/**
+ * Los archivos que declaran las columnas de las descargas de cierres del admin (design §6.1) y su
+ * fuente única. Ninguno escribe el nombre del impuesto.
+ */
+const CENSO_SIN_IVA_CIERRES = [
+  "app/(app)/cierres-admin/_components/cierres-gestiones-modelo-nuevo-descarga-columnas.ts",
+  "app/(app)/cierres-admin/_components/cierres-resumen-modelo-nuevo-descarga-columnas.ts",
+  "app/(app)/cierres-admin/_components/cierres-bodega-modelo-nuevo-descarga-columnas.ts",
+  "app/(app)/cierres-admin/_components/cierres-gestiones-fundida-descarga-columnas.ts",
+  "app/(app)/cierres-admin/_components/encabezados-con-impuesto.ts",
+];
+
+/** Los rótulos de PANTALLA con impuesto de `cierre-labels.ts` (SLT-244): la descarga no los usa. */
+const ROTULOS_DE_PANTALLA = /\b(FLETE_CON_IVA_LABEL|COMISION_CON_IVA_LABEL|FLETE_DEV_CON_IVA_LABEL|IVA_FACTURADO_LABEL)\b/;
+
+/** ¿Escribe el código (sin comentarios) la palabra «IVA»? */
+const escribeIvaCierres = (fuente: string): boolean => /\bIVA\b/.test(quitarComentarios(fuente));
+/** ¿Usa el código (sin comentarios) un rótulo de pantalla con impuesto? */
+const usaRotuloDePantalla = (fuente: string): boolean => ROTULOS_DE_PANTALLA.test(quitarComentarios(fuente));
+
+describe("SLT-243 R11 — censo «sin IVA» de las declaraciones de columnas de las descargas de cierres", () => {
+  it.each(CENSO_SIN_IVA_CIERRES)("%s no escribe «IVA» ni usa un rótulo de pantalla con impuesto", (archivo) => {
+    const fuente = readFileSync(join(process.cwd(), archivo), "utf8");
+    expect(fuente.length).toBeGreaterThan(500); // no-vacuidad
+    expect(escribeIvaCierres(fuente)).toBe(false);
+    expect(usaRotuloDePantalla(fuente)).toBe(false);
+  });
+
+  it("las cuatro declaraciones toman sus encabezados con impuesto de `encabezadoBase`", () => {
+    for (const archivo of CENSO_SIN_IVA_CIERRES.slice(0, 4)) {
+      const fuente = quitarComentarios(readFileSync(join(process.cwd(), archivo), "utf8"));
+      expect(fuente, archivo).toMatch(/import \{ encabezadoBase \} from "\.\/encabezados-con-impuesto";/);
+      expect(fuente, archivo).toMatch(/encabezado: encabezadoBase\("\w+"\)/);
+    }
+  });
+
+  it("contraprueba: un «IVA» o un rótulo de pantalla en el código se detectan; en un comentario o en una clave, no", () => {
+    expect(escribeIvaCierres('{ clave: "ivaFlete", encabezado: "IVA del flete" }')).toBe(true);
+    expect(escribeIvaCierres("const e = `IVA del ${LABEL}`;")).toBe(true);
+    expect(escribeIvaCierres('// «IVA facturado»\n/* De eso, IVA */\nconst c = { clave: "ivaFacturado" };')).toBe(false);
+    expect(escribeIvaCierres("const v = fila.fleteConIva;")).toBe(false);
+    expect(usaRotuloDePantalla('import { FLETE_CON_IVA_LABEL } from "./cierre-labels";')).toBe(true);
+    expect(usaRotuloDePantalla("const e = IVA_FACTURADO_LABEL;")).toBe(true);
+    expect(usaRotuloDePantalla("// antes era FLETE_DEV_CON_IVA_LABEL\nconst e = 1;")).toBe(false);
   });
 });

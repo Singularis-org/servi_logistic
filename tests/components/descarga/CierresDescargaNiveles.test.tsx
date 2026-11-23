@@ -835,9 +835,9 @@ describe("Cierres · «Fulfillment» del Detalle solo para la central (ficha 481
     // (R483), las cuatro del cobro a la tienda.
     const DE_LA_EMPRESA = [
       "Fulfillment",
-      "Flete + IVA",
-      "Comisión + IVA",
-      "Flete por devolución a origen + IVA",
+      "Flete + impuesto (IVA)",
+      "Comisión + impuesto (IVA)",
+      "Flete por devolución a origen + impuesto (IVA)",
       "Total de la empresa",
     ];
     const esperado = encabezadosDe(COLUMNAS_DESCARGA_GESTIONES_FUNDIDA).filter(

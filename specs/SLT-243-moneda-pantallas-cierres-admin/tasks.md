@@ -62,7 +62,7 @@
 
 ## Bloque 4 — Encabezados de las descargas (R10, R11) (depende de T2.3 y T3.2: comparte archivos)
 
-- [ ] **T4.1** Módulo `encabezados-con-impuesto.ts` con la forma «impuesto (<nombre>)» (design
+- [x] **T4.1** Módulo `encabezados-con-impuesto.ts` con la forma «impuesto (<nombre>)» (design
   §6.0 y §6.1).
   - `impuestoEntreParentesis`, `ENCABEZADO_CON_IMPUESTO` (9 claves), `encabezadoBase`,
     `conImpuestoEnColumnas`, `conImpuestoEnHojas` y `conImpuestoEnResultado`.
@@ -73,7 +73,7 @@
     `flete-por-rechazo-censo.guardia.test.ts`, `rechazo-nombre-466.guardia.test.ts`,
     `cierre-bodega-vocabulario.guardia.test.ts` y `CierreDesgloseModeloNuevo.test.tsx` pasan sin
     tocarlos.
-- [ ] **T4.2** Las cuatro declaraciones de columnas toman sus encabezados con impuesto de
+- [x] **T4.2** Las cuatro declaraciones de columnas toman sus encabezados con impuesto de
   `encabezadoBase(clave)` (R11), y se actualizan los encabezados esperados. Depende de T4.1.
   - Declaraciones: `cierres-gestiones-modelo-nuevo-descarga-columnas.ts` (5),
     `cierres-resumen-modelo-nuevo-descarga-columnas.ts` (1),
@@ -85,7 +85,7 @@
   - Censo «sin IVA» de R11 con su contraprueba.
   - *Hecho:* en verde; en el diff de los tests solo cambian literales de encabezado (ninguna celda,
     clave ni cuenta de columnas).
-- [ ] **T4.3** Aplicación en los componentes (design §6.2). Depende de T4.1.
+- [x] **T4.3** Aplicación en los componentes (design §6.2). Depende de T4.1.
   - `CierresAdminModule.tsx` (2 sitios), `CierresBodegaAdminModule.tsx` (2),
     `ConsolidacionBodegaModule.tsx` (1), `DescargarGestionesDialog.tsx` y
     `DescargarCierresButton.tsx` (con `useMemo`).

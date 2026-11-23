@@ -126,7 +126,7 @@ const CIFRAS_BX: CifrasCierreBodegaDescarga = {
 const ENCABEZADOS_CIERRES_CENTRAL = [
   "Folio", "Bodega", "Destino", "Estado", "Solicitado", "Resuelto", "Efectivo", "SINPE",
   "Transferencia", "Recaudado", "Debe llegar a la central", "Se le paga a la tienda",
-  "Pago al mensajero", "Pago a la bodega satélite", "Total facturado", "IVA facturado",
+  "Pago al mensajero", "Pago a la bodega satélite", "Total facturado", "Impuesto (IVA) facturado",
   "Le queda a la empresa", "Gestiones", "Pagos ajustados", "Pago entregado", "Cierres incluidos",
   "Recibido", "Falta por recibir", "Estado de conciliación", "Conciliado por", "Conciliado el",
 ];
@@ -214,7 +214,7 @@ describe("SLT-141 — columnas de «Cierres» y «Por tienda» de bodega (R386)"
     expect(montos).toEqual([
       "Efectivo", "SINPE", "Transferencia", "Recaudado", "Debe llegar a la central",
       "Se le paga a la tienda", "Pago al mensajero", "Pago a la bodega satélite", "Total facturado",
-      "IVA facturado", "Le queda a la empresa", "Pago entregado", "Recibido", "Falta por recibir",
+      "Impuesto (IVA) facturado", "Le queda a la empresa", "Pago entregado", "Recibido", "Falta por recibir",
     ]);
   });
 

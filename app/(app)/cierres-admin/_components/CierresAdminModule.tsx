@@ -13,7 +13,8 @@ import {
 } from "@/components/private/cierres/dialogos/VisorEvidencia";
 import { Pagination } from "@/components/shared/Pagination";
 import { filasDesdeResultado } from "@/components/shared/descarga-resultado";
-import { useMonedaDelPais } from "@/hooks/use-moneda-del-pais";
+import { useImpuestoDelPais, useMonedaDelPais } from "@/hooks/use-moneda-del-pais";
+import { IMPUESTO_ROTULO } from "@/lib/constants/impuesto-rotulo";
 import { useToast } from "@/hooks/useToast";
 import { formatearTopeEn, SIN_MONTO_RAYA, type FormatoMoneda } from "@/lib/config/moneda";
 import { cierreConfig } from "@/lib/config/cierre";
@@ -128,6 +129,7 @@ import {
 } from "./cierres-admin-descarga-columnas";
 import type { AudienciaDescargaGestionesFundida } from "./cierres-gestiones-fundida-descarga-columnas";
 import { obtenerResumenCierres } from "./cierres-resumen-modelo-nuevo-descarga";
+import { conImpuestoEnResultado } from "./encabezados-con-impuesto";
 // Feature 172 (TANDA E): el pago al mensajero. Tres piezas, ninguna con lógica de dominio
 // propia — el pendiente lo deriva el servidor (T C.2) y el rol lo decide el servicio (R1/R6).
 import { hayPendienteDeLiquidar } from "./PendienteLiquidarBadge";
@@ -308,6 +310,8 @@ const PAGE_SIZE_OPTIONS = [10, 25, 50].filter((s) => s <= cierreConfig.MAX_PAGE_
 export function descargaColaCierres(
   filtros: FiltrosCierres,
   audiencia: AudienciaDescargaGestionesFundida,
+  // SLT-243 (R10): el impuesto del país, para los encabezados del libro. Sin él, el de la plataforma.
+  impuesto: string = IMPUESTO_ROTULO,
 ): DescargaResumenCierres {
   return {
     titulo: TITULO_DESCARGA_PENDIENTES,
@@ -323,12 +327,15 @@ export function descargaColaCierres(
       ),
     // SLT-140 (R377/R378): con cierres del modelo nuevo, el libro «Cierres» + «Por tienda» (+ la hoja
     // de hoy como «Cierres modelo anterior» si es mixto); sin ellos, el archivo de hoy tal cual.
-    obtenerFilasConColumnas: (columnasMarcadas) =>
-      obtenerResumenCierres(
-        () => descargarDatos("listarPendientesCierresAdminCompleto", { filtros }),
-        filaDescargaCierrePendiente,
-        columnasMarcadas,
-        audiencia,
+    obtenerFilasConColumnas: async (columnasMarcadas) =>
+      conImpuestoEnResultado(
+        await obtenerResumenCierres(
+          () => descargarDatos("listarPendientesCierresAdminCompleto", { filtros }),
+          filaDescargaCierrePendiente,
+          columnasMarcadas,
+          audiencia,
+        ),
+        impuesto,
       ),
   };
 }
@@ -371,6 +378,8 @@ export const VACIO_HISTORICO = "Aún no hay cierres resueltos.";
 export function descargaHistoricoCierres(
   filtros: FiltrosCierres,
   audiencia: AudienciaDescargaGestionesFundida,
+  // SLT-243 (R10): como en `descargaColaCierres`.
+  impuesto: string = IMPUESTO_ROTULO,
 ): DescargaResumenCierres {
   return {
     titulo: TITULO_DESCARGA,
@@ -384,12 +393,15 @@ export function descargaHistoricoCierres(
         filaDescargaCierreHistorico,
       ),
     // SLT-140 (R377/R378): con cierres del modelo nuevo, el libro; sin ellos, el archivo de hoy.
-    obtenerFilasConColumnas: (columnasMarcadas) =>
-      obtenerResumenCierres(
-        () => descargarDatos("listarHistoricoCierresAdminCompleto", { filtros }),
-        filaDescargaCierreHistorico,
-        columnasMarcadas,
-        audiencia,
+    obtenerFilasConColumnas: async (columnasMarcadas) =>
+      conImpuestoEnResultado(
+        await obtenerResumenCierres(
+          () => descargarDatos("listarHistoricoCierresAdminCompleto", { filtros }),
+          filaDescargaCierreHistorico,
+          columnasMarcadas,
+          audiencia,
+        ),
+        impuesto,
       ),
   };
 }
@@ -596,6 +608,8 @@ export function CierresAdminModule({
   const toast = useToast();
   // SLT-243 (R9): el tope de la indemnización se anuncia en la moneda del país.
   const moneda = useMonedaDelPais();
+  // SLT-243 (R10): los encabezados con impuesto del libro de la descarga dicen el del país.
+  const impuesto = useImpuestoDelPais();
   const { mutate } = useSWRConfig();
 
   // Detalle del cierre abierto (null = modal cerrado).
@@ -1342,8 +1356,8 @@ export function CierresAdminModule({
           <DescargarCierresButton
             resumen={
               tab === TAB_PENDIENTES
-                ? descargaColaCierres(filtros, audiencia)
-                : descargaHistoricoCierres(filtros, audiencia)
+                ? descargaColaCierres(filtros, audiencia, impuesto)
+                : descargaHistoricoCierres(filtros, audiencia, impuesto)
             }
             catalogo={catalogoFiltros}
             accion={(f) => descargarDatos("listarGestionesCierresAdminCompleto", f)}

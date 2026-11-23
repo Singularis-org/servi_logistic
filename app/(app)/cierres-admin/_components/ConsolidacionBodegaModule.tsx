@@ -36,7 +36,8 @@ import {
   sinFiltrosBodega,
 } from "@/lib/types/filtros-cierres";
 import { filasDesdeResultado } from "@/components/shared/descarga-resultado";
-import { useMonedaDelPais } from "@/hooks/use-moneda-del-pais";
+import { useImpuestoDelPais, useMonedaDelPais } from "@/hooks/use-moneda-del-pais";
+import { IMPUESTO_ROTULO } from "@/lib/constants/impuesto-rotulo";
 import { useToast } from "@/hooks/useToast";
 import { cierreConfig } from "@/lib/config/cierre";
 import { cierreBodegaConfig } from "@/lib/config/cierre-bodega";
@@ -65,6 +66,7 @@ import {
 } from "./cierres-bodega-descarga-columnas";
 import { descargarDatos } from "@/components/shared/descarga-datos";
 import { obtenerResumenCierresBodega } from "./cierres-bodega-modelo-nuevo-descarga";
+import { conImpuestoEnResultado } from "./encabezados-con-impuesto";
 
 /** Nombre visible del listado de consolidables: hoja, archivo y control (R12/R13). */
 const TITULO_DESCARGA_CONSOLIDABLES = "Cierres del día a consolidar";
@@ -260,7 +262,11 @@ export const PAGINACION_BODEGA_SOLICITADOS_LABEL =
  * que el actor podía ver (R44). Pedido humano del 2026-08-16: «el CONJUNTO» pasa a significar
  * «el conjunto FILTRADO» — los `filtros` viajan porque el usuario los puso; el alcance, nunca.
  */
-export function descargaBodegaSolicitados(filtros: FiltrosCierresBodega): DataTableDescarga {
+export function descargaBodegaSolicitados(
+  filtros: FiltrosCierresBodega,
+  // SLT-243 (R10): el impuesto del país, para los encabezados del libro. Sin él, el de la plataforma.
+  impuesto: string = IMPUESTO_ROTULO,
+): DataTableDescarga {
   return {
     titulo: TITULO_DESCARGA,
     columnas: COLUMNAS_DESCARGA_BODEGA_SOLICITADOS,
@@ -270,12 +276,15 @@ export function descargaBodegaSolicitados(filtros: FiltrosCierresBodega): DataTa
     // del modelo nuevo, el libro (sin «Pago entregado», R386); sin ellos, el archivo de hoy. Esta
     // descarga no pasa las columnas marcadas a `obtenerFilas`: «Cierres modelo anterior» sale con
     // todas las de hoy, en su orden (PA3).
-    obtenerFilas: () =>
-      obtenerResumenCierresBodega(
-        () => descargarDatos("listarCierresBodegaSolicitadosCompleto", { filtros }),
-        filaDescargaBodegaSolicitado,
-        COLUMNAS_DESCARGA_BODEGA_SOLICITADOS,
-        "satelite",
+    obtenerFilas: async () =>
+      conImpuestoEnResultado(
+        await obtenerResumenCierresBodega(
+          () => descargarDatos("listarCierresBodegaSolicitadosCompleto", { filtros }),
+          filaDescargaBodegaSolicitado,
+          COLUMNAS_DESCARGA_BODEGA_SOLICITADOS,
+          "satelite",
+        ),
+        impuesto,
       ),
   };
 }
@@ -303,6 +312,8 @@ export function ConsolidacionBodegaModule({
   const toast = useToast();
   // SLT-243 (R4): los totales agregados del resumen, en la moneda del país de la empresa.
   const moneda = useMonedaDelPais();
+  // SLT-243 (R10): los encabezados con impuesto del libro de «Solicitados» dicen el del país.
+  const impuesto = useImpuestoDelPais();
   const { mutate } = useSWRConfig();
 
   // Confirmación de "Solicitar cierre de bodega"; true = modal abierto.
@@ -498,7 +509,7 @@ export function ConsolidacionBodegaModule({
           }
           descargar={
             <DescargarDatasetButton
-              {...(enConsolidar ? descargaConsolidables(filtros) : descargaBodegaSolicitados(filtros))}
+              {...(enConsolidar ? descargaConsolidables(filtros) : descargaBodegaSolicitados(filtros, impuesto))}
             />
           }
           filas={pagina.items}
