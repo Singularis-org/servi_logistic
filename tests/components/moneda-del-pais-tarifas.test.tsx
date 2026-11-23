@@ -50,7 +50,6 @@ import { planDeGuardado, type CeldaEditada } from "@/app/(app)/configuracion/tar
 import {
   etiquetaModo,
   porcentajeParaVer,
-  porcentajeParaVerEnLaPlataforma,
   textoReferencia,
   textosDelImpuesto,
   textoValor,
@@ -967,10 +966,6 @@ describe("SLT-241 R3 — `porcentajeParaVer`: el separador decimal es el de la m
 
   it("R3/R16/R17: con CR, lo mismo que con la moneda de la plataforma", () => {
     expect(porcentajeParaVer("3.50", MONEDA_CR)).toBe(porcentajeParaVer("3.50", MONEDA_PLATAFORMA));
-  });
-
-  it("R18: `porcentajeParaVerEnLaPlataforma` (la fila de gestion de cierres) sigue con la moneda de la plataforma", () => {
-    expect(porcentajeParaVerEnLaPlataforma("3.50")).toBe(porcentajeParaVer("3.50", MONEDA_PLATAFORMA));
   });
 });
 

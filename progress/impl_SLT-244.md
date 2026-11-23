@@ -74,3 +74,36 @@ Tests (3):
 
 ### Veredicto
 Tanda B en verde: detalle y fila con moneda e impuesto obligatorios desde los hooks; sin provisionales en la carpeta de cierres ni bloqueos.
+
+## Tanda C — T3.1 (descarga «Gestiones») y T4.1 (`porcentajeParaVerEnLaPlataforma`)
+
+### Paso 0 (T3.1, design §10)
+- Borrador de `filaGestionModeloNuevoEn(moneda)` + `textoTarifa(t, moneda)` en `cierres-gestiones-modelo-nuevo-descarga-columnas.ts`, y `pnpm exec vitest run tests/unit/descarga/columnas-sensibles.guardia.test.ts` ANTES de tocar nada más → `Test Files 1 passed (1) · Tests 5 passed (5)`.
+- La guardia invoca la factoría con la sonda como moneda y otra vez con la sonda como DTO (`fila(x)(dto)`): no lanza. Guardia sin tocar.
+
+### Archivos
+Producción (4):
+- `app/(app)/cierres-admin/_components/cierres-gestiones-modelo-nuevo-descarga-columnas.ts` — `textoTarifa(t, moneda)` (monto → `${MONTO_FIJO} ${formatearMontoEn(moneda, valor, SIN_MONTO_RAYA)}`, porcentaje → `porcentajeDe(valor, base, moneda)`); `filaGestionModeloNuevoEn(moneda)` sustituye a `filaGestionModeloNuevo`; salen el import de `money` y el provisional `MONEDA_PLATAFORMA`.
+- `app/(app)/cierres-admin/_components/cierres-gestiones-modelo-nuevo-descarga.ts` — `moneda: FormatoMoneda` obligatoria en `LibroGestionesEntrada`; `libroGestiones` llama a la factoría una vez.
+- `app/(app)/cierres-admin/_components/DescargarGestionesDialog.tsx` — lee `useMonedaDelPais()` y la pasa a `libroDe` → `libroGestiones`.
+- `app/(app)/configuracion/tarifas/_components/tarifas-textos.ts` — borrada `porcentajeParaVerEnLaPlataforma` y el import de `MONEDA_PLATAFORMA` que solo usaba ella. El typecheck no encontró otro llamador.
+
+Tests (3):
+- `tests/unit/descarga/cierres-gestiones-modelo-nuevo-descarga.test.ts` — 8 `libroGestiones` con `moneda: MONEDA_PLATAFORMA` y 3 `filaGestionModeloNuevoEn(MONEDA_PLATAFORMA)(…)`; ningún valor esperado cambia.
+- `tests/components/moneda-del-pais-tarifas.test.tsx` — sale el caso «R18: `porcentajeParaVerEnLaPlataforma`…» y su import.
+- `tests/components/moneda-del-pais-cierres-componentes.test.tsx` — +5 casos (46 en total) y un `@ts-expect-error` más; dobles de `descargar-blob` y espía de `construirDescarga` (pasa al real), como en `DescargarGestionesModeloNuevo.test.tsx`.
+
+### Mapa R → test (tanda C), en `moneda-del-pais-cierres-componentes.test.tsx`
+- R7 → `SLT-244 R7 — la descarga «Gestiones»…`: `filaGestionModeloNuevoEn(MONEDA_DE_PRUEBA)` da «Monto fijo €3 500 · grupo «San José centro» de la zona Centro», «2 % de €25 000 · valor base de la zona Centro» y «Monto fijo €2 500 · …» (pago); las demás celdas y las claves, iguales a las de `MONEDA_PLATAFORMA` (central y satélite); `libroGestiones` con `MONEDA_DE_PRUEBA` lleva «€» en la hoja «Gestiones».
+- R7 → `SLT-244 R7 — DescargarGestionesDialog arma el libro…`: montado con el proveedor de prueba, la tarifa del libro que recibe el generador lleva «€»; con CR = sin proveedor = «₡3.500» / «₡25.000».
+- R8 → `llamadasSinPais` gana `// @ts-expect-error R8: libroGestiones sin moneda` (lo comprueba `pnpm run typecheck`).
+- R9 → `cierres-gestiones-modelo-nuevo-descarga.test.ts` verde sin cambiar valores; caso «con MONEDA_CR, el texto de hoy».
+
+### Comandos (NODE_OPTIONS=--max-old-space-size=8192)
+- `pnpm run typecheck` → `tsc --noEmit`, EXIT 0
+- `pnpm exec eslint <7 archivos tocados>` → EXIT 0, sin avisos
+- `pnpm exec vitest run` (moneda-del-pais-cierres-componentes, cierres-gestiones-modelo-nuevo-descarga, columnas-sensibles.guardia, cierres-gestiones-paridad, DescargarGestionesDialog, DescargarGestionesModeloNuevo, moneda-del-pais-tarifas, moneda-del-pais-cierres-admin) → `Test Files 8 passed (8) · Tests 237 passed (237)`
+- Finales de línea: LF en los 7 archivos (sin `\r`).
+
+### Veredicto
+Tanda C en verde: la tarifa de la descarga «Gestiones» sale en la moneda del país, `moneda` obligatoria en `libroGestiones` y `porcentajeParaVerEnLaPlataforma` borrada; sin bloqueos.

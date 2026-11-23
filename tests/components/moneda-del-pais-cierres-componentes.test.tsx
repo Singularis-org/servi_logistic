@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import type { ReactElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import {
@@ -72,6 +72,18 @@ import { MonedaDelPaisProvider } from "@/providers/MonedaDelPaisProvider";
 import { IMPUESTO_ROTULO } from "@/lib/constants/impuesto-rotulo";
 import { MONEDA_CR, MONEDA_DE_PRUEBA } from "@/tests/fabricas/reglas-pais";
 import { CONGELADO_AT, gestionCanvas, gestionFila, ingresoNuevo, ingresoViejo } from "@/tests/fixtures/gestion-cierre-fila";
+import {
+  columnasGestionesModeloNuevoPara,
+  filaGestionModeloNuevoEn,
+} from "@/app/(app)/cierres-admin/_components/cierres-gestiones-modelo-nuevo-descarga-columnas";
+import { libroGestiones } from "@/app/(app)/cierres-admin/_components/cierres-gestiones-modelo-nuevo-descarga";
+import { DescargarGestionesDialog } from "@/app/(app)/cierres-admin/_components/DescargarGestionesDialog";
+import { COLUMNAS_DESCARGA_GESTIONES_FUNDIDA } from "@/app/(app)/cierres-admin/_components/cierres-gestiones-fundida-descarga-columnas";
+import { ToastProvider } from "@/providers/ToastProvider";
+import type { DescargaConfig } from "@/lib/types/descarga";
+import type { IngresoEmpresaDTO } from "@/lib/interfaces/services/ICierreDiaService";
+import type { CierreGestionDescargaDTO } from "@/lib/interfaces/services/ICierresAdminService";
+import type { CatalogoFiltrosCierresDTO } from "@/lib/types/filtros-cierres";
 
 // SLT-244 — Moneda e impuesto del pais en pantallas: componentes de cierres.
 //
@@ -86,6 +98,21 @@ import { CONGELADO_AT, gestionCanvas, gestionFila, ingresoNuevo, ingresoViejo } 
 // `useIsMobile` se simula como en `ColaCierres.test.tsx` (por defecto, escritorio).
 const movil = vi.hoisted(() => ({ valor: false }));
 vi.mock("@/hooks/use-mobile", () => ({ useIsMobile: () => movil.valor }));
+
+// R7: la descarga se dobla como en `DescargarGestionesModeloNuevo.test.tsx`: el archivo no se baja y
+// `construirDescarga` se ESPÍA (corre el real por debajo) para leer el libro que recibe el generador.
+const descarga = vi.hoisted(() => ({ blob: vi.fn(), construir: vi.fn() }));
+vi.mock("@/components/shared/descargar-blob", () => ({ descargarBlob: (...a: unknown[]) => descarga.blob(...a) }));
+vi.mock("@/lib/utils/descarga-dataset", async (importOriginal) => {
+  const real = await importOriginal<typeof import("@/lib/utils/descarga-dataset")>();
+  return {
+    ...real,
+    construirDescarga: (config: DescargaConfig, zona: string, fecha?: Date) => {
+      descarga.construir(config);
+      return real.construirDescarga(config, zona, fecha);
+    },
+  };
+});
 
 afterEach(() => {
   cleanup();
@@ -952,6 +979,8 @@ function llamadasSinPais(): unknown[] {
     calculoDe(g, CONGELADO_AT),
     // @ts-expect-error R8: `porcentajeDe` sin `moneda`.
     porcentajeDe("2.00", "25000.00"),
+    // @ts-expect-error R8: `libroGestiones` sin `moneda`.
+    libroGestiones({ items: [], rechazos: [], columnasAnterior: [], audiencia: "admin" }),
   ];
 }
 
@@ -959,4 +988,204 @@ describe("SLT-244 R8 — moneda e impuesto obligatorios", () => {
   it("las llamadas sin `pais` o sin `moneda` existen solo para el typecheck", () => {
     expect(typeof llamadasSinPais).toBe("function");
   });
+});
+
+// ---------------------------------------------------------------------------------------------
+// Bloque 3 — T3.1: la descarga «Gestiones» del modelo nuevo (R7, R9, R10)
+// ---------------------------------------------------------------------------------------------
+
+/** Ingreso del modelo nuevo, como en `cierres-gestiones-modelo-nuevo-descarga.test.ts`. */
+function ingresoDescarga(over: Partial<IngresoEmpresaDTO>): IngresoEmpresaDTO {
+  return {
+    tarifaModelo: "nuevo",
+    montoCobrar: null,
+    cobraComision: false,
+    esCentral: false,
+    esZonaEspecial: false,
+    fleteOrigen: "normal",
+    fleteDevolucionOrigen: "normal",
+    flete: null,
+    ivaFlete: null,
+    fleteDevolucion: null,
+    ivaFleteDevolucion: null,
+    comisionCod: null,
+    ivaComisionCod: null,
+    fleteConIva: null,
+    fleteDevolucionConIva: null,
+    comisionConIva: null,
+    total: "0.00",
+    fulfillment: null,
+    ivaFulfillment: null,
+    tarifa: null,
+    ...over,
+  };
+}
+
+/** La gestión «A» de `cierres-gestiones-modelo-nuevo-descarga.test.ts`: flete fijo, comisión en %. */
+const GESTION_DESCARGA: CierreGestionDescargaDTO = {
+  mensajeroNombre: "Mario Mensajero",
+  cierreSolicitadoAt: "2026-11-06T18:00:00.000Z",
+  fechaGestion: "2026-11-06",
+  diaReparto: "2026-11-05",
+  fechaCreacionOrden: "2026-11-04",
+  folioCierre: "ABCD1234",
+  cierreModelo: "nuevo",
+  numGuia: 501,
+  numRemision: "REM-A",
+  destinatario: "Laura Díaz",
+  direccion: "Calle 3",
+  zonaNombre: "Centro",
+  provinciaNombre: "San José",
+  cantonNombre: "Central",
+  distritoNombre: "Carmen",
+  producto: "Caja",
+  tiendaNombre: "Tienda Sol",
+  intentosContactoTienda: 0,
+  intentosEntrega: 1,
+  resultado: "entregado",
+  montoRecibido: "25000.00",
+  pagos: [{ metodo: "efectivo", monto: "25000.00" }],
+  motivo: null,
+  fechaReprogramacion: null,
+  esRechazoSla: false,
+  causaIncidente: null,
+  indemnizacion: null,
+  pagoMensajero: "1800.00",
+  ingresoBodegaRechazo: null,
+  ingresoEmpresa: ingresoDescarga({
+    montoCobrar: "25000.00",
+    cobraComision: true,
+    flete: "3500.00",
+    ivaFlete: "455.00",
+    comisionCod: "500.00",
+    ivaComisionCod: "65.00",
+    total: "4520.00",
+    ivaIncluido: "520.00",
+    conceptosTarifa: [
+      { concepto: "flete", modo: "monto", valor: "3500.00", ivaPct: "13.00", base: null, nivel: "grupo", zonaNombre: "Centro", grupoNombre: "San José centro", vehiculoNombre: null },
+      { concepto: "comisionCod", modo: "porcentaje", valor: "2.00", ivaPct: "13.00", base: "25000.00", nivel: "zona", zonaNombre: "Centro", grupoNombre: null, vehiculoNombre: null },
+    ],
+  }),
+  pagoPorTarifa: {
+    importe: "2500.00",
+    modo: "monto",
+    valor: "2500.00",
+    base: null,
+    nivel: "zona",
+    zonaNombre: "Centro",
+    grupoNombre: null,
+    vehiculoNombre: null,
+    ajuste: null,
+  },
+  ajustesPago: [],
+  tarifaFaltante: false,
+};
+
+/** Las claves de texto de tarifa: las únicas celdas que cambian con la moneda (R7). */
+const CLAVES_TARIFA: ReadonlySet<string> = new Set([
+  "tarifaFlete",
+  "tarifaComision",
+  "tarifaFleteDevolucion",
+  "tarifaPago",
+]);
+
+describe("SLT-244 R7 — la descarga «Gestiones» escribe la tarifa en la moneda del país", () => {
+  it("filaGestionModeloNuevoEn(MONEDA_DE_PRUEBA): «Monto fijo €3 500 · …» y «2 % de €25 000 · …»", () => {
+    const fila = filaGestionModeloNuevoEn(MONEDA_DE_PRUEBA)(GESTION_DESCARGA, "admin");
+    // Escrito a mano (MONEDA_DE_PRUEBA: «€», espacio de miles, sin decimales).
+    expect(fila.tarifaFlete).toBe("Monto fijo €3 500 · grupo «San José centro» de la zona Centro");
+    expect(fila.tarifaComision).toBe("2 % de €25 000 · valor base de la zona Centro");
+    expect(fila.tarifaPago).toBe("Monto fijo €2 500 · valor base de la zona Centro");
+  });
+
+  it("las demás celdas son las mismas que con MONEDA_PLATAFORMA (mismas claves)", () => {
+    for (const audiencia of ["admin", "satelite"] as const) {
+      const prueba = filaGestionModeloNuevoEn(MONEDA_DE_PRUEBA)(GESTION_DESCARGA, audiencia);
+      const plataforma = filaGestionModeloNuevoEn(MONEDA_PLATAFORMA)(GESTION_DESCARGA, audiencia);
+      expect(Object.keys(prueba)).toEqual(Object.keys(plataforma));
+      for (const columna of columnasGestionesModeloNuevoPara(audiencia)) {
+        if (CLAVES_TARIFA.has(columna.clave)) continue;
+        expect(prueba[columna.clave]).toEqual(plataforma[columna.clave]);
+      }
+    }
+  });
+
+  it("con MONEDA_CR, el texto de hoy (R9): igual que con MONEDA_PLATAFORMA", () => {
+    expect(filaGestionModeloNuevoEn(MONEDA_CR)(GESTION_DESCARGA, "admin")).toEqual(
+      filaGestionModeloNuevoEn(MONEDA_PLATAFORMA)(GESTION_DESCARGA, "admin"),
+    );
+    expect(filaGestionModeloNuevoEn(MONEDA_PLATAFORMA)(GESTION_DESCARGA, "admin").tarifaFlete).toBe(
+      "Monto fijo ₡3.500 · grupo «San José centro» de la zona Centro",
+    );
+  });
+
+  it("libroGestiones usa la moneda que recibe en la hoja «Gestiones»", () => {
+    const hojas = libroGestiones({
+      items: [GESTION_DESCARGA],
+      rechazos: [],
+      columnasAnterior: [],
+      audiencia: "admin",
+      moneda: MONEDA_DE_PRUEBA,
+    });
+    expect(hojas?.[0].filas[0].tarifaComision).toBe("2 % de €25 000 · valor base de la zona Centro");
+  });
+});
+
+const MENSAJERO_DESCARGA = "11111111-1111-4111-8111-111111111111";
+const CATALOGO_DESCARGA: CatalogoFiltrosCierresDTO = {
+  zonas: [{ id: "33333333-3333-4333-8333-333333333333", nombre: "Centro" }],
+  mensajeros: [{ id: MENSAJERO_DESCARGA, nombre: "Mario Mensajero", zonaId: null }],
+  mensajerosFiltro: [{ id: MENSAJERO_DESCARGA, nombre: "Mario Mensajero", zonaId: null }],
+};
+
+/** Monta el diálogo (como `DescargarGestionesDialog.test.tsx`), descarga y devuelve las tarifas del libro. */
+async function tarifasDelLibro(montaje: Montaje): Promise<{ flete: unknown; comision: unknown }> {
+  descarga.blob.mockReset();
+  descarga.construir.mockReset();
+  const accion = vi.fn(async () => ({
+    status: "ok" as const,
+    items: [GESTION_DESCARGA],
+    total: 1,
+    rechazosDeTienda: [],
+  }));
+  const user = userEvent.setup();
+  render(
+    montar(
+      montaje,
+      <ToastProvider>
+        <DescargarGestionesDialog
+          catalogo={CATALOGO_DESCARGA}
+          accion={accion}
+          columnas={COLUMNAS_DESCARGA_GESTIONES_FUNDIDA}
+          audiencia="admin"
+        />
+      </ToastProvider>,
+    ),
+  );
+  await user.click(screen.getByRole("button", { name: "Descargar detallada por mensajero" }));
+  await user.click(await screen.findByRole("button", { name: "Descargar Gestiones de cierres" }));
+  // El generador se importa en dinámico (exceljs): con la suite en paralelo tarda más de 1 s.
+  await waitFor(() => expect(descarga.blob).toHaveBeenCalled(), { timeout: 15_000 });
+  expect(descarga.construir).toHaveBeenCalledTimes(1);
+  const config = descarga.construir.mock.calls[0][0] as DescargaConfig;
+  expect(config.tituloHoja).toBe("Gestiones");
+  cleanup();
+  return { flete: config.filas[0].tarifaFlete, comision: config.filas[0].tarifaComision };
+}
+
+describe("SLT-244 R7 — DescargarGestionesDialog arma el libro con la moneda del país", () => {
+  it("con el proveedor de prueba, «€» en la tarifa; con CR, lo mismo que sin proveedor (R9, R10)", async () => {
+    const prueba = await tarifasDelLibro("prueba");
+    expect(prueba).toEqual({
+      flete: "Monto fijo €3 500 · grupo «San José centro» de la zona Centro",
+      comision: "2 % de €25 000 · valor base de la zona Centro",
+    });
+    const cr = await tarifasDelLibro("cr");
+    const sinProveedor = await tarifasDelLibro("sin proveedor");
+    expect(cr).toEqual(sinProveedor);
+    expect(sinProveedor).toEqual({
+      flete: "Monto fijo ₡3.500 · grupo «San José centro» de la zona Centro",
+      comision: "2 % de ₡25.000 · valor base de la zona Centro",
+    });
+  }, 60_000);
 });

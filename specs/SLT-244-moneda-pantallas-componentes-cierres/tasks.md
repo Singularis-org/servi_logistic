@@ -61,7 +61,7 @@
 
 ## Bloque 3 — Descarga «Gestiones» (R7, R8) (depende de T2.3: usa `porcentajeDe`)
 
-- [ ] **T3.1** Antes de cambiar nada, correr `columnas-sensibles.guardia.test.ts` sobre un borrador
+- [x] **T3.1** Antes de cambiar nada, correr `columnas-sensibles.guardia.test.ts` sobre un borrador
   de la factoría y confirmar que la sonda como moneda no lanza (design §10). Si se pone roja, parar y
   avisar.
   - Después: `textoTarifa(t, moneda)`, `filaGestionModeloNuevoEn(moneda)` en lugar de
@@ -76,7 +76,7 @@
 
 ## Bloque 4 — Guardias y cierre (depende de los bloques 1–3)
 
-- [ ] **T4.1** `porcentajeParaVerEnLaPlataforma` sale de `tarifas-textos.ts`, con su caso y su import
+- [x] **T4.1** `porcentajeParaVerEnLaPlataforma` sale de `tarifas-textos.ts`, con su caso y su import
   en `moneda-del-pais-tarifas.test.tsx` (P4).
   - *Hecho:* typecheck en verde (ningún llamador más) y `moneda-del-pais-tarifas.test.tsx` en verde.
 - [ ] **T4.2** Censo de R18 de SLT-235 (design §8).
