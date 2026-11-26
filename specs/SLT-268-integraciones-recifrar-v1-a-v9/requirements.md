@@ -47,6 +47,11 @@ google_maps conectadas, optimizacion_rutas en estado error), todas en `v1`.
 | D5 | El recifrado reutiliza `RecifradoIntegracionesService`; no se reescribe | encargo del leader | R9, R10, R11 |
 | D6 | El disparador se invoca a mano; no se programa | encargo del leader | R16 |
 | D7 | El recifrado solo escribe el texto cifrado: la base es compartida con Ordenex | encargo del leader | R12 |
+| D8 | Se acepta que `updated_at` cambie al recifrar (Prisma lo fija por `@updatedAt`); el repositorio no se toca (era P1) | Carlos, 2026-11-26 («dale») | R12 |
+| D9 | La ruta se queda después del paso a `v9`: exige `CRON_SECRET`, es idempotente y es el único camino para rotar claves que solo existen en Vercel (era P2) | Carlos, 2026-11-26 («dale») | R6, R11 |
+| D10 | La credencial de optimizacion_rutas se vuelve a pegar en servi después del recifrado, y queda en `v9` (era P3) | Carlos, 2026-11-26 («dale») | R5 (lo nuevo se cifra con la activa `v9`) |
+| D11 | `lib/crypto/boveda-integraciones.ts` y `lib/config/integraciones.ts` son idénticos en `origin/prod` y en la copia de Ordenex, comentarios aparte: Ordenex lee el mismo formato y los mismos datos asociados (era P4) | leader, 2026-11-26 | R17 |
+| D12 | SLT-268 no toca `scripts/recifrar-integraciones.ts`, `tests/integration/db/recifrado-integraciones.test.ts` ni `.env.example`. Los casos de integración van en un archivo nuevo y `INTEGRACIONES_CLAVES_CIFRADO_EXTRA` se documenta en el comentario de `lib/config/integraciones.ts`. Motivo: choque de archivos con SLT-227 y SLT-257 (en vuelo, de otra persona) y un cherry-pick limpio a prod | leader, 2026-11-26 | `tasks.md > Archivos esperados` (verificación, no comportamiento) |
 
 ## Requisitos (EARS)
 
@@ -89,7 +94,7 @@ google_maps conectadas, optimizacion_rutas en estado error), todas en `v1`.
   activa, el sistema DEBE responder `recifrados: 0` sin escribir ninguna fila. Es decir, la segunda
   corrida no cambia nada.
 - **R12.** CUANDO recifra una fila de `integracion`, el sistema DEBE cambiar solo `secretos` (y
-  `updated_at`, ver `## Preguntas abiertas` P1). Las demás columnas de la fila no cambian: `estado`,
+  `updated_at`, aceptado en D8). Las demás columnas de la fila no cambian: `estado`,
   `datos_publicos`, `ultimo_error_codigo`, `ultima_prueba_at`, `ultimo_webhook_at`,
   `whatsapp_numero_id`, `whatsapp_resumen_verificacion`, `organizacion_id` y `created_at`. Ninguna
   otra tabla se escribe, y un valor ilegible se deja igual.
@@ -115,7 +120,7 @@ google_maps conectadas, optimizacion_rutas en estado error), todas en `v1`.
 |---|---|
 | R1, R2, R3, R4, R5 | `tests/unit/config/integraciones-config.test.ts` (casos nuevos; claves generadas en el test) |
 | R6, R7, R8, R13, R14, R15, R16 | `tests/unit/api/cron-recifrar-integraciones.test.ts` (servicio doble; R16 lee `vercel.json`) |
-| R9, R10, R11, R12, R17 | `tests/integration/db/recifrado-integraciones.test.ts` (casos nuevos, Postgres real, transacción revertida, servicio construido con la composición de la ruta) |
+| R9, R10, R11, R12, R17 | `tests/integration/db/recifrado-integraciones-extra.test.ts` (archivo nuevo, D12; Postgres real, transacción revertida, servicio construido con la composición de la ruta) |
 
 ## Pasos operativos (no son requisitos de código)
 
@@ -133,6 +138,8 @@ Los hace Carlos, en este orden, **después** de que el código esté en prod:
 5. El mismo `curl` **sin** `?solo-contar=1`: recifra.
 6. Otra vez el paso 4: debe salir `v1` en 0 o ausente, y `ilegibles: 0`.
 7. En Ordenex, abrir las integraciones de la empresa y probar la conexión de WhatsApp y Google Maps.
+8. En servi, volver a pegar la credencial de optimizacion_rutas (D10). Se guarda cifrada con la
+   activa `v9`, así que la leen los dos.
 
 **Por qué este orden:**
 - **El código va antes que las variables.** Con el código viejo, `INTEGRACIONES_CLAVE_ACTIVA=v9`
@@ -145,21 +152,8 @@ Los hace Carlos, en este orden, **después** de que el código esté en prod:
   sigue siendo legible. Y no se puede quitar sin reescribir la variable Sensitive.
 
 **optimizacion_rutas** ya está en estado error: después del paso 5 su credencial queda en `v9` pero
-sigue siendo la misma que fallaba. Hay que volver a pegarla igualmente (P3).
+sigue siendo la misma que fallaba. Por eso se vuelve a pegar en servi (paso 8, D10).
 
 ## Preguntas abiertas
 
-- **P1 (Carlos).** `updated_at` cambia al recifrar. Prisma lo fija solo en el `updateMany` del
-  repositorio (`@updatedAt` en `db/schema.prisma`, modelo `Integracion`), y el repositorio es el
-  mismo que usa `pnpm integraciones:recifrar`. Ningún archivo de `lib/` con «integracion» en el nombre
-  lee `updatedAt` (búsqueda del 2026-11-26). Propuesta: aceptarlo. Si debe quedar intacto, el
-  repositorio tiene que conservar el valor anterior y R12 se endurece.
-- **P2 (Carlos).** ¿El disparador se queda después del paso a `v9` o se retira en otra ficha?
-  Propuesta: se queda. Exige `CRON_SECRET`, es idempotente (R11) y es el único camino para rotar
-  claves que solo existen en Vercel.
-- **P3 (Carlos).** ¿Dónde se vuelve a pegar la credencial de optimizacion_rutas: en servi o en
-  Ordenex? Con la activa en `v9` en los dos, cualquiera de las dos la deja legible para ambos.
-- **P4 (leader).** El paso 7 da por hecho que la bóveda de Ordenex usa el mismo formato y los mismos
-  datos asociados que `lib/crypto/boveda-integraciones.ts` (empresa, integración y campo). No lo he
-  podido comprobar desde este repo. El paso 7 lo confirma en la práctica; si falla, el recifrado ya
-  hecho no se pierde, porque servi sigue leyendo `v9`.
+Ninguna. P1 a P4 se cerraron el 2026-11-26 y están en `## Decisiones cerradas` (D8 a D11).

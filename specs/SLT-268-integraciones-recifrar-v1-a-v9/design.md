@@ -14,11 +14,11 @@ runtime. Lo que apareció se REUTILIZA:
 | Anillo de claves (`v<n>:<base64>`, activa, `ConfiguracionBovedaError` sin valores) | `lib/config/integraciones.ts > leerAnilloDeClaves` | Se extiende (D2): es el único punto por el que pasa todo el que cifra o descifra (`lib/crypto/boveda-integraciones.ts`, `lib/actions/_shared/integraciones.ts`, el script) |
 | Regla del recifrado: cuenta por versión, recifra a la activa, deja los ilegibles, CAS sobre el JSON, no saca valores | `lib/services/RecifradoIntegracionesService.ts` (SL-36 design §12) | Sin cambios (D5) |
 | Acceso a `integracion` para el recifrado | `lib/repositories/IntegracionRecifradoRepository.ts` | Sin cambios |
-| Cableado de consola `pnpm integraciones:recifrar [--solo-contar]` | `scripts/recifrar-integraciones.ts` | Molde del cableado de la ruta. Solo cambia el texto de su cabecera y del error (añadir la variable nueva) |
+| Cableado de consola `pnpm integraciones:recifrar [--solo-contar]` | `scripts/recifrar-integraciones.ts` | Molde del cableado de la ruta. No se toca (D12): su cabecera no nombra la variable nueva, que queda documentada en `lib/config/integraciones.ts` |
 | Recorrer empresas en su contexto | `lib/db/para-cada-empresa.ts > paraCadaEmpresa` | Igual que el script |
 | Patrón de ruta cron: `Bearer CRON_SECRET` vía `loadCronConfig()`, 401 sin efectos, deps inyectables | `app/api/cron/purga-descargas/route.ts` y otras 11 | Molde de la ruta nueva |
 | `middleware.ts` deja pasar `/api/cron/*` (`SELF_AUTH_ROUTES`) | `middleware.ts:34` | Sin cambios: la ruta se autentica sola |
-| Test del recifrado contra Postgres real (transacción revertida, `cliente` doble de `paraCadaEmpresa`) | `tests/integration/db/recifrado-integraciones.test.ts` | Se le añaden los casos de R9 a R12 y R17 |
+| Test del recifrado contra Postgres real (transacción revertida, `cliente` doble de `paraCadaEmpresa`) | `tests/integration/db/recifrado-integraciones.test.ts` | Molde. No se toca (D12): los casos de R9 a R12 y R17 van en `tests/integration/db/recifrado-integraciones-extra.test.ts`, que reutiliza sin modificarlos `tests/integration/db/_postgres-real.ts` y `tests/fabricas/organizaciones.ts`. Los helpers locales de ese archivo, como `revertida`, se copian: no están exportados y exportarlos sería tocarlo |
 
 No es un «ya existe» que bloquee: el script corre en local y en local no está `v1`. La pieza que
 falta es correr esa misma regla en un proceso que tenga `v1` en su entorno, y ese proceso solo es
@@ -37,7 +37,8 @@ Leído entero el 2026-11-26:
   - `data` solo lleva `secretos`.
   - **Prisma añade `updated_at`** por el `@updatedAt` del modelo `Integracion`
     (`db/schema.prisma`, «updatedAt … @updatedAt»). Es la única columna que cambia además de
-    `secretos`. Queda como pregunta abierta P1.
+    `secretos`. Carlos lo aceptó el 2026-11-26 (`requirements.md`, D8), así que el repositorio no
+    se toca.
   - Las demás columnas no se tocan: `estado`, `datos_publicos`, `ultimo_error_codigo`,
     `ultima_prueba_at`, `ultimo_webhook_at`, `whatsapp_*`, `organizacion_id` y `created_at`.
 - **Otras tablas:** el cliente del repositorio está tipado como `Pick<PrismaClient, "integracion">`,
@@ -70,6 +71,10 @@ Cambio en `lib/config/integraciones.ts`. No cambia la firma pública:
   variable vacía, y fallar ahí tumbaría todas las integraciones por un campo en blanco.
 - **Invariante:** ningún mensaje lleva un valor ni la etiqueta de una versión de la variable extra.
   Es la misma regla que la cabecera del archivo (QC inv. 13).
+- **Documentación (D12):** la variable se documenta en el comentario de cabecera de
+  `lib/config/integraciones.ts`, no en `.env.example`. El comentario explica que es opcional, que
+  tiene la misma forma que la principal, que sus versiones no pueden repetir las de la principal y
+  para qué existe (añadir una clave sin reescribir una variable Sensitive).
 
 `BovedaIntegraciones` no cambia: descifra por la versión del prefijo y cifra con la activa. Al
 fusionar en `leerAnilloDeClaves`, la pantalla de integraciones, el script y la ruta quedan
@@ -159,7 +164,8 @@ tiene que existir con la misma forma en prod:
 - `lib/db/para-cada-empresa.ts`, `lib/db/prisma-client.ts`;
 - `lib/repositories/IntegracionRecifradoRepository.ts`, `lib/services/RecifradoIntegracionesService.ts`;
 - `lib/interfaces/services/IRecifradoIntegracionesService.ts`;
-- y los dos tests que se amplían.
+- y lo que importan los tests: `tests/unit/config/integraciones-config.test.ts`, que se amplía,
+  `tests/integration/db/_postgres-real.ts` y `tests/fabricas/organizaciones.ts`.
 
 El leader afirma que el código de cifrado es idéntico. No he podido comprobar el resto (`lib/config/cron.ts`,
 `para-cada-empresa`, `prisma-client`) porque no tengo shell: lo comprueba T0 con un `git diff` contra
@@ -171,7 +177,7 @@ El leader afirma que el código de cifrado es idéntico. No he podido comprobar 
 |---|---|---|
 | `tests/unit/config/integraciones-config.test.ts` | Fusión de las dos variables. EXTRA ausente, vacía o con espacios = anillo y mensajes de hoy (comparados con un literal, no con la función). EXTRA mal formada o de otro tamaño = error con la variable EXTRA y la posición, sin la base64 ni la versión. Versión repetida entre las dos o dentro de EXTRA. Activa en EXTRA válida. Activa ausente de las dos = error | R1-R5 |
 | `tests/unit/api/cron-recifrar-integraciones.test.ts` | Con un servicio doble (`servicio: () => doble`): sin cabecera, con secreto erróneo o con secreto no configurado = 401 y la fábrica del servicio no se llama. Parámetros raros = 400 sin eco. `?solo-contar=1` llama con `soloContar: true` y sin parámetros con `false`. El body tiene exactamente las 7 claves y no contiene ninguna de las claves base64 del test, ni un texto `v1:`/`v9:` cifrado, ni un id. `empresasConError > 0` = 500 con resumen. `ConfiguracionBovedaError` = 500 `configuracion_boveda` sin valores. Otro error con un `message` que incluye un texto cifrado = 500 sin ese texto en el body ni en el log espiado. El módulo no exporta `GET`. `vercel.json` no tiene un cron con este path | R6-R8, R13-R16 |
-| `tests/integration/db/recifrado-integraciones.test.ts` (casos nuevos) | Con Postgres real y transacción revertida, el servicio sale de `construirServicioRecifrado({ prisma: tx, env, recorrerEmpresas })` con `env` = `{ CLAVES: v1, EXTRA: v9, ACTIVA: v9 }`, que también cubre la composición. Siembra: una integración con dos secretos en v1, `estado = error`, `ultimo_error_codigo`, `ultima_prueba_at` y `datos_publicos` con valor. Se comprueba: (a) solo-contar deja la fila idéntica, `updated_at` incluido (R9); (b) recifrar cambia solo `secretos` (y `updated_at`) y las demás columnas quedan iguales a la foto previa (R12); (c) todos los valores en `v9:` se descifran con `new BovedaIntegraciones(() => soloV9)` al mismo texto sembrado (R10, R17); (d) la segunda corrida da `recifrados: 0` y la fila queda idéntica, `updated_at` incluido (R11) | R9-R12, R17 |
+| `tests/integration/db/recifrado-integraciones-extra.test.ts` (archivo nuevo, D12) | Con Postgres real y transacción revertida, el servicio sale de `construirServicioRecifrado({ prisma: tx, env, recorrerEmpresas })` con `env` = `{ CLAVES: v1, EXTRA: v9, ACTIVA: v9 }`, que también cubre la composición. Siembra: una integración con dos secretos en v1, `estado = error`, `ultimo_error_codigo`, `ultima_prueba_at` y `datos_publicos` con valor. Se comprueba: (a) solo-contar deja la fila idéntica, `updated_at` incluido (R9); (b) recifrar cambia solo `secretos` (y `updated_at`) y las demás columnas quedan iguales a la foto previa (R12); (c) todos los valores en `v9:` se descifran con `new BovedaIntegraciones(() => soloV9)` al mismo texto sembrado (R10, R17); (d) la segunda corrida da `recifrados: 0` y la fila queda idéntica, `updated_at` incluido (R11) | R9-R12, R17 |
 
 **Mutaciones que deben poner rojo** (las anota el implementer en `progress/impl_SLT-268.md`):
 - quitar la lectura de EXTRA: rojo R1/R5;
