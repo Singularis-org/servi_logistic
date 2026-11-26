@@ -7,15 +7,15 @@ Una sola tanda de `backend_dev`. TDD: el test de cada task va antes que el códi
 y SLT-257, en vuelo y de otra persona. Si alguna task parece pedirlo, PARA y avisa al leader.
 
 ## T0. Paridad con prod (antes de tocar nada)
-- [ ] Correr `git fetch origin prod` y después `git diff --stat origin/prod -- lib/config/integraciones.ts lib/config/cron.ts lib/crypto/boveda-integraciones.ts lib/db/para-cada-empresa.ts lib/db/prisma-client.ts lib/db/contexto-empresa.ts lib/repositories/IntegracionRecifradoRepository.ts lib/services/RecifradoIntegracionesService.ts lib/interfaces/services/IRecifradoIntegracionesService.ts lib/interfaces/repositories/IIntegracionRecifradoRepository.ts middleware.ts tests/unit/config/integraciones-config.test.ts tests/unit/guards/sin-credenciales-de-entorno.guardia.test.ts tests/integration/db/_postgres-real.ts tests/fabricas/organizaciones.ts`.
+- [x] Correr `git fetch origin prod` y después `git diff --stat origin/prod -- lib/config/integraciones.ts lib/config/cron.ts lib/crypto/boveda-integraciones.ts lib/db/para-cada-empresa.ts lib/db/prisma-client.ts lib/db/contexto-empresa.ts lib/repositories/IntegracionRecifradoRepository.ts lib/services/RecifradoIntegracionesService.ts lib/interfaces/services/IRecifradoIntegracionesService.ts lib/interfaces/repositories/IIntegracionRecifradoRepository.ts middleware.ts tests/unit/config/integraciones-config.test.ts tests/unit/guards/sin-credenciales-de-entorno.guardia.test.ts tests/integration/db/_postgres-real.ts tests/fabricas/organizaciones.ts`.
 - **Hecho:** la salida está anotada en `progress/impl_SLT-268.md`. Si sale vacía, se sigue. Si algún
   archivo difiere, se PARA y se avisa al leader con la lista (D4): no se importa nada que solo exista
   en `dev`.
 
 ## T1. Anillo con la variable extra (R1-R5)
-- [ ] T1.1 Casos nuevos en `tests/unit/config/integraciones-config.test.ts` (ver `design.md > 5`), en
+- [x] T1.1 Casos nuevos en `tests/unit/config/integraciones-config.test.ts` (ver `design.md > 5`), en
   rojo. Los mensajes de error se comparan con literales.
-- [ ] T1.2 `lib/config/integraciones.ts`:
+- [x] T1.2 `lib/config/integraciones.ts`:
   - añadir `VARIABLE_CLAVES_CIFRADO_EXTRA`;
   - pasar el nombre de la variable a `leerEntrada`;
   - fusionar las dos variables (`design.md > 1`);
@@ -24,14 +24,14 @@ y SLT-257, en vuelo y de otra persona. Si alguna task parece pedirlo, PARA y avi
   `pnpm run typecheck` verde.
 
 ## T2. Ruta `POST /api/cron/recifrar-integraciones` (R6-R8, R13-R16) — depende de T1
-- [ ] T2.1 `tests/unit/api/cron-recifrar-integraciones.test.ts` con un servicio doble, en rojo.
-- [ ] T2.2 `app/api/cron/recifrar-integraciones/route.ts`: `construirServicioRecifrado`,
+- [x] T2.1 `tests/unit/api/cron-recifrar-integraciones.test.ts` con un servicio doble, en rojo.
+- [x] T2.2 `app/api/cron/recifrar-integraciones/route.ts`: `construirServicioRecifrado`,
   `handleRecifrarIntegraciones` y `POST`, sin `GET` (`design.md > 2`).
 - **Hecho:** T2.1 en verde; `vercel.json` sin cambios; las mutaciones de R6, R8 y R13 de
   `design.md > 5` ponen el test en rojo, y el implementer las anota.
 
 ## T3. Recifrado real de v1 a v9 con la composición de la ruta (R9-R12, R17) — depende de T2
-- [ ] T3.1 Archivo NUEVO `tests/integration/db/recifrado-integraciones-extra.test.ts` (D12).
+- [x] T3.1 Archivo NUEVO `tests/integration/db/recifrado-integraciones-extra.test.ts` (D12).
   - Reutiliza sin modificarlos `tests/integration/db/_postgres-real.ts` y
     `tests/fabricas/organizaciones.ts`.
   - Los helpers locales de `recifrado-integraciones.test.ts` (`revertida`, `Revertir`) se copian:
@@ -47,14 +47,14 @@ y SLT-257, en vuelo y de otra persona. Si alguna task parece pedirlo, PARA y avi
   - si el test sale `skipped`, NO cuenta como hecho.
 
 ## T4. Guardia [P] (con T2 o T3) — depende de T1
-- [ ] `tests/unit/guards/sin-credenciales-de-entorno.guardia.test.ts`: añadir
+- [x] `tests/unit/guards/sin-credenciales-de-entorno.guardia.test.ts`: añadir
   `INTEGRACIONES_CLAVES_CIFRADO_EXTRA` a la lista de permitidas, junto a las otras `INTEGRACIONES_*`.
 - **Hecho:** `pnpm run test:guardias` verde.
 
 ## T5. Cierre — depende de T1-T4
-- [ ] `progress/impl_SLT-268.md` con: el mapa R -> test (R1-R17), la salida de T0 y las mutaciones
+- [x] `progress/impl_SLT-268.md` con: el mapa R -> test (R1-R17), la salida de T0 y las mutaciones
   medidas.
-- [ ] `./init.sh` en verde, con `.env` copiado al worktree antes del primer gate.
+- [x] `./init.sh` en verde, con `.env` copiado al worktree antes del primer gate.
 - **Hecho:**
   - gate local verde;
   - el mapa cubre los 17 requisitos;
