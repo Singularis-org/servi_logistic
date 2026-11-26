@@ -287,6 +287,8 @@ export const MODULO_POR_CRON: Readonly<Record<string, Destino>> = {
   "purga-descargas": "nucleo",
   "purga-pdf-cargas": "nucleo",
   "purga-postulaciones-recurso": "nucleo",
+  // SLT-268: disparador manual del recifrado de credenciales de integraciones; de plataforma, sin módulo.
+  "recifrar-integraciones": "nucleo",
   // Wallet (núcleo desde el 2026-10-28).
   "generar-gastos-fijos": "nucleo",
   "snapshot-ranking": "ranking",
