@@ -7,9 +7,18 @@
  * Ningun error lleva el valor de una variable ni la etiqueta de una entrada del anillo (QC inv. 13):
  * se nombra la VARIABLE y, dentro del anillo, la POSICION («entrada 2»). Un trozo de clave en un
  * mensaje acaba en el agregador de logs.
+ *
+ * SLT-268 (design §1; R1-R5) — `INTEGRACIONES_CLAVES_CIFRADO_EXTRA`, OPCIONAL. Misma forma que la
+ * principal (`v<n>:<base64 de 32 bytes>`, separadas por comas) y sus entradas se suman al mismo anillo.
+ * Existe para AÑADIR una clave sin reescribir `INTEGRACIONES_CLAVES_CIFRADO`: en Vercel es Sensitive,
+ * nadie puede leer su valor y reescribirla perderia las claves que ya tiene. Sus versiones no pueden
+ * repetir las de la principal ni repetirse entre si (se rechaza, no se elige una). Ausente, vacia o
+ * solo con espacios: el anillo y los errores son los de siempre. `INTEGRACIONES_CLAVE_ACTIVA` puede
+ * apuntar a una version de cualquiera de las dos.
  */
 
 export const VARIABLE_CLAVES_CIFRADO = "INTEGRACIONES_CLAVES_CIFRADO";
+export const VARIABLE_CLAVES_CIFRADO_EXTRA = "INTEGRACIONES_CLAVES_CIFRADO_EXTRA";
 export const VARIABLE_CLAVE_ACTIVA = "INTEGRACIONES_CLAVE_ACTIVA";
 export const VARIABLE_PRUEBAS_POR_MINUTO = "INTEGRACIONES_PRUEBAS_POR_MINUTO";
 
@@ -61,42 +70,53 @@ function leerNoVacia(env: Entorno, nombre: string): string {
  * Una entrada `v<n>:<base64>`. Se parte por el PRIMER `:` porque la base64 no lo contiene; asi una
  * entrada con dos `:` cae en la regex de la clave y no se reinterpreta.
  */
-function leerEntrada(entrada: string, posicion: number): [string, Buffer] {
+function leerEntrada(variable: string, entrada: string, posicion: number): [string, Buffer] {
   const separador = entrada.indexOf(":");
   const version = separador === -1 ? "" : entrada.slice(0, separador).trim();
   const base64 = separador === -1 ? "" : entrada.slice(separador + 1).trim();
   if (!FORMA_VERSION.test(version) || !FORMA_CLAVE_BASE64.test(base64)) {
     throw new ConfiguracionBovedaError(
-      `${VARIABLE_CLAVES_CIFRADO}: la entrada ${posicion} no tiene la forma v<n>:<base64 de ${BYTES_DE_CLAVE} bytes>`,
+      `${variable}: la entrada ${posicion} no tiene la forma v<n>:<base64 de ${BYTES_DE_CLAVE} bytes>`,
     );
   }
   const clave = Buffer.from(base64, "base64");
   if (clave.length !== BYTES_DE_CLAVE) {
     throw new ConfiguracionBovedaError(
-      `${VARIABLE_CLAVES_CIFRADO}: la entrada ${posicion} no mide ${BYTES_DE_CLAVE} bytes`,
+      `${variable}: la entrada ${posicion} no mide ${BYTES_DE_CLAVE} bytes`,
     );
   }
   return [version, clave];
 }
 
 /**
- * El anillo de claves maestras: `INTEGRACIONES_CLAVES_CIFRADO = "v1:<base64>,v2:<base64>"` y
- * `INTEGRACIONES_CLAVE_ACTIVA = "v2"`. Lanza `ConfiguracionBovedaError` si falta algo, si una
- * entrada esta mal formada, si una version se repite o si la activa no esta en el anillo.
+ * Suma al anillo las entradas de una variable. La posicion del mensaje es la de la entrada DENTRO de
+ * esa variable. Una version ya presente, de esta variable o de otra, haria ambiguo con que clave se
+ * descifra: se rechaza, no se elige una (R4).
  */
-export function leerAnilloDeClaves(env: Entorno = process.env): AnilloDeClaves {
-  const entradas = leerNoVacia(env, VARIABLE_CLAVES_CIFRADO).split(",");
-  const claves = new Map<string, Buffer>();
-  entradas.forEach((entrada, i) => {
-    const [version, clave] = leerEntrada(entrada.trim(), i + 1);
-    // Una version repetida haria ambiguo con que clave se descifra: se rechaza, no se elige una.
+function sumarEntradas(claves: Map<string, Buffer>, variable: string, valor: string): void {
+  valor.split(",").forEach((entrada, i) => {
+    const [version, clave] = leerEntrada(variable, entrada.trim(), i + 1);
     if (claves.has(version)) {
-      throw new ConfiguracionBovedaError(
-        `${VARIABLE_CLAVES_CIFRADO}: la entrada ${i + 1} repite una version anterior`,
-      );
+      throw new ConfiguracionBovedaError(`${variable}: la entrada ${i + 1} repite una version anterior`);
     }
     claves.set(version, clave);
   });
+}
+
+/**
+ * El anillo de claves maestras: `INTEGRACIONES_CLAVES_CIFRADO = "v1:<base64>,v2:<base64>"` y
+ * `INTEGRACIONES_CLAVE_ACTIVA = "v2"`. Lanza `ConfiguracionBovedaError` si falta algo, si una
+ * entrada esta mal formada, si una version se repite o si la activa no esta en el anillo. Las
+ * entradas de `INTEGRACIONES_CLAVES_CIFRADO_EXTRA`, si las hay, entran en el mismo anillo (SLT-268).
+ */
+export function leerAnilloDeClaves(env: Entorno = process.env): AnilloDeClaves {
+  const claves = new Map<string, Buffer>();
+  sumarEntradas(claves, VARIABLE_CLAVES_CIFRADO, leerNoVacia(env, VARIABLE_CLAVES_CIFRADO));
+  // SLT-268 (R2): ausente o en blanco es «no hay extra», no un error. Vercel deja guardar una variable
+  // vacia, y fallar ahi dejaria sin integraciones a todas las empresas por un campo en blanco.
+  const extra = env[VARIABLE_CLAVES_CIFRADO_EXTRA]?.trim();
+  const hayExtra = extra !== undefined && extra !== "";
+  if (hayExtra) sumarEntradas(claves, VARIABLE_CLAVES_CIFRADO_EXTRA, extra);
 
   const activa = leerNoVacia(env, VARIABLE_CLAVE_ACTIVA);
   if (!FORMA_VERSION.test(activa)) {
@@ -104,7 +124,8 @@ export function leerAnilloDeClaves(env: Entorno = process.env): AnilloDeClaves {
   }
   if (!claves.has(activa)) {
     throw new ConfiguracionBovedaError(
-      `${VARIABLE_CLAVE_ACTIVA} no corresponde a ninguna entrada de ${VARIABLE_CLAVES_CIFRADO}`,
+      `${VARIABLE_CLAVE_ACTIVA} no corresponde a ninguna entrada de ${VARIABLE_CLAVES_CIFRADO}` +
+        (hayExtra ? ` ni de ${VARIABLE_CLAVES_CIFRADO_EXTRA}` : ""),
     );
   }
   return { activa, claves };
