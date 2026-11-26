@@ -102,3 +102,23 @@ dicen (las 12 mutaciones las midió el implementer; no las repetí); sin fugas e
 401 antes de tocar el anillo o la base; idempotente y solo `secretos`/`updated_at`; `merge-tree` sobre
 `origin/prod` limpio. Para la vuelta 2 basta con el commit que añade la salida del E2E a la bitácora
 (o la decisión escrita del humano de que no aplica).
+
+## Vuelta 2 (acotada a 66905712..6dc34682)
+
+Cambios del rango: solo `progress/impl_SLT-268.md` y `progress/features/SLT-268.md`. Ningún archivo de
+código, test ni spec cambió desde 66e4725b (comprobado con `git diff --stat 66e4725b HEAD` excluyendo
+`progress/` y `specs/`: vacío). Lo verificado en la vuelta 1 sigue valiendo.
+
+| Hallazgo | Estado |
+|---|---|
+| **B1** E2E `dos-empresas-humo` | **Cerrado.** `impl_SLT-268.md > E2E de flujos críticos` registra la corrida (base desechable `servi_slt268_e2e` con migrate deploy + seed, `next build`, HEAD cbf08327, que tiene el mismo código que 66e4725b). Leí el log `progress/logs/e2e-SLT-268.log` del worktree principal: 18 tests del proyecto `aislamiento`, `18 passed (1.4m)`, `E2E_EXIT=0`, ninguno fallido ni saltado. El log no contiene URLs de base ni contraseñas. |
+| m1 Estado desactualizado | **Cerrado.** `## Estado` pasa a F2.2 y `## Tandas` registra la tanda. |
+| m2 composition root duplicado | Abierto, menor (deuda deliberada por D12). No bloquea. |
+| m3 runbook de EXTRA mal pegada | **Cerrado.** Runbook en `progress/features/SLT-268.md`: quitar EXTRA, volver la activa a `v1`, redeploy, y no ejecutar hasta que solo-contar dé 200. |
+| m4 `!==` en el secreto | Abierto, menor (ya descartado en el design). No bloquea. |
+
+Regresiones: ninguna (el rango no toca código).
+
+### Veredicto vuelta 2
+
+**OK** — 0 bloqueantes; quedan m2 y m4 como menores ya aceptados.
