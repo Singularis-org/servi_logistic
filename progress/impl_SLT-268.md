@@ -110,3 +110,9 @@ local). No salió del equipo ni quedó en ningún archivo del repo.
 ## Veredicto
 
 Hecho: R1-R17 con test, 12 de 12 mutaciones en rojo, typecheck, lint y gate local en verde; sin bloqueos para el cherry-pick a prod.
+
+## E2E de flujos críticos (bloqueante de la review vuelta 1)
+Corrido por el leader el 2026-11-26 sobre HEAD cbf08327, base desechable `servi_slt268_e2e` (migrate deploy + seed),
+`next build`, puerto 3044:
+`pnpm exec playwright test e2e/dos-empresas-humo.spec.ts` → `18 passed (1.4m)`, `E2E_EXIT=0`.
+Log: progress/logs/e2e-SLT-268.log del worktree principal (no versionado).
