@@ -122,6 +122,21 @@
           "tests/unit/guards/asistente-sin-frontmatter",
           "tests/components/AyudaLayout"
         ]
+      },
+      {
+        "si_cambia": [
+          "lib/services/UsuarioService.ts",
+          "lib/interfaces/services/IUsuarioService.ts"
+        ],
+        "corre": [
+          "tests/unit/services/usuario-"
+        ]
+      },
+      {
+        "si_cambia": "lib/types/historial-accion.ts",
+        "corre": [
+          "tests/unit/historial-accion/"
+        ]
       }
     ]
   }
