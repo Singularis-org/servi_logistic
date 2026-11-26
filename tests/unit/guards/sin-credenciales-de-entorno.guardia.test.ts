@@ -173,6 +173,8 @@ describe("SL-36/R41 — AUTOCOMPROBACION del detector", () => {
       "WHATSAPP_TEMPLATE_LANG",
       "WHATSAPP_DEBUG_LOG",
       "INTEGRACIONES_CLAVES_CIFRADO",
+      // SLT-268 (D2): la clave nueva del anillo entra aparte; es de plataforma, no de una empresa.
+      "INTEGRACIONES_CLAVES_CIFRADO_EXTRA",
       "INTEGRACIONES_CLAVE_ACTIVA",
       "INTEGRACIONES_PRUEBAS_POR_MINUTO",
       "INTEGRACIONES_PROBADOR_DOBLE",
