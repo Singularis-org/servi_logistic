@@ -252,11 +252,18 @@ class Revertir extends Error {
  *
  * La empresa por defecto nace tras un SAVEPOINT: ver `serializarEscriturasReales`, que la deshace y
  * la rehace despues del lock para no reabrir el deadlock de la feature 227.
+ *
+ * SLT-239 — `opciones.aislamiento: "RepeatableRead"` es para el test que compara lecturas de TODA la
+ * base hechas en momentos distintos de la misma transaccion (la caja entera antes y despues, un
+ * `count()` sin filtro). En `READ COMMITTED` cada sentencia ve lo que otro archivo commiteo entre
+ * medias, y la diferencia deja de ser la del escenario (medido en CI: `expected 2 to be 1` y la caja
+ * desviada en 1 500 000, el saldo inicial que `aporte-capital` commitea a la vez). Con una sola foto
+ * mas lo propio, el antes y el despues solo difieren en lo que el test escribio. Por defecto, igual.
  */
 export async function enTransaccionRevertida<T>(
   prisma: PrismaClient,
   fn: (tx: Parameters<Parameters<PrismaClient["$transaction"]>[0]>[0]) => Promise<T>,
-  opciones?: { organizacionId?: string },
+  opciones?: { organizacionId?: string; aislamiento?: "RepeatableRead" },
 ): Promise<T> {
   try {
     await prisma.$transaction(
@@ -271,7 +278,7 @@ export async function enTransaccionRevertida<T>(
         const id = organizacionId;
         throw new Revertir(await conEmpresa(id, () => fn(tx)));
       },
-      { timeout: 30_000, maxWait: 15_000 },
+      { timeout: 30_000, maxWait: 15_000, ...(opciones?.aislamiento ? { isolationLevel: opciones.aislamiento } : {}) },
     );
   } catch (error) {
     if (error instanceof Revertir) return error.valor as T;
